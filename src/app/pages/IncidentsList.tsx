@@ -1,17 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { EyeIcon, ImageIcon, VideoIcon, ArrowRightIcon, XIcon } from '../components/Icons';
-import { CaseStatus, Priority } from '../types';
+import { Case, CaseStatus, Priority } from '../types';
+import { casesApi, settingsApi } from '../services/api';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function IncidentsList() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [showConvertModal, setShowConvertModal] = useState<string | null>(null);
+  const [showSuggestModal, setShowSuggestModal] = useState<string | null>(null);
+  const [suggestReason, setSuggestReason] = useState('');
   const [showCloseModal, setShowCloseModal] = useState<string | null>(null);
+  const [closeNote, setCloseNote] = useState('');
+  const [cases, setCases] = useState<Case[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [canViewType1, setCanViewType1] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const permissions = usePermissions();
+  const canDelete = permissions['cases']?.canDelete ?? false;
 
-  const type1Cases = mockCases.filter(c => c.type === 'type-1');
+  useEffect(() => {
+    if (!currentUser?.role) return;
+    const checkAccess = async () => {
+      try {
+        const res = await settingsApi.getByKey('case_viewing_type1');
+        const setting = res.data.data || res.data;
+        if (setting?.value) {
+          const roles = setting.value.split(',').map((r: string) => r.trim());
+          setCanViewType1(roles.includes(currentUser.role));
+        }
+      } catch { /* keep default true */ }
+    };
+    checkAccess();
+  }, [currentUser?.role]);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      setLoading(true);
+      try {
+        const response = await casesApi.getAll({ type: 'type-1' });
+        setCases(response.data.data?.items || []);
+      } catch {
+        setCases([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCases();
+  }, []);
+
+  const type1Cases = cases.filter(c => c.type === 'type-1');
 
   const statusColors: Record<CaseStatus, string> = {
     'submitted': 'bg-blue-100 text-blue-700',
@@ -24,7 +63,8 @@ export default function IncidentsList() {
     'resolved': 'bg-green-100 text-green-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
-    'on-hold': 'bg-amber-100 text-amber-700'
+    'on-hold': 'bg-amber-100 text-amber-700',
+    'suggested-type-2': 'bg-purple-100 text-purple-700'
   };
 
   const priorityColors: Record<Priority, string> = {
@@ -35,6 +75,15 @@ export default function IncidentsList() {
   };
 
   const canTakeAction = currentUser?.role === 'proctor' || currentUser?.role === 'deputy-proctor';
+
+  if (!canViewType1) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-2xl mb-2" style={{ color: '#0b2652' }}>Access Restricted</h2>
+        <p className="text-gray-600">You don't have permission to view Type-1 incidents.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -74,7 +123,7 @@ export default function IncidentsList() {
 
                 {/* Right: Media Preview */}
                 <div className="flex gap-3 flex-shrink-0">
-                  {incident.documents.filter(d => d.type === 'image' || d.type === 'video').slice(0, 2).map(doc => (
+                  {incident.documents?.filter(d => d.type === 'image' || d.type === 'video').slice(0, 2).map(doc => (
                     <div key={doc.id} className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
                       {doc.type === 'image' && doc.url.startsWith('http') ? (
                         <img src={doc.url} alt={doc.name} className="w-full h-full object-cover" />
@@ -90,7 +139,7 @@ export default function IncidentsList() {
                       )}
                     </div>
                   ))}
-                  {incident.documents.length === 0 && (
+                  {(!incident.documents || incident.documents.length === 0) && (
                     <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400">
                       <span className="text-xs">No media</span>
                     </div>
@@ -107,14 +156,14 @@ export default function IncidentsList() {
                   <EyeIcon />
                   View Details
                 </button>
-                {canTakeAction && incident.status !== 'closed' && incident.status !== 'resolved' && (
+                {canTakeAction && incident.status !== 'closed' && incident.status !== 'resolved' && incident.status !== 'suggested-type-2' && (
                   <>
                     <button
-                      onClick={() => setShowConvertModal(incident.id)}
+                      onClick={() => setShowSuggestModal(incident.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                     >
                       <ArrowRightIcon />
-                      Convert to Type-2
+                      Suggest to Type-2
                     </button>
                     <button
                       onClick={() => setShowCloseModal(incident.id)}
@@ -124,6 +173,15 @@ export default function IncidentsList() {
                       Close Case
                     </button>
                   </>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => setDeleteId(incident.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                  >
+                    <XIcon />
+                    Delete
+                  </button>
                 )}
               </div>
             </div>
@@ -137,36 +195,45 @@ export default function IncidentsList() {
         </div>
       )}
 
-      {/* Convert to Type-2 Modal */}
-      {showConvertModal && (
+      {/* Suggest to Type-2 Modal */}
+      {showSuggestModal && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowConvertModal(null)} />
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { setShowSuggestModal(null); setSuggestReason(''); }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Convert to Type-2 Case</h3>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Suggest as Type-2 Case</h3>
               <p className="text-sm text-gray-600 mb-4">
-                This will convert the instant incident into a formal case and route it through the Coordinator for verification.
+                This will suggest that this incident should be handled as a Type-2 case. The suggestion will be reviewed before any conversion.
               </p>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reason for conversion</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason for suggestion</label>
                 <textarea
-                  placeholder="Explain why this incident needs formal processing..."
+                  value={suggestReason}
+                  onChange={(e) => setSuggestReason(e.target.value)}
+                  placeholder="Explain why this incident should be handled as Type-2..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />
               </div>
               <div className="flex gap-3 justify-end">
                 <button
-                  onClick={() => setShowConvertModal(null)}
+                  onClick={() => { setShowSuggestModal(null); setSuggestReason(''); }}
                   className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => setShowConvertModal(null)}
+                  onClick={async () => {
+                    try {
+                      await casesApi.updateStatus(showSuggestModal, { status: 'suggested-type-2', note: suggestReason });
+                      setCases(prev => prev.map(c => c.id === showSuggestModal ? { ...c, status: 'suggested-type-2' as const } : c));
+                    } catch { /* silent */ }
+                    setShowSuggestModal(null);
+                    setSuggestReason('');
+                  }}
                   className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700"
                 >
-                  Convert to Type-2
+                  Submit Suggestion
                 </button>
               </div>
             </div>
@@ -177,7 +244,7 @@ export default function IncidentsList() {
       {/* Close Case Modal */}
       {showCloseModal && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowCloseModal(null)} />
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { setShowCloseModal(null); setCloseNote(''); }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Close Case</h3>
@@ -187,6 +254,8 @@ export default function IncidentsList() {
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Resolution note</label>
                 <textarea
+                  value={closeNote}
+                  onChange={(e) => setCloseNote(e.target.value)}
                   placeholder="Add a closing note..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
@@ -194,16 +263,58 @@ export default function IncidentsList() {
               </div>
               <div className="flex gap-3 justify-end">
                 <button
-                  onClick={() => setShowCloseModal(null)}
+                  onClick={() => { setShowCloseModal(null); setCloseNote(''); }}
                   className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => setShowCloseModal(null)}
+                  onClick={async () => {
+                    try {
+                      await casesApi.updateStatus(showCloseModal, { status: 'closed', note: closeNote });
+                      setCases(prev => prev.map(c => c.id === showCloseModal ? { ...c, status: 'closed' as const } : c));
+                    } catch { /* silent */ }
+                    setShowCloseModal(null);
+                    setCloseNote('');
+                  }}
                   className="px-4 py-2 text-sm rounded-lg bg-gray-600 text-white hover:bg-gray-700"
                 >
                   Close Case
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteId && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setDeleteId(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2 text-red-600">Delete Incident</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to permanently delete this incident? All associated data will be removed. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDeleteId(null)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await casesApi.delete(deleteId);
+                      setCases(prev => prev.filter(c => c.id !== deleteId));
+                    } catch { /* silent */ }
+                    setDeleteId(null);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+                >
+                  Delete Permanently
                 </button>
               </div>
             </div>

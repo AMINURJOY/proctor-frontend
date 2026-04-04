@@ -1,18 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { MailIcon, PhoneIcon, CheckIcon, ClockIcon, EyeIcon } from '../components/Icons';
+import { hearingsApi, casesApi } from '../services/api';
+import { Case } from '../types';
 
 export default function HearingManagement() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'schedule'>('upcoming');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [hearingsData, setHearingsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scheduleForm, setScheduleForm] = useState({ caseId: '', date: '', time: '', location: '', notes: '' });
+  const [scheduling, setScheduling] = useState(false);
 
-  const allHearings = mockCases.flatMap(c =>
-    c.hearings.map(h => ({ ...h, caseNumber: c.caseNumber, studentName: c.studentName, caseId: c.id }))
-  );
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [hearingsRes, casesRes] = await Promise.allSettled([
+          hearingsApi.getAll(),
+          casesApi.getAll(),
+        ]);
+        if (hearingsRes.status === 'fulfilled') {
+          setHearingsData(hearingsRes.value.data.data || []);
+        }
+        if (casesRes.status === 'fulfilled') {
+          setCases(casesRes.value.data.data?.items || []);
+        }
+      } catch {
+        // API unavailable - empty state shown
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const handleScheduleHearing = async () => {
+    setScheduling(true);
+    try {
+      await hearingsApi.create(scheduleForm);
+      const hearingsRes = await hearingsApi.getAll();
+      setHearingsData(hearingsRes.data.data || []);
+    } catch {
+      // Fallback
+    } finally {
+      setScheduling(false);
+      setShowScheduleModal(false);
+      setScheduleForm({ caseId: '', date: '', time: '', location: '', notes: '' });
+    }
+  };
+
+  const allHearings = hearingsData;
 
   const upcoming = allHearings.filter(h => h.status === 'scheduled');
   const completed = allHearings.filter(h => h.status === 'completed');
@@ -215,9 +257,13 @@ export default function HearingManagement() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Select Case *</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select
+                    value={scheduleForm.caseId}
+                    onChange={(e) => setScheduleForm(prev => ({ ...prev, caseId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="">Select a case...</option>
-                    {mockCases.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected').map(c => (
+                    {cases.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected').map(c => (
                       <option key={c.id} value={c.id}>{c.caseNumber} - {c.studentName}</option>
                     ))}
                   </select>
@@ -226,11 +272,21 @@ export default function HearingManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                    <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input
+                      type="date"
+                      value={scheduleForm.date}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, date: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-                    <input type="time" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input
+                      type="time"
+                      value={scheduleForm.time}
+                      onChange={(e) => setScheduleForm(prev => ({ ...prev, time: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
 
@@ -239,6 +295,8 @@ export default function HearingManagement() {
                   <input
                     type="text"
                     placeholder="e.g., Proctor Office, Room 201"
+                    value={scheduleForm.location}
+                    onChange={(e) => setScheduleForm(prev => ({ ...prev, location: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -287,11 +345,12 @@ export default function HearingManagement() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => setShowScheduleModal(false)}
-                    className="px-4 py-2 text-sm rounded-lg text-white"
+                    onClick={handleScheduleHearing}
+                    disabled={scheduling}
+                    className="px-4 py-2 text-sm rounded-lg text-white disabled:opacity-50"
                     style={{ backgroundColor: '#0b2652' }}
                   >
-                    Schedule Hearing
+                    {scheduling ? 'Scheduling...' : 'Schedule Hearing'}
                   </button>
                 </div>
               </div>

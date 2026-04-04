@@ -11,6 +11,7 @@ export const users: User[] = [
   { id: '8', name: 'Dr. Rachel Female Coord', email: 'fcoord@university.edu', role: 'female-coordinator' },
   { id: '9', name: 'Committee SH', email: 'shc@university.edu', role: 'sexual-harassment-committee' },
   { id: '10', name: 'Vice Chancellor', email: 'vc@university.edu', role: 'vc' },
+  { id: '11', name: 'System Administrator', email: 'admin@university.edu', role: 'super-admin' },
 ];
 
 export const mockCases: Case[] = [

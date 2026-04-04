@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router';
-import { mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   CheckIcon,
   XIcon,
@@ -17,7 +16,9 @@ import {
   MailIcon,
   RefreshIcon
 } from '../components/Icons';
-import { CaseStatus } from '../types';
+import { Case, CaseStatus } from '../types';
+import { casesApi, API_BASE_URL } from '../services/api';
+import { usePermissions } from '../hooks/usePermissions';
 
 // Workflow steps for the stepper
 const workflowSteps = [
@@ -45,6 +46,7 @@ function getStepIndex(status: CaseStatus): number {
     'closed': 8,
     'rejected': -1,
     'on-hold': -2,
+    'suggested-type-2': -3,
   };
   return map[status] ?? 0;
 }
@@ -55,8 +57,94 @@ export default function CaseDetail() {
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'timeline'>('overview');
   const [newNote, setNewNote] = useState('');
+  const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [addingNote, setAddingNote] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const permissions = usePermissions();
+  const canDelete = permissions['cases']?.canDelete ?? false;
 
-  const caseItem = mockCases.find(c => c.id === id);
+  useEffect(() => {
+    const fetchCase = async () => {
+      setLoading(true);
+      try {
+        const response = await casesApi.getById(id!);
+        setCaseItem(response.data.data || response.data);
+      } catch {
+        setCaseItem(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchCase();
+  }, [id]);
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !caseItem) return;
+    setAddingNote(true);
+    try {
+      await casesApi.addNote(caseItem.id, { content: newNote, author: currentUser?.name || 'Unknown' });
+      // Refresh case data
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+      setNewNote('');
+    } catch {
+      // Optimistic update for mock fallback
+      const newNoteObj = {
+        id: `n-${Date.now()}`,
+        content: newNote,
+        author: currentUser?.name || 'Unknown',
+        createdDate: new Date().toISOString(),
+      };
+      setCaseItem(prev => prev ? { ...prev, notes: [...prev.notes, newNoteObj] } : prev);
+      setNewNote('');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!caseItem || !e.target.files?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(e.target.files)) {
+        await casesApi.addDocument(caseItem.id, file);
+      }
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+    } catch { /* silent */ }
+    finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const getDocUrl = (url: string) => {
+    if (url.startsWith('http')) return url;
+    return `${API_BASE_URL}${url}`;
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!caseItem) return;
+    try {
+      await casesApi.updateStatus(caseItem.id, { status: newStatus });
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+    } catch {
+      // Optimistic update for mock
+      setCaseItem(prev => prev ? { ...prev, status: newStatus as CaseStatus } : prev);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   if (!caseItem) {
     return (
@@ -101,7 +189,8 @@ export default function CaseDetail() {
     'resolved': 'bg-green-100 text-green-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
-    'on-hold': 'bg-amber-100 text-amber-700'
+    'on-hold': 'bg-amber-100 text-amber-700',
+    'suggested-type-2': 'bg-purple-100 text-purple-700'
   };
 
   const tabs = [
@@ -153,6 +242,14 @@ export default function CaseDetail() {
               {caseItem.type === 'type-2' && ' &middot; Type-2 (Formal Case)'}
             </p>
           </div>
+          {canDelete && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 transition-colors flex-shrink-0"
+            >
+              <XIcon /> Delete Case
+            </button>
+          )}
         </div>
       </div>
 
@@ -220,7 +317,7 @@ export default function CaseDetail() {
       )}
 
       {/* Role-Based Action Panel */}
-      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} />
+      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} />
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
@@ -288,9 +385,29 @@ export default function CaseDetail() {
           {/* Documents Tab */}
           {activeTab === 'documents' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>
-                Attached Documents ({caseItem.documents.length})
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium" style={{ color: '#0b2652' }}>
+                  Attached Documents ({caseItem.documents.length})
+                </h3>
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,application/pdf,.doc,.docx"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
+                    style={{ backgroundColor: '#0b2652' }}
+                  >
+                    {uploading ? 'Uploading...' : 'Upload Document'}
+                  </button>
+                </div>
+              </div>
               {caseItem.documents.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No documents attached</p>
               ) : (
@@ -309,22 +426,23 @@ export default function CaseDetail() {
                           <p className="text-xs text-gray-500">{new Date(doc.uploadedDate).toLocaleDateString()}</p>
                         </div>
                       </div>
-                      {doc.type === 'image' && doc.url.startsWith('http') && (
-                        <img src={doc.url} alt={doc.name} className="mt-3 w-full h-40 object-cover rounded-lg" />
+                      {doc.type === 'image' && (
+                        <img src={getDocUrl(doc.url)} alt={doc.name} className="mt-3 w-full h-40 object-cover rounded-lg" />
                       )}
                       {doc.type === 'video' && (
-                        <div className="mt-3 w-full h-40 bg-gray-900 rounded-lg flex items-center justify-center relative overflow-hidden">
-                          {doc.url.startsWith('http') && (
-                            <img src={doc.url} alt={doc.name} className="w-full h-full object-cover opacity-40" />
-                          )}
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-12 h-12 rounded-full bg-white/80 flex items-center justify-center">
-                              <svg width="20" height="20" viewBox="0 0 24 24" fill="#0b2652">
-                                <polygon points="5 3 19 12 5 21 5 3" />
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
+                        <video controls className="mt-3 w-full h-40 rounded-lg bg-gray-900 object-cover">
+                          <source src={getDocUrl(doc.url)} />
+                        </video>
+                      )}
+                      {doc.type === 'pdf' && (
+                        <a
+                          href={getDocUrl(doc.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm hover:bg-blue-100"
+                        >
+                          <FileIcon /> View PDF
+                        </a>
                       )}
                     </div>
                   ))}
@@ -401,11 +519,13 @@ export default function CaseDetail() {
                     rows={3}
                   />
                   <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm"
+                    onClick={handleAddNote}
+                    disabled={addingNote || !newNote.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                     style={{ backgroundColor: '#0b2652' }}
                   >
                     <SendIcon />
-                    Add Note
+                    {addingNote ? 'Adding...' : 'Add Note'}
                   </button>
                 </div>
               )}
@@ -458,15 +578,53 @@ export default function CaseDetail() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2 text-red-600">Delete Case</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to permanently delete case <strong>{caseItem.caseNumber}</strong>? This will also delete all associated documents, notes, hearings, and timeline events. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await casesApi.delete(caseItem.id);
+                      navigate('/cases');
+                    } catch { /* silent */ }
+                    setShowDeleteConfirm(false);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+                >
+                  Delete Permanently
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // Role-based action panel component
-function RoleActionPanel({ role, caseItem, isConfidential }: { role: string; caseItem: typeof mockCases[0]; isConfidential: boolean }) {
+function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { role: string; caseItem: Case; isConfidential: boolean; onStatusChange: (status: string) => void }) {
   const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected';
 
   if (isClosed || role === 'student' || role === 'vc') return null;
+
+  // Type-1 cases can only be closed or suggested as Type-2 — no forwarding/assigning
+  if (caseItem.type === 'type-1') return null;
 
   // Coordinator panel
   if (role === 'coordinator') {

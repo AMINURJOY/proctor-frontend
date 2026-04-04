@@ -1,15 +1,38 @@
+import { useState, useEffect } from 'react';
 import { LineChart, Line, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router';
 import { EyeIcon, LockIcon } from '../components/Icons';
-import { CaseStatus, Priority } from '../types';
+import { Case, CaseStatus, Priority } from '../types';
+import { dashboardApi, casesApi } from '../services/api';
 
 export default function VCMonitoring() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const [cases, setCases] = useState<Case[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (currentUser?.role !== 'vc') {
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [statsRes, casesRes] = await Promise.allSettled([
+          dashboardApi.getStats(),
+          casesApi.getAll(),
+        ]);
+        if (casesRes.status === 'fulfilled') {
+          setCases(casesRes.value.data.data?.items || []);
+        }
+      } catch {
+        // API unavailable - empty state shown
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (currentUser?.role !== 'vc' && currentUser?.role !== 'super-admin') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center bg-white rounded-xl shadow-md p-10 border border-gray-100 max-w-md">
@@ -38,19 +61,19 @@ export default function VCMonitoring() {
   };
 
   // Analytics data
-  const totalCases = mockCases.length;
-  const activeCases = mockCases.filter(c => !['closed', 'resolved', 'rejected'].includes(c.status)).length;
-  const resolvedCases = mockCases.filter(c => c.status === 'closed' || c.status === 'resolved').length;
-  const confidentialCount = mockCases.filter(c => c.type === 'confidential').length;
+  const totalCases = cases.length;
+  const activeCases = cases.filter(c => !['closed', 'resolved', 'rejected'].includes(c.status)).length;
+  const resolvedCases = cases.filter(c => c.status === 'closed' || c.status === 'resolved').length;
+  const confidentialCount = cases.filter(c => c.type === 'confidential').length;
 
   const statusDistribution = [
-    { name: 'Submitted', value: mockCases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
-    { name: 'Under Review', value: mockCases.filter(c => c.status === 'under-review').length, color: '#4f46e5' },
-    { name: 'Verified', value: mockCases.filter(c => c.status === 'verified').length, color: '#06b6d4' },
-    { name: 'Hearing Scheduled', value: mockCases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
-    { name: 'On Hold', value: mockCases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
-    { name: 'Closed', value: mockCases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
-    { name: 'Rejected', value: mockCases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
+    { name: 'Submitted', value: cases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
+    { name: 'Under Review', value: cases.filter(c => c.status === 'under-review').length, color: '#4f46e5' },
+    { name: 'Verified', value: cases.filter(c => c.status === 'verified').length, color: '#06b6d4' },
+    { name: 'Hearing Scheduled', value: cases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
+    { name: 'On Hold', value: cases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
+    { name: 'Closed', value: cases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
+    { name: 'Rejected', value: cases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
   ].filter(s => s.value > 0);
 
   const rolePerformance = [
@@ -70,10 +93,10 @@ export default function VCMonitoring() {
   ];
 
   const priorityDistribution = [
-    { name: 'Low', value: mockCases.filter(c => c.priority === 'low').length, color: '#64748b' },
-    { name: 'Medium', value: mockCases.filter(c => c.priority === 'medium').length, color: '#3b82f6' },
-    { name: 'High', value: mockCases.filter(c => c.priority === 'high').length, color: '#f97316' },
-    { name: 'Urgent', value: mockCases.filter(c => c.priority === 'urgent').length, color: '#dc2626' },
+    { name: 'Low', value: cases.filter(c => c.priority === 'low').length, color: '#64748b' },
+    { name: 'Medium', value: cases.filter(c => c.priority === 'medium').length, color: '#3b82f6' },
+    { name: 'High', value: cases.filter(c => c.priority === 'high').length, color: '#f97316' },
+    { name: 'Urgent', value: cases.filter(c => c.priority === 'urgent').length, color: '#dc2626' },
   ];
 
   return (
@@ -208,7 +231,7 @@ export default function VCMonitoring() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {mockCases.map(c => (
+              {cases.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">

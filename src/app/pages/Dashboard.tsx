@@ -1,23 +1,55 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { dashboardStats, recentActivity, mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { CasesIcon, ClockIcon, CheckIcon, EyeIcon } from '../components/Icons';
 import { useNavigate } from 'react-router';
-import { CaseStatus, Priority } from '../types';
+import { Case, CaseStatus, Priority } from '../types';
+import { dashboardApi, casesApi } from '../services/api';
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'my-tasks' | 'pending' | 'completed'>('overview');
+  const [cases, setCases] = useState<Case[]>([]);
+  const [dashboardStats, setDashboardStats] = useState({ totalCases: 0, pendingCases: 0, underReview: 0, resolvedCases: 0 });
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const role = currentUser?.role || '';
 
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [statsRes, activityRes, casesRes] = await Promise.allSettled([
+          dashboardApi.getStats(),
+          dashboardApi.getRecentActivity(),
+          casesApi.getAll(),
+        ]);
+
+        if (statsRes.status === 'fulfilled') {
+          setDashboardStats(statsRes.value.data.data);
+        }
+        if (activityRes.status === 'fulfilled') {
+          setRecentActivity(activityRes.value.data.data || []);
+        }
+        if (casesRes.status === 'fulfilled') {
+          setCases(casesRes.value.data.data?.items || []);
+        }
+      } catch {
+        // API unavailable - empty state shown
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   // Filter cases based on role
   const getMyTasks = () => {
-    return mockCases.filter(c => {
+    return cases.filter(c => {
       if (c.status === 'closed' || c.status === 'resolved' || c.status === 'rejected') return false;
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc'].includes(role)) return false;
+      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
 
       switch (role) {
         case 'student': return c.studentName.includes('John') || c.studentId === 'STU-2023-001';
@@ -29,21 +61,22 @@ export default function Dashboard() {
         case 'disciplinary-committee': return c.assignedTo === 'Committee Head';
         case 'female-coordinator': return c.type === 'confidential' && c.status === 'submitted';
         case 'sexual-harassment-committee': return c.type === 'confidential' && c.assignedTo === 'Committee SH';
+        case 'super-admin': return true;
         default: return false;
       }
     });
   };
 
   const getPendingCases = () => {
-    return mockCases.filter(c => {
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc'].includes(role)) return false;
+    return cases.filter(c => {
+      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
       return !['closed', 'resolved', 'rejected'].includes(c.status);
     });
   };
 
   const getCompletedCases = () => {
-    return mockCases.filter(c => {
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc'].includes(role)) return false;
+    return cases.filter(c => {
+      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
       return ['closed', 'resolved', 'rejected'].includes(c.status);
     });
   };
@@ -81,12 +114,12 @@ export default function Dashboard() {
   ];
 
   const pieData = [
-    { name: 'Submitted', value: mockCases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
-    { name: 'Under Review', value: mockCases.filter(c => c.status === 'under-review' || c.status === 'verified').length, color: '#4f46e5' },
-    { name: 'Hearing', value: mockCases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
-    { name: 'On Hold', value: mockCases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
-    { name: 'Closed', value: mockCases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
-    { name: 'Rejected', value: mockCases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
+    { name: 'Submitted', value: cases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
+    { name: 'Under Review', value: cases.filter(c => c.status === 'under-review' || c.status === 'verified').length, color: '#4f46e5' },
+    { name: 'Hearing', value: cases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
+    { name: 'On Hold', value: cases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
+    { name: 'Closed', value: cases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
+    { name: 'Rejected', value: cases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
   ].filter(d => d.value > 0);
 
   const lineData = [
@@ -107,7 +140,7 @@ export default function Dashboard() {
     return 'Just now';
   };
 
-  const CaseRow = ({ c }: { c: typeof mockCases[0] }) => (
+  const CaseRow = ({ c }: { c: Case }) => (
     <div
       className="flex items-center gap-4 p-4 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
       onClick={() => navigate(`/cases/${c.id}`)}
@@ -134,6 +167,17 @@ export default function Dashboard() {
     { id: 'pending' as const, label: `Pending (${pendingCases.length})` },
     { id: 'completed' as const, label: `Completed (${completedCases.length})` },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -229,7 +273,7 @@ export default function Dashboard() {
                     key={activity.id}
                     className="flex items-start gap-4 p-3 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
                     onClick={() => {
-                      const caseItem = mockCases.find(c => c.caseNumber === activity.caseNumber);
+                      const caseItem = cases.find(c => c.caseNumber === activity.caseNumber);
                       if (caseItem) navigate(`/cases/${caseItem.id}`);
                     }}
                   >

@@ -11,6 +11,8 @@ import HearingManagement from './pages/HearingManagement';
 import ConfidentialCases from './pages/ConfidentialCases';
 import VCMonitoring from './pages/VCMonitoring';
 import PlaceholderPage from './pages/PlaceholderPage';
+import UsersManagement from './pages/UsersManagement';
+import SettingsPage from './pages/SettingsPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,8 +32,12 @@ export const router = createBrowserRouter([
       { path: 'confidential', Component: ConfidentialCases },
       { path: 'monitoring', Component: VCMonitoring },
       { path: 'reports', Component: PlaceholderPage },
-      { path: 'users', Component: PlaceholderPage },
-      { path: 'settings', Component: PlaceholderPage },
+      { path: 'users', Component: UsersManagement },
+      { path: 'settings', element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },
+      { path: 'settings/permissions', Component: SettingsPage },
+      { path: 'settings/incident-routing', Component: SettingsPage },
+      { path: 'settings/case-viewing', Component: SettingsPage },
+      { path: 'settings/profile', Component: SettingsPage },
       { path: '*', element: React.createElement(Navigate, { to: '/dashboard', replace: true }) },
     ],
   },

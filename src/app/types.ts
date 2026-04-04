@@ -8,7 +8,8 @@ export type UserRole =
   | 'disciplinary-committee'
   | 'female-coordinator'
   | 'sexual-harassment-committee'
-  | 'vc';
+  | 'vc'
+  | 'super-admin';
 
 export type CaseType = 'type-1' | 'type-2' | 'confidential';
 
@@ -23,7 +24,8 @@ export type CaseStatus =
   | 'resolved'
   | 'closed'
   | 'rejected'
-  | 'on-hold';
+  | 'on-hold'
+  | 'suggested-type-2';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -86,6 +88,15 @@ export interface TimelineEvent {
   description: string;
   user: string;
   timestamp: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  caseId?: string;
+  createdAt: string;
 }
 
 export interface DashboardStats {

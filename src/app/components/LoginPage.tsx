@@ -3,6 +3,7 @@ import { users } from '../data/mockData';
 import { useNavigate } from 'react-router';
 import { LockIcon, UserIcon } from './Icons';
 import { useState } from 'react';
+import { User } from '../types';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -10,24 +11,38 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (userId: string) => {
-    login(userId);
-    navigate('/dashboard');
+  const handleFormLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const success = await login(email, password);
+      if (success) {
+        navigate('/dashboard');
+      } else {
+        setError('Invalid email or password. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleFormLogin = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const matchedUser = users.find((user) => user.email.toLowerCase() === email.trim().toLowerCase());
-
-    if (!matchedUser || !password.trim()) {
-      setError('Enter a valid university email and demo password to continue.');
-      return;
-    }
-
+  const handleQuickLogin = async (user: User) => {
     setError('');
-    handleLogin(matchedUser.id);
+    setLoading(true);
+    try {
+      const pwd = user.role === 'super-admin' ? 'Admin@123!' : 'Password123!';
+      const success = await login(user.email, pwd);
+      if (success) {
+        navigate('/dashboard');
+      } else {
+        setError('Quick login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const roleColors: Record<string, string> = {
@@ -40,7 +55,8 @@ export default function LoginPage() {
     'disciplinary-committee': 'bg-red-100 text-red-700',
     'female-coordinator': 'bg-teal-100 text-teal-700',
     'sexual-harassment-committee': 'bg-amber-100 text-amber-700',
-    'vc': 'bg-slate-100 text-slate-700'
+    'vc': 'bg-slate-100 text-slate-700',
+    'super-admin': 'bg-emerald-100 text-emerald-700'
   };
 
   return (
@@ -118,14 +134,14 @@ export default function LoginPage() {
 
               <div>
                 <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-                  Demo Password
+                  Password
                 </label>
                 <input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter any demo password"
+                  placeholder="Enter your password"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2652] focus:bg-white focus:ring-4 focus:ring-[#0b2652]/10"
                 />
               </div>
@@ -136,16 +152,23 @@ export default function LoginPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-[#0b2652]/10 bg-[#0b2652]/5 px-4 py-3 text-sm text-slate-600">
-                  Demo tip: any listed university email works with the quick login profiles below.
+                  Demo tip: use the quick login profiles below or sign in with your credentials.
                 </div>
               )}
 
               <button
                 type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b2652] px-4 py-3.5 font-medium text-white shadow-lg shadow-[#0b2652]/20 transition hover:bg-[#10336a]"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b2652] px-4 py-3.5 font-medium text-white shadow-lg shadow-[#0b2652]/20 transition hover:bg-[#10336a] disabled:opacity-60"
               >
-                <LockIcon />
-                Sign In
+                {loading ? (
+                  <span>Signing in...</span>
+                ) : (
+                  <>
+                    <LockIcon />
+                    Sign In
+                  </>
+                )}
               </button>
             </form>
 
@@ -164,8 +187,9 @@ export default function LoginPage() {
                 {users.map((user) => (
                   <button
                     key={user.id}
-                    onClick={() => handleLogin(user.id)}
-                    className="group rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0b2652]/25 hover:bg-white hover:shadow-lg"
+                    onClick={() => handleQuickLogin(user)}
+                    disabled={loading}
+                    className="group rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0b2652]/25 hover:bg-white hover:shadow-lg disabled:opacity-60"
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#0b2652] text-white shadow-lg shadow-[#0b2652]/20">

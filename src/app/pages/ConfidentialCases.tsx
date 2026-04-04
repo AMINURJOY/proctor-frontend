@@ -1,19 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { mockCases } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { LockIcon, EyeIcon, ShieldIcon, CheckIcon } from '../components/Icons';
-import { CaseStatus } from '../types';
+import { Case, CaseStatus } from '../types';
+import { casesApi } from '../services/api';
 
 export default function ConfidentialCases() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
+  const [cases, setCases] = useState<Case[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const canView = currentUser?.role === 'female-coordinator' ||
     currentUser?.role === 'sexual-harassment-committee' ||
     currentUser?.role === 'proctor' ||
-    currentUser?.role === 'vc';
+    currentUser?.role === 'vc' ||
+    currentUser?.role === 'super-admin';
+
+  useEffect(() => {
+    if (!canView) return;
+    const fetchCases = async () => {
+      setLoading(true);
+      try {
+        const response = await casesApi.getAll({ type: 'confidential' });
+        setCases(response.data.data?.items || []);
+      } catch {
+        setCases([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCases();
+  }, [canView]);
 
   if (!canView) {
     return (
@@ -34,7 +53,7 @@ export default function ConfidentialCases() {
     );
   }
 
-  const confidentialCases = mockCases.filter(c => c.type === 'confidential');
+  const confidentialCases = cases.filter(c => c.type === 'confidential');
   const activeCases = confidentialCases.filter(c => c.status !== 'closed' && c.status !== 'resolved');
   const closedCases = confidentialCases.filter(c => c.status === 'closed' || c.status === 'resolved');
 
