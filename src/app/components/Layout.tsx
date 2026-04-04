@@ -12,7 +12,10 @@ import {
   BellIcon,
   UserIcon,
   ChevronDownIcon,
-  LogoutIcon
+  LogoutIcon,
+  ShieldIcon,
+  BarChartIcon,
+  PlusIcon
 } from './Icons';
 import { useState } from 'react';
 
@@ -27,22 +30,47 @@ export default function Layout() {
     navigate('/');
   };
 
-  const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon },
-    { path: '/incidents', label: 'Incidents (Type-1)', icon: IncidentIcon },
-    { path: '/cases', label: 'Cases', icon: CasesIcon },
-    { path: '/hearings', label: 'Hearing Management', icon: HearingIcon },
-    { path: '/reports', label: 'Reports', icon: ReportIcon },
-    { path: '/users', label: 'Users / Roles', icon: UsersIcon },
-    { path: '/settings', label: 'Settings', icon: SettingsIcon },
+  const role = currentUser?.role || '';
+
+  // Role-based menu items
+  const allMenuItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon, roles: 'all' },
+    { path: '/submit', label: 'Submit Incident', icon: PlusIcon, roles: ['student', 'coordinator'] },
+    { path: '/incidents', label: 'Incidents (Type-1)', icon: IncidentIcon, roles: ['proctor', 'deputy-proctor', 'assistant-proctor', 'coordinator', 'vc'] },
+    { path: '/cases', label: 'Cases', icon: CasesIcon, roles: 'all' },
+    { path: '/hearings', label: 'Hearing Management', icon: HearingIcon, roles: ['proctor', 'deputy-proctor', 'assistant-proctor', 'disciplinary-committee'] },
+    { path: '/confidential', label: 'Confidential Cases', icon: ShieldIcon, roles: ['female-coordinator', 'sexual-harassment-committee', 'proctor', 'vc'] },
+    { path: '/monitoring', label: 'VC Monitoring', icon: BarChartIcon, roles: ['vc'] },
+    { path: '/reports', label: 'Reports', icon: ReportIcon, roles: ['proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'vc'] },
+    { path: '/users', label: 'Users / Roles', icon: UsersIcon, roles: ['proctor', 'vc'] },
+    { path: '/settings', label: 'Settings', icon: SettingsIcon, roles: 'all' },
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const menuItems = allMenuItems.filter(item =>
+    item.roles === 'all' || (Array.isArray(item.roles) && item.roles.includes(role))
+  );
+
+  const isActive = (path: string) => location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
+
+  const roleLabel = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  const roleColorMap: Record<string, string> = {
+    'student': '#3b82f6',
+    'coordinator': '#06b6d4',
+    'proctor': '#0b2652',
+    'assistant-proctor': '#4f46e5',
+    'deputy-proctor': '#7c3aed',
+    'registrar': '#0d9488',
+    'disciplinary-committee': '#dc2626',
+    'female-coordinator': '#ec4899',
+    'sexual-harassment-committee': '#be123c',
+    'vc': '#ca8a04',
+  };
 
   return (
     <div className="flex min-h-screen min-w-0" style={{ backgroundColor: '#f5f7fb' }}>
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 shadow-lg" style={{ backgroundColor: '#0b2652' }}>
+      <aside className="w-64 flex-shrink-0 shadow-lg flex flex-col" style={{ backgroundColor: '#0b2652' }}>
         {/* Logo */}
         <div className="p-6 border-b border-blue-900">
           <div className="flex items-center gap-3">
@@ -61,7 +89,7 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-1">
+        <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -81,6 +109,14 @@ export default function Layout() {
             );
           })}
         </nav>
+
+        {/* Role indicator at bottom */}
+        <div className="p-4 border-t border-blue-900">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roleColorMap[role] || '#fff' }} />
+            <span className="text-xs text-blue-200">Role: <span className="text-white font-medium">{roleLabel}</span></span>
+          </div>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -116,31 +152,28 @@ export default function Layout() {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-100"
                 >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: '#0b2652' }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: roleColorMap[role] || '#0b2652' }}>
                     <UserIcon />
                   </div>
                   <div className="text-left hidden md:block">
                     <p className="text-sm font-medium text-gray-900">{currentUser?.name}</p>
-                    <p className="text-xs text-gray-500 capitalize">
-                      {currentUser?.role.split('-').join(' ')}
-                    </p>
+                    <p className="text-xs text-gray-500 capitalize">{roleLabel}</p>
                   </div>
                   <ChevronDownIcon />
                 </button>
 
-                {/* Dropdown Menu */}
                 {showUserMenu && (
                   <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowUserMenu(false)}
-                    />
+                    <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)} />
                     <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-20">
                       <div className="px-4 py-3 border-b border-gray-200">
                         <p className="text-sm font-medium text-gray-900">{currentUser?.name}</p>
                         <p className="text-xs text-gray-500">{currentUser?.email}</p>
-                        <span className="inline-block mt-2 text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 capitalize">
-                          {currentUser?.role.split('-').join(' ')}
+                        <span
+                          className="inline-block mt-2 text-xs px-2 py-1 rounded-full text-white"
+                          style={{ backgroundColor: roleColorMap[role] || '#0b2652' }}
+                        >
+                          {roleLabel}
                         </span>
                       </div>
                       <button

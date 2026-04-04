@@ -77,6 +77,7 @@ export default function CasesList() {
         </div>
         {(currentUser?.role === 'student' || currentUser?.role === 'coordinator') && (
           <button
+            onClick={() => navigate('/submit')}
             className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-white transition-colors hover:opacity-90 sm:w-auto"
             style={{ backgroundColor: '#0b2652' }}
           >
@@ -111,9 +112,16 @@ export default function CasesList() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
+              <option value="submitted">Submitted</option>
               <option value="pending">Pending</option>
+              <option value="verified">Verified</option>
               <option value="under-review">Under Review</option>
+              <option value="assigned">Assigned</option>
+              <option value="hearing-scheduled">Hearing Scheduled</option>
+              <option value="hearing-completed">Hearing Completed</option>
               <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+              <option value="rejected">Rejected</option>
               <option value="on-hold">On Hold</option>
             </select>
           </div>

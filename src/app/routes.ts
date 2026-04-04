@@ -5,6 +5,11 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import CasesList from './pages/CasesList';
 import CaseDetail from './pages/CaseDetail';
+import SubmitIncident from './pages/SubmitIncident';
+import IncidentsList from './pages/IncidentsList';
+import HearingManagement from './pages/HearingManagement';
+import ConfidentialCases from './pages/ConfidentialCases';
+import VCMonitoring from './pages/VCMonitoring';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 export const router = createBrowserRouter([
@@ -17,10 +22,13 @@ export const router = createBrowserRouter([
     Component: Layout,
     children: [
       { path: 'dashboard', Component: Dashboard },
-      { path: 'incidents', Component: PlaceholderPage },
+      { path: 'submit', Component: SubmitIncident },
+      { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
       { path: 'cases/:id', Component: CaseDetail },
-      { path: 'hearings', Component: PlaceholderPage },
+      { path: 'hearings', Component: HearingManagement },
+      { path: 'confidential', Component: ConfidentialCases },
+      { path: 'monitoring', Component: VCMonitoring },
       { path: 'reports', Component: PlaceholderPage },
       { path: 'users', Component: PlaceholderPage },
       { path: 'settings', Component: PlaceholderPage },
