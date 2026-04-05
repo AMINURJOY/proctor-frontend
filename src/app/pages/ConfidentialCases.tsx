@@ -198,7 +198,7 @@ export default function ConfidentialCases() {
                       {/* Timeline mini */}
                       <div className="mt-3 pt-3 border-t border-red-100">
                         <p className="text-xs text-gray-500 mb-2">Recent Activity:</p>
-                        {c.timeline.slice(-2).map(t => (
+                        {(c.timeline || []).slice(-2).map(t => (
                           <div key={t.id} className="flex items-center gap-2 text-xs text-gray-500 mb-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
                             <span className="font-medium">{t.action}</span>

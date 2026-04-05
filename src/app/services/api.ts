@@ -129,6 +129,11 @@ export const casesApi = {
     });
   },
   delete: (id: string) => api.delete(`/cases/${id}`),
+  forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string }) =>
+    api.post(`/cases/${id}/forward`, data),
+  createReport: (caseId: string, data: { content: string; isDraft?: boolean }) =>
+    api.post(`/cases/${caseId}/reports`, data),
+  getReports: (caseId: string) => api.get(`/cases/${caseId}/reports`),
 };
 
 // Hearings

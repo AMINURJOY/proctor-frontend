@@ -17,7 +17,7 @@ import {
   RefreshIcon
 } from '../components/Icons';
 import { Case, CaseStatus } from '../types';
-import { casesApi, API_BASE_URL } from '../services/api';
+import { casesApi, hearingsApi, API_BASE_URL } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 
 // Workflow steps for the stepper
@@ -37,12 +37,16 @@ function getStepIndex(status: CaseStatus): number {
   const map: Record<CaseStatus, number> = {
     'submitted': 0,
     'pending': 0,
+    'resubmission-requested': 0,
     'verified': 1,
     'under-review': 2,
     'assigned': 3,
     'hearing-scheduled': 4,
     'hearing-completed': 5,
+    'forwarded-to-registrar': 6,
+    'forwarded-to-committee': 6,
     'resolved': 7,
+    'police-case': 7,
     'closed': 8,
     'rejected': -1,
     'on-hold': -2,
@@ -126,16 +130,32 @@ export default function CaseDetail() {
     return `${API_BASE_URL}${url}`;
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (newStatus: string, extra?: { verdict?: string; recommendation?: string; note?: string }) => {
     if (!caseItem) return;
     try {
-      await casesApi.updateStatus(caseItem.id, { status: newStatus });
+      await casesApi.updateStatus(caseItem.id, { status: newStatus, ...extra });
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
     } catch {
-      // Optimistic update for mock
       setCaseItem(prev => prev ? { ...prev, status: newStatus as CaseStatus } : prev);
     }
+  };
+
+  const handleForward = async (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => {
+    if (!caseItem) return;
+    try {
+      await casesApi.forward(caseItem.id, { targetRole, ...extra });
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+    } catch { /* silent */ }
+  };
+
+  const refreshCase = async () => {
+    if (!caseItem) return;
+    try {
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+    } catch { /* silent */ }
   };
 
   if (loading) {
@@ -190,7 +210,11 @@ export default function CaseDetail() {
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
     'on-hold': 'bg-amber-100 text-amber-700',
-    'suggested-type-2': 'bg-purple-100 text-purple-700'
+    'suggested-type-2': 'bg-purple-100 text-purple-700',
+    'police-case': 'bg-red-200 text-red-800',
+    'forwarded-to-registrar': 'bg-teal-100 text-teal-700',
+    'forwarded-to-committee': 'bg-rose-100 text-rose-700',
+    'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
   const tabs = [
@@ -317,7 +341,7 @@ export default function CaseDetail() {
       )}
 
       {/* Role-Based Action Panel */}
-      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} />
+      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} />
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
@@ -373,12 +397,34 @@ export default function CaseDetail() {
                     <p className="text-sm text-gray-500">Documents</p>
                     <p className="font-medium">{caseItem.documents.length} file(s)</p>
                   </div>
+                  {caseItem.forwardedToRole && (
+                    <div>
+                      <p className="text-sm text-gray-500">Currently With</p>
+                      <p className="font-medium capitalize">{caseItem.forwardedToRole.split('-').join(' ')}</p>
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
                 <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
                 <p className="text-gray-700 leading-relaxed">{caseItem.description}</p>
               </div>
+              {caseItem.recommendation && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Registrar Recommendation</h3>
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <p className="text-gray-700 leading-relaxed">{caseItem.recommendation}</p>
+                  </div>
+                </div>
+              )}
+              {caseItem.verdict && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Final Verdict</h3>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-gray-700 leading-relaxed">{caseItem.verdict}</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -618,13 +664,35 @@ export default function CaseDetail() {
 }
 
 // Role-based action panel component
-function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { role: string; caseItem: Case; isConfidential: boolean; onStatusChange: (status: string) => void }) {
-  const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected';
+function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onForward, onRefresh }: {
+  role: string;
+  caseItem: Case;
+  isConfidential: boolean;
+  onStatusChange: (status: string, extra?: { verdict?: string; recommendation?: string; note?: string }) => Promise<void>;
+  onForward: (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [actionLoading, setActionLoading] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [recommendation, setRecommendation] = useState('');
+  const [verdict, setVerdict] = useState('');
+  const [investigationNotes, setInvestigationNotes] = useState('');
+  const [reportContent, setReportContent] = useState('');
+  const [hearingDate, setHearingDate] = useState('');
+  const [hearingTime, setHearingTime] = useState('');
+  const [hearingLocation, setHearingLocation] = useState('');
+  const verdictFileInputRef = useRef<HTMLInputElement>(null);
+  const [verdictUploading, setVerdictUploading] = useState(false);
+
+  const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected' || caseItem.status === 'police-case';
 
   if (isClosed || role === 'student' || role === 'vc') return null;
-
-  // Type-1 cases can only be closed or suggested as Type-2 — no forwarding/assigning
   if (caseItem.type === 'type-1') return null;
+
+  const withLoading = async (fn: () => Promise<void>) => {
+    setActionLoading(true);
+    try { await fn(); } finally { setActionLoading(false); }
+  };
 
   // Coordinator panel
   if (role === 'coordinator') {
@@ -663,16 +731,20 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">
-            <CheckIcon /> Accept
+          <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward('proctor'); })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
+            <CheckIcon /> Accept & Forward
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
             <XIcon /> Reject
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('on-hold'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:opacity-50">
             <ClockIcon /> Hold
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resubmission-requested'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
             <RefreshIcon /> Request Resubmission
           </button>
         </div>
@@ -696,34 +768,29 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resolved'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
             <CheckIcon /> Resolve Case
           </button>
-          <div className="relative group">
-            <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm" style={{ backgroundColor: '#0b2652' }}>
-              <ForwardIcon /> Assign Case
-            </button>
-          </div>
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('police-case'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800 disabled:opacity-50">
+            <XIcon /> Mark as Police Case
+          </button>
         </div>
 
-        {/* Assign options */}
-        <div className="mt-4 bg-gray-50 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">Assign to:</p>
+        <div className="bg-gray-50 rounded-lg p-4">
+          <p className="text-sm font-medium text-gray-700 mb-3">Assign / Forward to:</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left">
+            <button disabled={actionLoading} onClick={() => withLoading(() => onForward('deputy-proctor'))}
+              className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left disabled:opacity-50">
               <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">DP</div>
-              <div>
-                <p className="text-sm font-medium">Deputy Proctor</p>
-                <p className="text-xs text-gray-500">Dr. Robert Deputy</p>
-              </div>
+              <div><p className="text-sm font-medium">Deputy Proctor</p></div>
             </button>
-            <button className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left">
+            <button disabled={actionLoading} onClick={() => withLoading(() => onForward('assistant-proctor'))}
+              className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left disabled:opacity-50">
               <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">AP</div>
-              <div>
-                <p className="text-sm font-medium">Assistant Proctor</p>
-                <p className="text-xs text-gray-500">Prof. Emily Assistant</p>
-              </div>
+              <div><p className="text-sm font-medium">Assistant Proctor</p></div>
             </button>
           </div>
         </div>
@@ -733,6 +800,18 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
   // Assistant Proctor panel
   if (role === 'assistant-proctor') {
+    const handleScheduleHearing = async () => {
+      if (!hearingDate || !hearingTime || !hearingLocation) return;
+      await hearingsApi.create({ caseId: caseItem.id, date: hearingDate, time: hearingTime, location: hearingLocation, participants: [caseItem.studentName] });
+      await onStatusChange('hearing-scheduled');
+      setHearingDate(''); setHearingTime(''); setHearingLocation('');
+    };
+    const handleCreateReport = async () => {
+      if (!reportContent.trim()) return;
+      await casesApi.createReport(caseItem.id, { content: reportContent, isDraft: true });
+      await onRefresh();
+      setReportContent('');
+    };
     return (
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
         <div className="flex items-center gap-2 mb-4">
@@ -750,45 +829,30 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          {/* Schedule Hearing */}
           <div className="bg-indigo-50 rounded-lg p-4">
             <p className="text-sm font-medium text-indigo-700 mb-2">Schedule Hearing</p>
             <div className="space-y-2">
-              <input type="date" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-              <input type="time" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-              <input type="text" placeholder="Location" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <input type="date" value={hearingDate} onChange={e => setHearingDate(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <input type="time" value={hearingTime} onChange={e => setHearingTime(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <input type="text" value={hearingLocation} onChange={e => setHearingLocation(e.target.value)} placeholder="Location" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <button disabled={actionLoading || !hearingDate || !hearingTime || !hearingLocation} onClick={() => withLoading(handleScheduleHearing)}
+                className="w-full px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">Schedule</button>
             </div>
           </div>
-
-          {/* Send Notifications */}
-          <div className="bg-green-50 rounded-lg p-4">
-            <p className="text-sm font-medium text-green-700 mb-2">Notifications</p>
+          <div className="bg-purple-50 rounded-lg p-4">
+            <p className="text-sm font-medium text-purple-700 mb-2">Draft Report</p>
             <div className="space-y-2">
-              <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700">
-                <MailIcon /> Send Email to Student
-              </button>
-              <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-                </svg>
-                Send SMS to Student
-              </button>
-              <div className="flex items-center gap-1.5 text-xs text-green-600">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                Last email sent: Apr 1, 2026
-              </div>
+              <textarea value={reportContent} onChange={e => setReportContent(e.target.value)} placeholder="Write your investigation report..."
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500" rows={3} />
+              <button disabled={actionLoading || !reportContent.trim()} onClick={() => withLoading(handleCreateReport)}
+                className="w-full px-3 py-1.5 text-sm rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">Create Draft Report</button>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">
-            <SendIcon /> Add Notes / Remarks
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-700">
-            <FileIcon /> Create Draft Report
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm" style={{ backgroundColor: '#0b2652' }}>
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('deputy-proctor'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
             <ForwardIcon /> Forward to Deputy Proctor
           </button>
         </div>
@@ -826,7 +890,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Add Remarks</label>
-          <textarea
+          <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
             placeholder="Add your review remarks..."
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             rows={2}
@@ -834,16 +898,16 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('assistant-proctor', { note: remarks }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <ArrowLeftIcon /> Send Back to Asst. Proctor
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm" style={{ backgroundColor: '#0b2652' }}>
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('proctor', { note: remarks }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
             <ForwardIcon /> Forward to Proctor
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">
-            <CheckIcon /> Resolve Case
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar', { note: remarks }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
             <ArrowRightIcon /> Escalate to Registrar
           </button>
         </div>
@@ -870,7 +934,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Recommendation</label>
-          <textarea
+          <textarea value={recommendation} onChange={e => setRecommendation(e.target.value)}
             placeholder="Enter your recommendation for this case..."
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             rows={3}
@@ -878,13 +942,12 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
-            <SendIcon /> Add Recommendation
+          <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('proctor', { recommendation }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
+            <ArrowLeftIcon /> Send Back with Recommendation
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">
-            <ArrowLeftIcon /> Send Back to Proctor Office
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+          <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('disciplinary-committee', { recommendation }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
             <ForwardIcon /> Forward to Disciplinary Committee
           </button>
         </div>
@@ -911,7 +974,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Final Decision</label>
-          <textarea
+          <textarea value={verdict} onChange={e => setVerdict(e.target.value)}
             placeholder="Enter the committee's final decision..."
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             rows={3}
@@ -920,20 +983,26 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Attach Documents</label>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400">
-            <p className="text-sm text-gray-500">Click to attach final verdict documents</p>
+          <input ref={verdictFileInputRef} type="file" multiple accept="image/*,video/*,application/pdf,.doc,.docx" onChange={async (e) => {
+            if (!e.target.files?.length) return;
+            setVerdictUploading(true);
+            try { for (const file of Array.from(e.target.files)) { await casesApi.addDocument(caseItem.id, file); } await onRefresh(); } catch { /* silent */ }
+            finally { setVerdictUploading(false); if (verdictFileInputRef.current) verdictFileInputRef.current.value = ''; }
+          }} className="hidden" />
+          <div onClick={() => verdictFileInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400">
+            <p className="text-sm text-gray-500">{verdictUploading ? 'Uploading...' : 'Click to attach final verdict documents'}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('proctor'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <ArrowLeftIcon /> Return to Proctor
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
-            <SendIcon /> Add Final Decision
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900">
-            <CheckIcon /> Close Case
+          <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(() => onStatusChange('closed', { verdict }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
+            <CheckIcon /> Issue Verdict & Close Case
           </button>
         </div>
       </div>
@@ -955,10 +1024,12 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
-            <ForwardIcon /> Forward to SH Committee
+          <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward('sexual-harassment-committee'); })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
+            <ForwardIcon /> Verify & Forward to SH Committee
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resubmission-requested'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <RefreshIcon /> Request More Information
           </button>
         </div>
@@ -982,7 +1053,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Investigation Notes</label>
-          <textarea
+          <textarea value={investigationNotes} onChange={e => setInvestigationNotes(e.target.value)}
             placeholder="Add investigation findings..."
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
             rows={3}
@@ -990,13 +1061,20 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange }: { r
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
+          <button disabled={actionLoading || !investigationNotes.trim()} onClick={() => withLoading(async () => {
+            await casesApi.createReport(caseItem.id, { content: investigationNotes, isDraft: false });
+            await onRefresh();
+            setInvestigationNotes('');
+          })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50">
             <SendIcon /> Add Investigation Report
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+          <button disabled={actionLoading || !investigationNotes.trim()} onClick={() => withLoading(() => onStatusChange('resolved', { verdict: investigationNotes }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
             <CheckIcon /> Issue Decision
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900">
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('closed'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
             <CheckIcon /> Close Case
           </button>
         </div>

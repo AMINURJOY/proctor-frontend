@@ -76,7 +76,11 @@ export default function CasesList() {
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
     'on-hold': 'bg-amber-100 text-amber-700',
-    'suggested-type-2': 'bg-purple-100 text-purple-700'
+    'suggested-type-2': 'bg-purple-100 text-purple-700',
+    'police-case': 'bg-red-200 text-red-800',
+    'forwarded-to-registrar': 'bg-teal-100 text-teal-700',
+    'forwarded-to-committee': 'bg-rose-100 text-rose-700',
+    'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
   const priorityColors: Record<Priority, string> = {

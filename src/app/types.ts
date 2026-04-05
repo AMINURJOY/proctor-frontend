@@ -25,7 +25,11 @@ export type CaseStatus =
   | 'closed'
   | 'rejected'
   | 'on-hold'
-  | 'suggested-type-2';
+  | 'suggested-type-2'
+  | 'police-case'
+  | 'forwarded-to-registrar'
+  | 'forwarded-to-committee'
+  | 'resubmission-requested';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -49,10 +53,23 @@ export interface Case {
   createdDate: string;
   updatedDate: string;
   description: string;
+  verdict?: string;
+  recommendation?: string;
+  forwardedToRole?: string;
   documents: Document[];
   notes: Note[];
   hearings: Hearing[];
   timeline: TimelineEvent[];
+  reports?: Report[];
+}
+
+export interface Report {
+  id: string;
+  caseId: string;
+  content: string;
+  createdByName: string;
+  isDraft: boolean;
+  createdDate: string;
 }
 
 export interface Document {
