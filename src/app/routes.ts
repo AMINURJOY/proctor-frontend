@@ -13,6 +13,9 @@ import VCMonitoring from './pages/VCMonitoring';
 import PlaceholderPage from './pages/PlaceholderPage';
 import UsersManagement from './pages/UsersManagement';
 import SettingsPage from './pages/SettingsPage';
+import MyCases from './pages/MyCases';
+import NotificationsPage from './pages/NotificationsPage';
+import CaseReport from './pages/CaseReport';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +31,9 @@ export const router = createBrowserRouter([
       { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
       { path: 'cases/:id', Component: CaseDetail },
+      { path: 'cases/:id/report', Component: CaseReport },
+      { path: 'my-cases', Component: MyCases },
+      { path: 'notifications', Component: NotificationsPage },
       { path: 'hearings', Component: HearingManagement },
       { path: 'confidential', Component: ConfidentialCases },
       { path: 'monitoring', Component: VCMonitoring },
@@ -37,6 +43,7 @@ export const router = createBrowserRouter([
       { path: 'settings/permissions', Component: SettingsPage },
       { path: 'settings/incident-routing', Component: SettingsPage },
       { path: 'settings/case-viewing', Component: SettingsPage },
+      { path: 'settings/checklist', Component: SettingsPage },
       { path: 'settings/profile', Component: SettingsPage },
       { path: '*', element: React.createElement(Navigate, { to: '/dashboard', replace: true }) },
     ],

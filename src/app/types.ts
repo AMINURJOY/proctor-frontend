@@ -56,6 +56,19 @@ export interface Case {
   verdict?: string;
   recommendation?: string;
   forwardedToRole?: string;
+  // Type-2 form fields
+  studentDepartment?: string;
+  studentContact?: string;
+  studentAdvisorName?: string;
+  studentFatherName?: string;
+  studentFatherContact?: string;
+  accusedName?: string;
+  accusedId?: string;
+  accusedDepartment?: string;
+  accusedContact?: string;
+  accusedGuardianContact?: string;
+  videoLink?: string;
+  incidentDate?: string;
   documents: Document[];
   notes: Note[];
   hearings: Hearing[];
@@ -69,6 +82,7 @@ export interface Report {
   content: string;
   createdByName: string;
   isDraft: boolean;
+  isFinal: boolean;
   createdDate: string;
 }
 
@@ -78,6 +92,7 @@ export interface Document {
   type: 'image' | 'video' | 'pdf' | 'other';
   url: string;
   uploadedBy: string;
+  uploadedByRole?: string;
   uploadedDate: string;
 }
 

@@ -3,7 +3,7 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { useAuth } from '../context/AuthContext';
 import { CasesIcon, ClockIcon, CheckIcon, EyeIcon } from '../components/Icons';
 import { useNavigate } from 'react-router';
-import { Case, CaseStatus, Priority } from '../types';
+import { Case, Priority } from '../types';
 import { dashboardApi, casesApi } from '../services/api';
 
 export default function Dashboard() {
@@ -45,22 +45,23 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  // Filter cases based on role
+  // Filter cases based on role - uses forwardedToRole for accurate matching
   const getMyTasks = () => {
     return cases.filter(c => {
       if (c.status === 'closed' || c.status === 'resolved' || c.status === 'rejected') return false;
       if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
 
       switch (role) {
-        case 'student': return c.studentName.includes('John') || c.studentId === 'STU-2023-001';
-        case 'coordinator': return c.status === 'submitted' && c.type === 'type-2';
-        case 'proctor': return c.status === 'verified' || (c.type === 'type-1' && c.status === 'submitted');
-        case 'assistant-proctor': return c.assignedTo === 'Prof. Emily Assistant';
-        case 'deputy-proctor': return c.assignedTo === 'Dr. Robert Deputy';
-        case 'registrar': return c.assignedTo === 'Ms. Lisa Registrar';
-        case 'disciplinary-committee': return c.assignedTo === 'Committee Head';
-        case 'female-coordinator': return c.type === 'confidential' && c.status === 'submitted';
-        case 'sexual-harassment-committee': return c.type === 'confidential' && c.assignedTo === 'Committee SH';
+        case 'student': return c.studentId === currentUser?.id;
+        case 'coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type !== 'confidential';
+        case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type === 'confidential';
+        case 'proctor': return c.forwardedToRole === 'proctor';
+        case 'assistant-proctor': return c.forwardedToRole === 'assistant-proctor';
+        case 'deputy-proctor': return c.forwardedToRole === 'deputy-proctor';
+        case 'registrar': return c.forwardedToRole === 'registrar';
+        case 'disciplinary-committee': return c.forwardedToRole === 'disciplinary-committee';
+        case 'sexual-harassment-committee': return c.forwardedToRole === 'sexual-harassment-committee';
+        case 'vc': return false; // VC only monitors
         case 'super-admin': return true;
         default: return false;
       }
@@ -85,7 +86,7 @@ export default function Dashboard() {
   const pendingCases = getPendingCases();
   const completedCases = getCompletedCases();
 
-  const statusColors: Record<CaseStatus, string> = {
+  const statusColors: Record<string, string> = {
     'submitted': 'bg-blue-100 text-blue-700',
     'pending': 'bg-yellow-100 text-yellow-700',
     'under-review': 'bg-indigo-100 text-indigo-700',
@@ -96,7 +97,12 @@ export default function Dashboard() {
     'resolved': 'bg-green-100 text-green-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
-    'on-hold': 'bg-amber-100 text-amber-700'
+    'on-hold': 'bg-amber-100 text-amber-700',
+    'suggested-type-2': 'bg-violet-100 text-violet-700',
+    'police-case': 'bg-red-200 text-red-800',
+    'forwarded-to-registrar': 'bg-teal-100 text-teal-700',
+    'forwarded-to-committee': 'bg-rose-100 text-rose-700',
+    'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
   const priorityColors: Record<Priority, string> = {
@@ -122,12 +128,21 @@ export default function Dashboard() {
     { name: 'Rejected', value: cases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
   ].filter(d => d.value > 0);
 
-  const lineData = [
-    { month: 'Jan', cases: 3 },
-    { month: 'Feb', cases: 5 },
-    { month: 'Mar', cases: 8 },
-    { month: 'Apr', cases: 3 }
-  ];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const lineData = (() => {
+    const counts: Record<string, number> = {};
+    cases.forEach(c => {
+      const d = new Date(c.createdDate);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      return { month: monthNames[d.getMonth()], cases: counts[key] || 0 };
+    });
+  })();
 
   const formatTimeAgo = (timestamp: string) => {
     const date = new Date(timestamp);

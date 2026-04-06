@@ -19,7 +19,7 @@ import {
 } from './Icons';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { notificationsApi } from '../services/api';
+import { notificationsApi, casesApi } from '../services/api';
 import { AppNotification } from '../types';
 
 export default function Layout() {
@@ -32,6 +32,7 @@ export default function Layout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [myCasesCount, setMyCasesCount] = useState(0);
   const permissions = usePermissions();
 
   const handleLogout = () => {
@@ -56,6 +57,15 @@ export default function Layout() {
     } catch { /* silent */ }
   }, []);
 
+  const fetchMyCasesCount = useCallback(async () => {
+    if (role === 'student') return;
+    try {
+      const res = await casesApi.getMyCasesCount();
+      const data = res.data.data ?? res.data;
+      setMyCasesCount(typeof data === 'number' ? data : data.count ?? 0);
+    } catch { /* silent */ }
+  }, [role]);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getAll();
@@ -65,11 +75,12 @@ export default function Layout() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    const onFocus = () => { if (document.visibilityState === 'visible') fetchUnreadCount(); };
+    fetchMyCasesCount();
+    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); }, 30000);
+    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); } };
     document.addEventListener('visibilitychange', onFocus);
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onFocus); };
-  }, [fetchUnreadCount]);
+  }, [fetchUnreadCount, fetchMyCasesCount]);
 
   const handleBellClick = () => {
     setShowNotifications(!showNotifications);
@@ -115,13 +126,19 @@ export default function Layout() {
     { path: '/hearings', label: 'Hearing Management', icon: HearingIcon, menuKey: 'hearings' },
     { path: '/confidential', label: 'Confidential Cases', icon: ShieldIcon, menuKey: 'confidential' },
     { path: '/monitoring', label: 'VC Monitoring', icon: BarChartIcon, menuKey: 'monitoring' },
+    { path: '/my-cases', label: 'My Cases', icon: CasesIcon, menuKey: 'my-cases' },
+    { path: '/notifications', label: 'Notifications', icon: BellIcon, menuKey: 'notifications' },
     { path: '/reports', label: 'Reports', icon: ReportIcon, menuKey: 'reports' },
     { path: '/users', label: 'Users / Roles', icon: UsersIcon, menuKey: 'users' },
   ];
 
-  const menuItems = allMenuItems.filter(item =>
-    isSuperAdmin || permissions[item.menuKey]?.canRead
-  );
+  const menuItems = allMenuItems.filter(item => {
+    // My Cases: visible for all except student
+    if (item.menuKey === 'my-cases') return role !== 'student';
+    // Notifications: visible for all
+    if (item.menuKey === 'notifications') return true;
+    return isSuperAdmin || permissions[item.menuKey]?.canRead;
+  });
 
   const showSettings = isSuperAdmin || permissions['settings']?.canRead;
 
@@ -130,6 +147,7 @@ export default function Layout() {
     { path: '/settings/permissions', label: 'Role Permissions', superAdminOnly: true },
     { path: '/settings/incident-routing', label: 'Incident Routing', superAdminOnly: true },
     { path: '/settings/case-viewing', label: 'Case Viewing', superAdminOnly: true },
+    { path: '/settings/checklist', label: 'Verification Checklist', superAdminOnly: true },
     { path: '/settings/profile', label: 'Profile', superAdminOnly: false },
   ].filter(item => isSuperAdmin || !item.superAdminOnly);
 
@@ -196,7 +214,13 @@ export default function Layout() {
               }`}
             >
               <Icon />
-              <span className="text-sm font-medium">{item.label}</span>
+              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+              {item.menuKey === 'my-cases' && myCasesCount > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{myCasesCount > 99 ? '99+' : myCasesCount}</span>
+              )}
+              {item.menuKey === 'notifications' && unreadCount > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
             </button>
           );
         })}

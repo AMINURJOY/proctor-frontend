@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { FilterIcon, PlusIcon, EyeIcon, LockIcon, XIcon } from '../components/Icons';
+import { FilterIcon, PlusIcon, EyeIcon, LockIcon } from '../components/Icons';
 import { Case, CaseStatus, CaseType, Priority } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { casesApi, settingsApi } from '../services/api';
+import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 
 export default function CasesList() {
@@ -274,6 +275,11 @@ export default function CasesList() {
                       <span className={`inline-flex px-2 py-1 text-xs rounded-full ${statusColors[caseItem.status]}`}>
                         {caseItem.status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                       </span>
+                      {caseItem.forwardedToRole && (
+                        <span className="ml-1 inline-flex px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-600">
+                          {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs rounded-full ${priorityColors[caseItem.priority]}`}>
@@ -287,16 +293,31 @@ export default function CasesList() {
                       {new Date(caseItem.createdDate).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             navigate(`/cases/${caseItem.id}`);
                           }}
-                          className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          title="View Case"
+                          className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                         >
                           <EyeIcon />
-                          View
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`/cases/${caseItem.id}/report`, '_blank');
+                          }}
+                          title="View Report as PDF"
+                          className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                          </svg>
                         </button>
                         {canDelete && (
                           <button
@@ -304,10 +325,15 @@ export default function CasesList() {
                               e.stopPropagation();
                               setDeleteId(caseItem.id);
                             }}
-                            className="text-red-600 hover:text-red-800 flex items-center gap-1"
+                            title="Delete Case"
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                           >
-                            <XIcon />
-                            Delete
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
                           </button>
                         )}
                       </div>
@@ -347,7 +373,10 @@ export default function CasesList() {
                     try {
                       await casesApi.delete(deleteId);
                       setCases(prev => prev.filter(c => c.id !== deleteId));
-                    } catch { /* silent */ }
+                      toast.success('Case deleted successfully');
+                    } catch (err: any) {
+                      toast.error('Delete failed', { description: err?.response?.data?.message || 'Could not delete case' });
+                    }
                     setDeleteId(null);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"

@@ -107,6 +107,7 @@ export const usersApi = {
   getAll: () => api.get('/users'),
   getById: (id: string) => api.get(`/users/${id}`),
   getMe: () => api.get('/users/me'),
+  getByRole: (role: string) => api.get(`/users/by-role/${role}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
@@ -129,11 +130,13 @@ export const casesApi = {
     });
   },
   delete: (id: string) => api.delete(`/cases/${id}`),
-  forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string }) =>
+  forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string; assignedToUserId?: string; forwardToAll?: boolean }) =>
     api.post(`/cases/${id}/forward`, data),
-  createReport: (caseId: string, data: { content: string; isDraft?: boolean }) =>
+  createReport: (caseId: string, data: { content: string; isDraft?: boolean; isFinal?: boolean }) =>
     api.post(`/cases/${caseId}/reports`, data),
   getReports: (caseId: string) => api.get(`/cases/${caseId}/reports`),
+  getMyCases: (params?: any) => api.get('/cases/my-cases', { params }),
+  getMyCasesCount: () => api.get('/cases/my-cases/count'),
 };
 
 // Hearings
@@ -168,6 +171,17 @@ export const notificationsApi = {
 };
 
 // System Settings
+// Verification Checklist
+export const checklistApi = {
+  getAll: () => api.get('/verification-checklist'),
+  create: (data: { label: string }) => api.post('/verification-checklist', data),
+  update: (id: string, data: { label: string; order?: number }) => api.put(`/verification-checklist/${id}`, data),
+  delete: (id: string) => api.delete(`/verification-checklist/${id}`),
+  createVerification: (caseId: string, data: { comment: string; checklistResultsJson?: string }) =>
+    api.post(`/verification-checklist/case/${caseId}`, data),
+  getVerifications: (caseId: string) => api.get(`/verification-checklist/case/${caseId}`),
+};
+
 export const settingsApi = {
   getAll: () => api.get('/settings'),
   getByCategory: (category: string) => api.get(`/settings/category/${category}`),

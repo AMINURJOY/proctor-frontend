@@ -16,8 +16,9 @@ import {
   MailIcon,
   RefreshIcon
 } from '../components/Icons';
-import { Case, CaseStatus } from '../types';
-import { casesApi, hearingsApi, API_BASE_URL } from '../services/api';
+import { Case, CaseStatus, User } from '../types';
+import { casesApi, hearingsApi, usersApi, checklistApi, API_BASE_URL } from '../services/api';
+import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 
 // Workflow steps for the stepper
@@ -118,8 +119,10 @@ export default function CaseDetail() {
       }
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
-    } catch { /* silent */ }
-    finally {
+      toast.success('Document uploaded successfully');
+    } catch (err: any) {
+      toast.error('Upload failed', { description: err?.response?.data?.message || 'Could not upload document' });
+    } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -136,8 +139,10 @@ export default function CaseDetail() {
       await casesApi.updateStatus(caseItem.id, { status: newStatus, ...extra });
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
-    } catch {
-      setCaseItem(prev => prev ? { ...prev, status: newStatus as CaseStatus } : prev);
+      toast.success('Status updated', { description: `Case status changed to ${newStatus.split('-').join(' ')}` });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to update status';
+      toast.error('Error', { description: msg });
     }
   };
 
@@ -147,7 +152,11 @@ export default function CaseDetail() {
       await casesApi.forward(caseItem.id, { targetRole, ...extra });
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
-    } catch { /* silent */ }
+      toast.success('Case forwarded', { description: `Forwarded to ${targetRole.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}` });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to forward case';
+      toast.error('Error', { description: msg });
+    }
   };
 
   const refreshCase = async () => {
@@ -259,6 +268,11 @@ export default function CaseDetail() {
               }`}>
                 {caseItem.priority.charAt(0).toUpperCase() + caseItem.priority.slice(1)} Priority
               </span>
+              {caseItem.forwardedToRole && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
+                  <ForwardIcon /> Forwarded to {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                </span>
+              )}
             </div>
             <p className="text-gray-600">
               {caseItem.studentName} &middot; {caseItem.studentId}
@@ -468,7 +482,10 @@ export default function CaseDetail() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{doc.name}</p>
-                          <p className="text-xs text-gray-500">Uploaded by {doc.uploadedBy}</p>
+                          <p className="text-xs text-gray-500">
+                            Uploaded by {doc.uploadedBy}
+                            {doc.uploadedByRole && <span className="ml-1 text-gray-400">({doc.uploadedByRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')})</span>}
+                          </p>
                           <p className="text-xs text-gray-500">{new Date(doc.uploadedDate).toLocaleDateString()}</p>
                         </div>
                       </div>
@@ -646,8 +663,11 @@ export default function CaseDetail() {
                   onClick={async () => {
                     try {
                       await casesApi.delete(caseItem.id);
+                      toast.success('Case deleted successfully');
                       navigate('/cases');
-                    } catch { /* silent */ }
+                    } catch (err: any) {
+                      toast.error('Delete failed', { description: err?.response?.data?.message || 'Could not delete case' });
+                    }
                     setShowDeleteConfirm(false);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
@@ -686,116 +706,56 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected' || caseItem.status === 'police-case';
 
-  if (isClosed || role === 'student' || role === 'vc') return null;
-  if (caseItem.type === 'type-1') return null;
-
   const withLoading = async (fn: () => Promise<void>) => {
     setActionLoading(true);
     try { await fn(); } finally { setActionLoading(false); }
   };
 
-  // Coordinator panel
-  if (role === 'coordinator') {
+  if (isClosed) return null;
+  if (caseItem.type === 'type-1') return null;
+
+  // Student can see resubmission feedback and edit the case
+  if (role === 'student') {
+    if (caseItem.status === 'resubmission-requested') {
+      return <StudentResubmitPanel caseItem={caseItem} actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onRefresh={onRefresh} />;
+    }
+    return null;
+  }
+
+  if (role === 'vc') return null;
+
+  // View-only enforcement: if case hasn't been forwarded to this role, show read-only message
+  const roleForwardMap: Record<string, boolean> = {
+    'coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator' || caseItem.status === 'submitted' || caseItem.status === 'resubmission-requested',
+    'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator' || caseItem.status === 'submitted' || caseItem.status === 'resubmission-requested',
+    'proctor': caseItem.forwardedToRole === 'proctor',
+    'assistant-proctor': caseItem.forwardedToRole === 'assistant-proctor',
+    'deputy-proctor': caseItem.forwardedToRole === 'deputy-proctor',
+    'registrar': caseItem.forwardedToRole === 'registrar',
+    'disciplinary-committee': caseItem.forwardedToRole === 'disciplinary-committee',
+    'sexual-harassment-committee': caseItem.forwardedToRole === 'sexual-harassment-committee',
+    'super-admin': true,
+  };
+
+  const canAct = roleForwardMap[role] ?? false;
+  if (!canAct) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2">
-              <polyline points="9 11 12 14 22 4" />
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-semibold" style={{ color: '#0b2652' }}>Coordinator: Verify Case</h3>
-            <p className="text-xs text-gray-500">Review documents and verify case details</p>
-          </div>
-        </div>
-
-        {/* Verification Checklist */}
-        <div className="bg-gray-50 rounded-lg p-4 mb-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">Verification Checklist:</p>
-          <div className="space-y-2">
-            {[
-              'Student identity verified',
-              'All required documents attached',
-              'Incident description is complete',
-              'Evidence is valid and relevant',
-              'No duplicate case exists',
-            ].map((item, i) => (
-              <label key={i} className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" defaultChecked={i < 3} className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                <span className="text-sm text-gray-700">{item}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward('proctor'); })}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
-            <CheckIcon /> Accept & Forward
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-            <XIcon /> Reject
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('on-hold'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:opacity-50">
-            <ClockIcon /> Hold
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resubmission-requested'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
-            <RefreshIcon /> Request Resubmission
-          </button>
-        </div>
+      <div className="bg-yellow-50 rounded-xl shadow-md p-4 border border-yellow-200 mb-6">
+        <p className="text-sm text-yellow-700">
+          This case is currently being handled by <strong>{caseItem.forwardedToRole?.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</strong>. You can view the case details but cannot take actions until it is forwarded to you.
+        </p>
       </div>
     );
   }
 
+  // Coordinator panel
+  if (role === 'coordinator' || role === 'female-coordinator') {
+    return <CoordinatorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} isConfidential={isConfidential} />;
+  }
+
   // Proctor panel
   if (role === 'proctor') {
-    return (
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-semibold" style={{ color: '#0b2652' }}>Proctor: Case Decision Panel</h3>
-            <p className="text-xs text-gray-500">Review case and decide on action</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resolved'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
-            <CheckIcon /> Resolve Case
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('police-case'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800 disabled:opacity-50">
-            <XIcon /> Mark as Police Case
-          </button>
-        </div>
-
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">Assign / Forward to:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button disabled={actionLoading} onClick={() => withLoading(() => onForward('deputy-proctor'))}
-              className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left disabled:opacity-50">
-              <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">DP</div>
-              <div><p className="text-sm font-medium">Deputy Proctor</p></div>
-            </button>
-            <button disabled={actionLoading} onClick={() => withLoading(() => onForward('assistant-proctor'))}
-              className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left disabled:opacity-50">
-              <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">AP</div>
-              <div><p className="text-sm font-medium">Assistant Proctor</p></div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} />;
   }
 
   // Assistant Proctor panel
@@ -803,13 +763,18 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     const handleScheduleHearing = async () => {
       if (!hearingDate || !hearingTime || !hearingLocation) return;
       await hearingsApi.create({ caseId: caseItem.id, date: hearingDate, time: hearingTime, location: hearingLocation, participants: [caseItem.studentName] });
-      await onStatusChange('hearing-scheduled');
+      if (caseItem.status !== 'hearing-scheduled') {
+        await onStatusChange('hearing-scheduled');
+      }
+      await onRefresh();
+      toast.success('Hearing scheduled successfully');
       setHearingDate(''); setHearingTime(''); setHearingLocation('');
     };
     const handleCreateReport = async () => {
       if (!reportContent.trim()) return;
       await casesApi.createReport(caseItem.id, { content: reportContent, isDraft: true });
       await onRefresh();
+      toast.success('Draft report created');
       setReportContent('');
     };
     return (
@@ -850,12 +815,14 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('deputy-proctor'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
-            <ForwardIcon /> Forward to Deputy Proctor
-          </button>
-        </div>
+        <ForwardToRoleSection
+          label="Forward to Deputy Proctor"
+          targetRole="deputy-proctor"
+          caseId={caseItem.id}
+          actionLoading={actionLoading}
+          withLoading={withLoading}
+          onForward={onForward}
+        />
       </div>
     );
   }
@@ -877,7 +844,6 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           </div>
         </div>
 
-        {/* Report preview from Assistant Proctor */}
         {caseItem.notes.length > 0 && (
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
             <p className="text-sm font-medium text-gray-700 mb-2">Latest Report / Notes:</p>
@@ -897,20 +863,8 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           />
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('assistant-proctor', { note: remarks }))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
-            <ArrowLeftIcon /> Send Back to Asst. Proctor
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('proctor', { note: remarks }))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
-            <ForwardIcon /> Forward to Proctor
-          </button>
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar', { note: remarks }))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-            <ArrowRightIcon /> Escalate to Registrar
-          </button>
-        </div>
+        <ForwardToRoleSection label="Send Back to Asst. Proctor" targetRole="assistant-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
+        <ForwardToRoleSection label="Forward to Proctor" targetRole="proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} simple />
       </div>
     );
   }
@@ -941,16 +895,13 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           />
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mb-4">
           <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('proctor', { recommendation }))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <ArrowLeftIcon /> Send Back with Recommendation
           </button>
-          <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('disciplinary-committee', { recommendation }))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-            <ForwardIcon /> Forward to Disciplinary Committee
-          </button>
         </div>
+        <ForwardToRoleSection label="Forward to Disciplinary Committee" targetRole="disciplinary-committee" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, recommendation })} />
       </div>
     );
   }
@@ -986,8 +937,16 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           <input ref={verdictFileInputRef} type="file" multiple accept="image/*,video/*,application/pdf,.doc,.docx" onChange={async (e) => {
             if (!e.target.files?.length) return;
             setVerdictUploading(true);
-            try { for (const file of Array.from(e.target.files)) { await casesApi.addDocument(caseItem.id, file); } await onRefresh(); } catch { /* silent */ }
-            finally { setVerdictUploading(false); if (verdictFileInputRef.current) verdictFileInputRef.current.value = ''; }
+            try {
+              for (const file of Array.from(e.target.files)) { await casesApi.addDocument(caseItem.id, file); }
+              await onRefresh();
+              toast.success('Documents attached successfully');
+            } catch (err: any) {
+              toast.error('Upload failed', { description: err?.response?.data?.message || 'Could not upload documents' });
+            } finally {
+              setVerdictUploading(false);
+              if (verdictFileInputRef.current) verdictFileInputRef.current.value = '';
+            }
           }} className="hidden" />
           <div onClick={() => verdictFileInputRef.current?.click()}
             className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400">
@@ -1000,9 +959,16 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <ArrowLeftIcon /> Return to Proctor
           </button>
-          <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(() => onStatusChange('closed', { verdict }))}
+          <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(async () => {
+            await casesApi.createReport(caseItem.id, { content: verdict, isDraft: false, isFinal: true });
+            await onStatusChange('closed', { verdict });
+          })}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
             <CheckIcon /> Issue Verdict & Close Case
+          </button>
+          <button onClick={() => window.open(`/cases/${caseItem.id}/report`, '_blank')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
+            <FileIcon /> View / Print Report
           </button>
         </div>
       </div>
@@ -1077,10 +1043,390 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
             <CheckIcon /> Close Case
           </button>
+          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
+            <ForwardIcon /> Forward to Registrar
+          </button>
         </div>
       </div>
     );
   }
 
   return null;
+}
+
+// Proctor panel using shared ForwardToRoleSection
+function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem }: {
+  actionLoading: boolean;
+  withLoading: (fn: () => Promise<void>) => Promise<void>;
+  onStatusChange: (status: string, extra?: any) => Promise<void>;
+  onForward: (targetRole: string, extra?: any) => Promise<void>;
+  caseItem: Case;
+}) {
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Proctor: Case Decision Panel</h3>
+          <p className="text-xs text-gray-500">Review case and decide on action</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resolved'))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
+          <CheckIcon /> Resolve Case
+        </button>
+        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('police-case'))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800 disabled:opacity-50">
+          <XIcon /> Mark as Police Case
+        </button>
+        <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
+          <ForwardIcon /> Forward to Registrar
+        </button>
+      </div>
+
+      <p className="text-sm font-medium text-gray-700 mb-3">Assign / Forward to:</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ForwardToRoleSection label="Deputy Proctor" targetRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={onForward} />
+        <ForwardToRoleSection label="Assistant Proctor" targetRole="assistant-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={onForward} />
+      </div>
+    </div>
+  );
+}
+
+// Coordinator panel with dynamic checklist
+function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem, isConfidential }: {
+  actionLoading: boolean;
+  withLoading: (fn: () => Promise<void>) => Promise<void>;
+  onStatusChange: (status: string, extra?: any) => Promise<void>;
+  onForward: (targetRole: string, extra?: any) => Promise<void>;
+  caseItem: Case;
+  isConfidential: boolean;
+}) {
+  const [checklistItems, setChecklistItems] = useState<{ id: string; label: string }[]>([]);
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+  const [comment, setComment] = useState('');
+
+  useEffect(() => {
+    checklistApi.getAll().then(res => {
+      const items = res.data.data || [];
+      const itemsArray = Array.isArray(items) ? items : [];
+      setChecklistItems(itemsArray);
+      // Default all to checked
+      const defaults: Record<string, boolean> = {};
+      itemsArray.forEach((item: any) => { defaults[item.id] = true; });
+      setCheckedItems(defaults);
+    }).catch(() => {
+      // Fallback to default items
+      const defaults = [
+        { id: '1', label: 'Student identity verified' },
+        { id: '2', label: 'All required documents attached' },
+        { id: '3', label: 'Incident description is complete' },
+        { id: '4', label: 'Evidence is valid and relevant' },
+        { id: '5', label: 'No duplicate case exists' },
+      ];
+      setChecklistItems(defaults);
+      const checked: Record<string, boolean> = {};
+      defaults.forEach(d => { checked[d.id] = true; });
+      setCheckedItems(checked);
+    });
+  }, []);
+
+  const handleResubmission = async () => {
+    const failedItems = checklistItems.filter(item => !checkedItems[item.id]).map(item => item.label);
+    const resultsJson = JSON.stringify(checklistItems.map(item => ({
+      label: item.label,
+      passed: !!checkedItems[item.id]
+    })));
+
+    await checklistApi.createVerification(caseItem.id, {
+      comment: comment || 'Resubmission requested',
+      checklistResultsJson: resultsJson
+    });
+    await onStatusChange('resubmission-requested', { note: comment || `Resubmission requested. Failed items: ${failedItems.join(', ')}` });
+  };
+
+  const forwardTarget = isConfidential ? 'sexual-harassment-committee' : 'proctor';
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2">
+            <polyline points="9 11 12 14 22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Coordinator: Verify Case</h3>
+          <p className="text-xs text-gray-500">Review documents and verify case details</p>
+        </div>
+      </div>
+
+      {/* Dynamic Verification Checklist */}
+      <div className="bg-gray-50 rounded-lg p-4 mb-4">
+        <p className="text-sm font-medium text-gray-700 mb-3">Verification Checklist:</p>
+        <div className="space-y-2">
+          {checklistItems.map((item) => (
+            <label key={item.id} className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox"
+                checked={!!checkedItems[item.id]}
+                onChange={e => setCheckedItems(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm text-gray-700">{item.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Comment textbox */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Comment (for resubmission)</label>
+        <textarea value={comment} onChange={e => setComment(e.target.value)}
+          placeholder="Add comments for the student..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          rows={2}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward(forwardTarget); })}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
+          <CheckIcon /> Accept & Forward
+        </button>
+        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
+          <XIcon /> Reject
+        </button>
+        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('on-hold'))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:opacity-50">
+          <ClockIcon /> Hold
+        </button>
+        <button disabled={actionLoading} onClick={() => withLoading(handleResubmission)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
+          <RefreshIcon /> Request Resubmission
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Student resubmission panel with editable fields
+function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusChange, onRefresh }: {
+  caseItem: Case;
+  actionLoading: boolean;
+  withLoading: (fn: () => Promise<void>) => Promise<void>;
+  onStatusChange: (status: string, extra?: any) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [description, setDescription] = useState(caseItem.description);
+  const [saving, setSaving] = useState(false);
+
+  const handleResubmit = async () => {
+    setSaving(true);
+    try {
+      // Update the case description if changed
+      if (description !== caseItem.description) {
+        await casesApi.update(caseItem.id, { description });
+      }
+      await onStatusChange('submitted');
+      toast.success('Case resubmitted successfully');
+    } catch (err: any) {
+      toast.error('Resubmit failed', { description: err?.response?.data?.message || 'Could not resubmit case' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-orange-50 rounded-xl shadow-md p-6 border border-orange-200 mb-6">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+          <RefreshIcon />
+        </div>
+        <div>
+          <h3 className="font-semibold text-orange-700">Resubmission Requested</h3>
+          <p className="text-xs text-orange-600">The coordinator has requested changes to your case. Edit and resubmit below.</p>
+        </div>
+      </div>
+
+      {/* Coordinator Comments */}
+      {caseItem.notes.length > 0 && (
+        <div className="bg-white rounded-lg p-4 mb-4 border border-orange-200">
+          <p className="text-sm font-medium text-gray-700 mb-2">Coordinator Comments:</p>
+          <p className="text-sm text-gray-700">{caseItem.notes[caseItem.notes.length - 1].content}</p>
+          <p className="text-xs text-gray-500 mt-1">by {caseItem.notes[caseItem.notes.length - 1].author}</p>
+        </div>
+      )}
+
+      {/* Editable Description */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Edit Description</label>
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+          rows={5}
+        />
+      </div>
+
+      <button disabled={actionLoading || saving || !description.trim()} onClick={() => withLoading(handleResubmit)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50">
+        <SendIcon /> Resubmit Case
+      </button>
+    </div>
+  );
+}
+
+// Reusable forward-to-role section with searchable user picker
+function ForwardToRoleSection({ label, targetRole, caseId, actionLoading, withLoading, onForward, simple }: {
+  label: string;
+  targetRole: string;
+  caseId: string;
+  actionLoading: boolean;
+  withLoading: (fn: () => Promise<void>) => Promise<void>;
+  onForward: (targetRole: string, extra?: any) => Promise<void>;
+  simple?: boolean;
+}) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    usersApi.getByRole(targetRole).then(res => setUsers(res.data.data || [])).catch(() => {});
+  }, [targetRole]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const toggleUser = (userId: string) => {
+    setSelectedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
+  };
+
+  const handleForwardSelected = async () => {
+    if (selectedUsers.length === 0) return;
+    if (selectedUsers.length === 1) {
+      await casesApi.forward(caseId, { targetRole, assignedToUserId: selectedUsers[0] });
+    } else {
+      for (const uid of selectedUsers) {
+        await casesApi.forward(caseId, { targetRole, assignedToUserId: uid });
+      }
+    }
+  };
+
+  const handleForwardAll = async () => {
+    await casesApi.forward(caseId, { targetRole, forwardToAll: true });
+  };
+
+  const roleLabel = targetRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  // Simple mode: just a forward button without user selection (for single-person roles like proctor, registrar)
+  if (simple || users.length <= 1) {
+    return (
+      <div className="flex flex-wrap gap-2 mb-2">
+        <button disabled={actionLoading} onClick={() => withLoading(() => onForward(targetRole))}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
+          <ForwardIcon /> {label}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-50 rounded-lg p-4 mb-3">
+      <p className="text-sm font-medium text-gray-700 mb-2">{label}</p>
+
+      {/* Searchable multi-select dropdown */}
+      <div className="relative mb-3" ref={dropdownRef}>
+        <div
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm cursor-pointer flex items-center justify-between min-h-[38px]"
+        >
+          <div className="flex flex-wrap gap-1 flex-1">
+            {selectedUsers.length === 0 ? (
+              <span className="text-gray-400">Search and select {roleLabel}...</span>
+            ) : (
+              selectedUsers.map(uid => {
+                const u = users.find(x => x.id === uid);
+                return u ? (
+                  <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                    {u.name}
+                    <button onClick={(e) => { e.stopPropagation(); toggleUser(uid); }} className="hover:text-blue-900">&times;</button>
+                  </span>
+                ) : null;
+              })
+            )}
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+
+        {showDropdown && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-auto">
+            <div className="p-2 border-b border-gray-100">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Search by name..."
+                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                autoFocus
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            {filteredUsers.length === 0 ? (
+              <div className="p-3 text-sm text-gray-400 text-center">No users found</div>
+            ) : (
+              filteredUsers.map(u => (
+                <div
+                  key={u.id}
+                  onClick={() => toggleUser(u.id)}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${selectedUsers.includes(u.id) ? 'bg-blue-50' : ''}`}
+                >
+                  <input type="checkbox" checked={selectedUsers.includes(u.id)} readOnly className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                  <span className="font-medium">{u.name}</span>
+                  <span className="text-gray-400 text-xs">{u.email}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          disabled={actionLoading || selectedUsers.length === 0}
+          onClick={() => withLoading(handleForwardSelected)}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          <ForwardIcon /> Assign Selected ({selectedUsers.length})
+        </button>
+        <button
+          disabled={actionLoading}
+          onClick={() => withLoading(handleForwardAll)}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+        >
+          <ForwardIcon /> Forward to All {roleLabel}
+        </button>
+      </div>
+    </div>
+  );
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../components/Icons';
 import { casesApi, settingsApi } from '../services/api';
+import { toast } from 'sonner';
 
 type SubmissionType = null | 'type-1' | 'type-2';
 
@@ -44,6 +45,22 @@ export default function SubmitIncident() {
   const [t2Priority, setT2Priority] = useState('medium');
   const [t2Files, setT2Files] = useState<UploadedFile[]>([]);
   const [t2IsConfidential, setT2IsConfidential] = useState(false);
+  const [t2IncidentDate, setT2IncidentDate] = useState('');
+  const [t2VideoLink, setT2VideoLink] = useState('');
+  // Student details
+  const [t2StudentDepartment, setT2StudentDepartment] = useState('');
+  const [t2StudentContact, setT2StudentContact] = useState('');
+  const [t2AdvisorName, setT2AdvisorName] = useState('');
+  const [t2FatherName, setT2FatherName] = useState('');
+  const [t2FatherContact, setT2FatherContact] = useState('');
+  // Accused details
+  const [t2AccusedName, setT2AccusedName] = useState('');
+  const [t2AccusedId, setT2AccusedId] = useState('');
+  const [t2AccusedDepartment, setT2AccusedDepartment] = useState('');
+  const [t2AccusedContact, setT2AccusedContact] = useState('');
+  const [t2GuardianContact, setT2GuardianContact] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+
 
   // Configurable forwarding
   const [forwardingLabel, setForwardingLabel] = useState('Proctor / Deputy Proctor');
@@ -133,6 +150,18 @@ export default function SubmitIncident() {
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
         data.category = t2Category;
+        data.studentDepartment = t2StudentDepartment || undefined;
+        data.studentContact = t2StudentContact || undefined;
+        data.studentAdvisorName = t2AdvisorName || undefined;
+        data.studentFatherName = t2FatherName || undefined;
+        data.studentFatherContact = t2FatherContact || undefined;
+        data.accusedName = t2AccusedName || undefined;
+        data.accusedId = t2AccusedId || undefined;
+        data.accusedDepartment = t2AccusedDepartment || undefined;
+        data.accusedContact = t2AccusedContact || undefined;
+        data.accusedGuardianContact = t2GuardianContact || undefined;
+        data.videoLink = t2VideoLink || undefined;
+        data.incidentDate = t2IncidentDate || undefined;
       }
 
       const response = await casesApi.create(data);
@@ -151,10 +180,11 @@ export default function SubmitIncident() {
         }
       }
 
+      toast.success('Case submitted successfully!', { description: `Case number: ${created?.caseNumber || 'N/A'}` });
       setSubmitted(true);
-    } catch {
-      // Still show success for UX - case may have been created
-      setSubmitted(true);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to submit case';
+      toast.error('Submission failed', { description: message });
     } finally {
       setSubmitting(false);
     }
@@ -204,6 +234,18 @@ export default function SubmitIncident() {
                 setT2Category('');
                 setT2Files([]);
                 setT2IsConfidential(false);
+                setT2IncidentDate('');
+                setT2VideoLink('');
+                setT2StudentDepartment('');
+                setT2StudentContact('');
+                setT2AdvisorName('');
+                setT2FatherName('');
+                setT2FatherContact('');
+                setT2AccusedName('');
+                setT2AccusedId('');
+                setT2AccusedDepartment('');
+                setT2AccusedContact('');
+                setT2GuardianContact('');
                 setCaseNumber('');
               }}
               className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -419,109 +461,134 @@ export default function SubmitIncident() {
 
       {/* Type-2 Form */}
       {selectedType === 'type-2' && (
-        <div className="max-w-2xl">
-          <button
-            onClick={() => setSelectedType(null)}
-            className="text-blue-600 hover:text-blue-800 mb-4"
-          >
-            &larr; Back to type selection
-          </button>
+        <div className="max-w-6xl">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => setSelectedType(null)} className="text-blue-600 hover:text-blue-800">
+              &larr; Back to type selection
+            </button>
+            <button
+              type="button"
+              disabled={!t2Description.trim() || !t2Subject.trim()}
+              onClick={() => setShowPreview(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Preview as PDF
+            </button>
+          </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Type-2: Formal Case</h2>
-                <p className="text-sm text-gray-500">Detailed case submission with documentation</p>
-              </div>
-            </div>
-
-            <div className="bg-purple-50 rounded-lg p-3 mb-6 flex items-center gap-2 text-sm text-purple-700">
-              <ArrowRightIcon />
-              <span>
-                {t2IsConfidential
-                  ? 'This will be routed to: Female Coordinator \u2192 Sexual Harassment Committee'
-                  : 'This will be sent to: Coordinator for verification'}
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Case Subject *</label>
-                <input
-                  type="text"
-                  value={t2Subject}
-                  onChange={(e) => setT2Subject(e.target.value)}
-                  placeholder="Brief subject line for the case"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                <select
-                  value={t2Category}
-                  onChange={(e) => setT2Category(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select category...</option>
-                  <option value="plagiarism">Plagiarism</option>
-                  <option value="cheating">Cheating in Examination</option>
-                  <option value="misconduct">Academic Misconduct</option>
-                  <option value="fraud">Document Fraud</option>
-                  <option value="harassment">Harassment</option>
-                  <option value="disciplinary">Disciplinary Issue</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Detailed Description *</label>
-                <textarea
-                  value={t2Description}
-                  onChange={(e) => setT2Description(e.target.value)}
-                  placeholder="Provide a detailed description of the incident, including dates, locations, and persons involved..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={5}
-                />
-              </div>
-
-              <div className="bg-red-50 rounded-lg p-4 border border-red-100">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={t2IsConfidential}
-                    onChange={(e) => setT2IsConfidential(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
-                  />
-                  <div>
-                    <p className="font-medium text-red-700">Mark as Confidential (Sexual Harassment)</p>
-                    <p className="text-sm text-red-600">
-                      This case will be routed through the Female Coordinator to the Sexual Harassment Committee.
-                      Access will be restricted to authorized personnel only.
-                    </p>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* LEFT COLUMN - Main form (2/3 width) */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
                   </div>
-                </label>
+                  <div>
+                    <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Type-2: Formal Case</h2>
+                    <p className="text-sm text-gray-500">Detailed case submission with documentation</p>
+                  </div>
+                </div>
+
+                <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700">
+                  <ArrowRightIcon />
+                  <span>{t2IsConfidential ? 'Routed to: Female Coordinator \u2192 SH Committee' : 'Sent to: Coordinator for verification'}</span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Case Subject *</label>
+                      <input type="text" value={t2Subject} onChange={e => setT2Subject(e.target.value)}
+                        placeholder="Brief subject line for the case"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                      <select value={t2Category} onChange={e => setT2Category(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                        <option value="">Select category...</option>
+                        <option value="plagiarism">Plagiarism</option>
+                        <option value="cheating">Cheating in Examination</option>
+                        <option value="misconduct">Academic Misconduct</option>
+                        <option value="fraud">Document Fraud</option>
+                        <option value="harassment">Harassment</option>
+                        <option value="disciplinary">Disciplinary Issue</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Detailed Description *</label>
+                    <textarea value={t2Description} onChange={e => setT2Description(e.target.value)}
+                      placeholder="Provide a detailed description of the incident..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" rows={4} />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supporting Documents</label>
+              {/* Student & Accused Details - Side by Side */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700 mb-3" style={{ color: '#0b2652' }}>Student Details (শিক্ষার্থীর তথ্য)</p>
+                  <div className="space-y-3">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Department (ডিপার্টমেন্ট)</label>
+                      <input type="text" value={t2StudentDepartment} onChange={e => setT2StudentDepartment(e.target.value)} placeholder="e.g. CSE, EEE" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Contact No (কন্টাক্ট নাম্বার)</label>
+                      <input type="tel" value={t2StudentContact} onChange={e => setT2StudentContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Advisor Name (এডভাইজারের নাম)</label>
+                      <input type="text" value={t2AdvisorName} onChange={e => setT2AdvisorName(e.target.value)} placeholder="Advisor's full name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Father's Name (বাবার নাম)</label>
+                      <input type="text" value={t2FatherName} onChange={e => setT2FatherName(e.target.value)} placeholder="Father's full name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Father's Contact (কন্টাক্ট নাম্বার)</label>
+                      <input type="tel" value={t2FatherContact} onChange={e => setT2FatherContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-md p-5 border border-orange-100">
+                  <p className="text-sm font-semibold text-gray-700 mb-1" style={{ color: '#0b2652' }}>Accused Details (অভিযুক্তের তথ্য)</p>
+                  <p className="text-xs text-gray-400 mb-3">যা যা তথ্য জানা আছে তা দিয়ে সাহায্য করুন</p>
+                  <div className="space-y-3">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Name (নাম)</label>
+                      <input type="text" value={t2AccusedName} onChange={e => setT2AccusedName(e.target.value)} placeholder="Accused person's name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">ID (আইডি)</label>
+                      <input type="text" value={t2AccusedId} onChange={e => setT2AccusedId(e.target.value)} placeholder="Student/Employee ID" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Department (ডিপার্টমেন্ট)</label>
+                      <input type="text" value={t2AccusedDepartment} onChange={e => setT2AccusedDepartment(e.target.value)} placeholder="e.g. CSE, EEE" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Contact No (কন্টাক্ট নাম্বার)</label>
+                      <input type="tel" value={t2AccusedContact} onChange={e => setT2AccusedContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Contact (অভিভাবকের নাম্বার)</label>
+                      <input type="tel" value={t2GuardianContact} onChange={e => setT2GuardianContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN - Documents, Video, Priority, Confidential (1/3 width) */}
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Supporting Documents (Photos & PDF)</label>
                 {renderFileUploadArea('type-2')}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Video Evidence (Google Drive Link)</label>
+                <input type="url" value={t2VideoLink} onChange={e => setT2VideoLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                <p className="text-xs text-gray-400 mt-1">Paste a Google Drive link</p>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100 space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                  <select
-                    value={t2Priority}
-                    onChange={(e) => setT2Priority(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
+                  <select value={t2Priority} onChange={e => setT2Priority(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
@@ -530,26 +597,138 @@ export default function SubmitIncident() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Incident Date</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="date" value={t2IncidentDate} onChange={e => setT2IncidentDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                 </div>
               </div>
 
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !t2Description.trim() || !t2Subject.trim()}
-                className={`w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60 ${
-                  t2IsConfidential ? 'bg-red-600' : ''
-                }`}
-                style={t2IsConfidential ? {} : { backgroundColor: '#0b2652' }}
-              >
+              <div className="bg-red-50 rounded-xl shadow-md p-4 border border-red-100">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={t2IsConfidential} onChange={e => setT2IsConfidential(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500" />
+                  <div>
+                    <p className="font-medium text-red-700 text-sm">Mark as Confidential</p>
+                    <p className="text-xs text-red-600">Routes through Female Coordinator to SH Committee.</p>
+                  </div>
+                </label>
+              </div>
+
+              <button onClick={handleSubmit} disabled={submitting || !t2Description.trim() || !t2Subject.trim()}
+                className={`w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60 ${t2IsConfidential ? 'bg-red-600' : ''}`}
+                style={t2IsConfidential ? {} : { backgroundColor: '#0b2652' }}>
                 {submitting ? 'Submitting...' : t2IsConfidential ? 'Submit Confidential Case' : 'Submit Formal Case'}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowPreview(false)} />
+          <div className="fixed inset-4 z-50 flex items-start justify-center overflow-auto py-8">
+            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-10 relative">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold" style={{ color: '#0b2652' }}>Case Preview</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => { window.print(); }} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm" style={{ backgroundColor: '#0b2652' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Print / Save PDF
+                  </button>
+                  <button onClick={() => setShowPreview(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Report Header - following case_type2.md */}
+              <div className="text-center pb-4 mb-4 border-b-2 border-gray-300">
+                <h2 className="text-xl font-bold" style={{ color: '#0b2652' }}>Proctor Office Incident Report Form</h2>
+                <p className="text-sm text-gray-500">প্রক্টর অফিস ইনসিডেন্ট রিপোর্ট ফর্ম</p>
+                <p className="text-sm text-gray-500">Daffodil International University, Daffodil Smart City</p>
+              </div>
+
+              <div className="flex justify-between text-sm text-gray-500 mb-4">
+                <span>Date: {new Date().toLocaleDateString()}</span>
+                <span>Case Number: PODIU ————————</span>
+              </div>
+
+              <div className="text-sm mb-3">
+                <p><span className="text-gray-500">To,</span> <strong>The Proctor</strong> Daffodil International University</p>
+                <p className="mt-1"><span className="text-gray-500">Subject: </span><strong>{t2Subject || '—'}</strong></p>
+              </div>
+
+              <div className="bg-gray-50 rounded p-4 mb-4 text-sm">
+                <p className="text-gray-500 mb-1">Sir (জনাব),</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{t2Description || '—'}</p>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-3">Sincerely (বিনীত),</p>
+
+              {/* Student & Accused side by side */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="border rounded p-4">
+                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>Student Details (শিক্ষার্থীর তথ্য)</p>
+                  {[
+                    ['Name (নাম)', currentUser?.name],
+                    ['ID (আইডি)', currentUser?.id],
+                    ['Department (ডিপার্টমেন্ট)', t2StudentDepartment],
+                    ['Contact No (কন্টাক্ট নাম্বার)', t2StudentContact],
+                    ['Advisor Name (এডভাইজারের নাম)', t2AdvisorName],
+                    ['Father\'s Name (বাবার নাম)', t2FatherName],
+                    ['Father\'s Contact (কন্টাক্ট নাম্বার)', t2FatherContact],
+                  ].map(([label, val]) => (
+                    <div key={label as string} className="flex justify-between py-0.5 border-b border-gray-100 text-sm">
+                      <span className="text-gray-500">{label}:</span>
+                      <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border border-orange-200 rounded p-4 bg-orange-50/30">
+                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>Accused Details (অভিযুক্তের তথ্য)</p>
+                  {[
+                    ['Name (নাম)', t2AccusedName],
+                    ['ID (আইডি)', t2AccusedId],
+                    ['Department (ডিপার্টমেন্ট)', t2AccusedDepartment],
+                    ['Contact No (কন্টাক্ট নাম্বার)', t2AccusedContact],
+                    ['Guardian Contact (অভিভাবকের নাম্বার)', t2GuardianContact],
+                  ].map(([label, val]) => (
+                    <div key={label as string} className="flex justify-between py-0.5 border-b border-orange-100 text-sm">
+                      <span className="text-gray-500">{label}:</span>
+                      <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Extra info */}
+              <div className="grid grid-cols-3 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">
+                <div><span className="text-gray-500">Category: </span><span className="font-medium">{t2Category || '—'}</span></div>
+                <div><span className="text-gray-500">Priority: </span><span className="font-medium capitalize">{t2Priority}</span></div>
+                <div><span className="text-gray-500">Incident Date: </span><span className="font-medium">{t2IncidentDate || '—'}</span></div>
+              </div>
+
+              {t2VideoLink && (
+                <div className="text-sm mb-4 p-3 bg-blue-50 rounded">
+                  <span className="text-gray-500">Video Evidence: </span>
+                  <span className="text-blue-600 break-all">{t2VideoLink}</span>
+                </div>
+              )}
+
+              {t2Files.length > 0 && (
+                <div className="text-sm mb-4">
+                  <p className="text-gray-500 mb-1">Attached Files ({t2Files.length}):</p>
+                  {t2Files.map((f, i) => <p key={i} className="text-gray-700">{f.file.name}</p>)}
+                </div>
+              )}
+
+              <div className="text-center pt-4 border-t text-xs text-gray-400">
+                This is a preview. Use "Print / Save PDF" to save.
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
