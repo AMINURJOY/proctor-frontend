@@ -1285,7 +1285,15 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
     await onStatusChange('resubmission-requested', { note: comment || `Resubmission requested. Failed items: ${failedItems.join(', ')}` });
   };
 
-  const forwardTarget = isConfidential ? 'sexual-harassment-committee' : 'proctor';
+  const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
+  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+
+  useEffect(() => {
+    forwardingRulesApi.getForRole(coordRole).then(res => {
+      const rules = res.data.data || [];
+      setAllowedTargets(rules.filter((r: any) => r.isActive).map((r: any) => r.toRole));
+    }).catch(() => {});
+  }, [coordRole]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -1328,11 +1336,29 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
         />
       </div>
 
+      {/* Accept & Forward - dynamic based on forwarding rules with person selection */}
+      {allowedTargets.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm font-medium text-gray-700 mb-2">Accept & Forward to:</p>
+          {allowedTargets.map(target => (
+            <ForwardToRoleSection
+              key={target}
+              label={target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              targetRole={target}
+              fromRole={coordRole}
+              caseId={caseItem.id}
+              actionLoading={actionLoading}
+              withLoading={withLoading}
+              onForward={async (role: string, extra?: any) => {
+                await onStatusChange('verified');
+                await onForward(role, extra);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward(forwardTarget); })}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
-          <CheckIcon /> Accept & Forward
-        </button>
         <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
           <XIcon /> Reject

@@ -2,87 +2,108 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { casesApi, articlesApi } from '../services/api';
 import { Case, Article } from '../types';
 import { toast } from 'sonner';
 
-function generateReportTemplate(caseItem: Case, articles: Article[]): string {
+const ts = 'width:100%;border-collapse:collapse;margin-bottom:20px;';
+const ths = 'border:1px solid #000;padding:8px;text-align:left;font-size:14px;background-color:#f2f2f2;';
+const tds = 'border:1px solid #000;padding:8px;text-align:left;font-size:14px;';
+const st = 'font-size:18px;font-weight:bold;border-bottom:1px solid #000;margin-top:25px;margin-bottom:10px;display:block;';
+
+function generateReportTemplate(caseItem: Case): string {
   const complainantsRows = (caseItem.complainants || []).map(c =>
-    `<li><strong>${c.name}</strong> (${c.studentId}) - ${c.department || '-'}</li>`
-  ).join('') || '<li>-</li>';
+    `<tr><td style="${tds}">${c.name}</td><td style="${tds}">${c.studentId}</td><td style="${tds}">${c.department || '-'}</td></tr>`
+  ).join('') || `<tr><td style="${tds}" colspan="3">-</td></tr>`;
 
   const accusedRows = (caseItem.accusedPersons || []).map(a =>
-    `<li><strong>${a.name}</strong> (${a.accusedStudentId}) - ${a.department || '-'}</li>`
-  ).join('') || '<li>-</li>';
+    `<tr><td style="${tds}">${a.name}</td><td style="${tds}">${a.accusedStudentId}</td><td style="${tds}">${a.department || '-'}</td></tr>`
+  ).join('') || `<tr><td style="${tds}" colspan="3">-</td></tr>`;
 
-  const docsRows = caseItem.documents.map(d =>
-    `<li>${d.name} (${d.type}) - uploaded by ${d.uploadedBy}</li>`
-  ).join('') || '<li>No attachments</li>';
+  // Extract unique participants from timeline
+  const seen = new Set<string>();
+  const participantRows = (caseItem.timeline || [])
+    .filter(evt => { if (seen.has(evt.user)) return false; seen.add(evt.user); return evt.user !== 'System'; })
+    .map(p => `<tr><td style="${tds}">${p.user}</td><td style="${tds}">${p.action}</td></tr>`)
+    .join('') || `<tr><td style="${tds}" colspan="2">[তদন্তকারীর নাম যোগ করুন]</td></tr>`;
 
-  const articleItems = articles.filter(a => a.isActive).map(a =>
-    `<li><strong>অনুচ্ছেদ ${a.articleNo} - ${a.title}:</strong> ${a.description}</li>`
-  ).join('');
+  const docsRows = caseItem.documents.map((d, i) =>
+    `${i + 1}ঃ ${d.name} (${d.type})<br>`
+  ).join('') || 'কোনো সংযুক্তি নেই';
 
   return `
-<h1 style="text-align:center">তদন্ত প্রতিবেদন</h1>
-<p><strong>মামলা নম্বর:</strong> ${caseItem.caseNumber}</p>
-<p><strong>রিপোর্টের তারিখ:</strong> ${new Date().toLocaleDateString('bn-BD')}</p>
-<hr>
-<h3>১। অভিযোগকারীদের তথ্য:</h3>
-<p><em>(সিস্টেম থেকে অটো-পপুলেটেড)</em></p>
-<ul>${complainantsRows}</ul>
+<div style="padding:20px;border:1px solid #ccc;max-width:850px;margin:0 auto;font-family:Arial,sans-serif;line-height:1.6;color:#000;">
 
-<h3>২। অভিযুক্তের তথ্য:</h3>
-<p><em>(সিস্টেম থেকে অটো-পপুলেটেড)</em></p>
-<ul>${accusedRows}</ul>
+  <div style="display:flex;align-items:center;justify-content:center;gap:20px;border-bottom:2px solid #000;padding-bottom:15px;margin-bottom:20px;">
+    <div style="width:70px;height:70px;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;">LOGO</div>
+    <h1 style="font-size:26px;margin:0;color:#000;text-decoration:underline;">তদন্ত প্রতিবেদন</h1>
+  </div>
 
-<hr>
-<h3>৩। তদন্ত পদ্ধতি এবং অংশগ্রহণকারী:</h3>
-<ul>
-<li><strong>তদন্ত কমিটির সভা:</strong> [তারিখ, স্থান এখানে লিখুন]</li>
-<li><strong>তদন্ত পদ্ধতি:</strong> সরাসরি সাক্ষাৎকার, লিখিত অভিযোগ পর্যালোচনা এবং প্রমাণাদি বিশ্লেষণ</li>
-</ul>
+  <div style="margin-bottom:25px;">
+    <p style="margin:5px 0;font-weight:bold;">মামলা নম্বর: ${caseItem.caseNumber}</p>
+    <p style="margin:5px 0;font-weight:bold;">রিপোর্টের তারিখ: ${new Date().toLocaleDateString('bn-BD')}</p>
+    <p style="margin:5px 0;font-weight:bold;">বিষয়: ${caseItem.description?.substring(0, 100) || '[বিষয় লিখুন]'}</p>
+  </div>
 
-<h3>৪। তদন্তকারী:</h3>
-<ul>
-<li><strong>[নাম]</strong> - [পদবী]</li>
-</ul>
+  <span style="${st}">১। অভিযোগকারীদের তথ্য</span>
+  <table style="${ts}">
+    <thead><tr><th style="${ths}">নাম</th><th style="${ths}">আইডি</th><th style="${ths}">বিভাগ</th></tr></thead>
+    <tbody>${complainantsRows}</tbody>
+  </table>
 
-<h4>৪.১। প্রতিবেদন প্রস্তুতকারী:</h4>
-<ul>
-<li><strong>নাম:</strong> [নাম]</li>
-<li><strong>পদবী:</strong> [পদবী]</li>
-</ul>
+  <span style="${st}">২। অভিযুক্তের তথ্য</span>
+  <table style="${ts}">
+    <thead><tr><th style="${ths}">নাম</th><th style="${ths}">আইডি</th><th style="${ths}">বিভাগ</th></tr></thead>
+    <tbody>${accusedRows}</tbody>
+  </table>
 
-<hr>
-<h3>৫। ঘটনার পটভূমি ও অভিযোগসমূহ:</h3>
-<p>[ঘটনার বিস্তারিত বিবরণ এখানে লিখুন]</p>
-<p>${caseItem.description}</p>
+  <span style="${st}">৩। তদন্ত পদ্ধতি ও অংশগ্রহণকারী</span>
+  <div style="padding:10px 0;margin-bottom:15px;">
+    <p><strong>তদন্ত কমিটির সভা:</strong> [তারিখ, স্থান এখানে লিখুন]</p>
+    <p><strong>তদন্ত পদ্ধতি:</strong> সরাসরি সাক্ষাৎকার, লিখিত অভিযোগ পর্যালোচনা এবং প্রমাণাদি বিশ্লেষণ</p>
+  </div>
 
-<hr>
-<h3>৯। বিশ্ববিদ্যালয়ের কোড অফ কন্ডাক্ট (ফলাফল):</h3>
-${articleItems ? `<ul>${articleItems}</ul>` : '<p>[জেনারেল সেটিংস থেকে অনুচ্ছেদ যোগ করুন]</p>'}
+  <span style="${st}">৪। তদন্তকারী ও প্রতিবেদন প্রস্তুতকারী</span>
+  <table style="${ts}">
+    <thead><tr><th style="${ths}">নাম</th><th style="${ths}">পদবী / ভূমিকা</th></tr></thead>
+    <tbody>${participantRows}</tbody>
+  </table>
 
-<hr>
-<h3>১০। সুপারিশ:</h3>
-<ul>
-<li><strong>বহিষ্কার:</strong> [সুপারিশ লিখুন]</li>
-<li><strong>ক্ষতিপূরণ ও জরিমানা:</strong> [বিবরণ লিখুন]</li>
-<li><strong>অন্যান্য:</strong> [অন্যান্য সুপারিশ]</li>
-</ul>
+  <span style="${st}">৫। ঘটনার পটভূমি ও অভিযোগসমূহ</span>
+  <div style="padding:10px 0;margin-bottom:15px;">
+    <p>${caseItem.description || '[ঘটনার বিস্তারিত বিবরণ এখানে লিখুন]'}</p>
+  </div>
 
-<hr>
-<h3>প্রক্টোরিয়াল সদস্য:</h3>
-<ul>
-<li>[নাম] ([পদবী])</li>
-</ul>
+  <span style="${st}">৯। বিশ্ববিদ্যালয়ের কোড অফ কন্ডাক্ট (ফলাফল)</span>
+  <table style="${ts}">
+    <thead><tr><th style="${ths}">অনুচ্ছেদ নং</th><th style="${ths}">অনুচ্ছেদের নাম ও ব্যখ্যা</th></tr></thead>
+    <tbody><tr><td style="${tds}" colspan="2"><em>[নিচের আর্টিকেল সিলেক্টর থেকে প্রযোজ্য অনুচ্ছেদ নির্বাচন করুন]</em></td></tr></tbody>
+  </table>
 
-<h3>সংযুক্তি:</h3>
-<ol>${docsRows}</ol>
+  <span style="${st}">১০। সুপারিশ</span>
+  <div style="padding:10px 0;margin-bottom:15px;">
+    <p>১. [সুপারিশ লিখুন]</p>
+    <p>২. [ক্ষতিপূরণ ও জরিমানা]</p>
+    <p>৩. [অন্যান্য সুপারিশ]</p>
+  </div>
 
-<hr>
-<p style="text-align:center"><strong>ধন্যবাদ,</strong><br>[নাম]<br>[পদবী]<br>ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি</p>
-  `.trim();
+  <div style="margin-top:60px;display:flex;justify-content:space-between;">
+    <div style="text-align:center;width:40%;">
+      <strong>[নাম]</strong><br>[পদবী]
+      <div style="border-top:1px solid #000;margin-top:10px;padding-top:5px;">স্বাক্ষর ও তারিখ</div>
+    </div>
+    <div style="text-align:center;width:40%;">
+      <strong>[নাম]</strong><br>[পদবী]
+      <div style="border-top:1px solid #000;margin-top:10px;padding-top:5px;">স্বাক্ষর ও তারিখ</div>
+    </div>
+  </div>
+
+  <div style="margin-top:30px;font-size:13px;border-top:1px dashed #000;padding-top:10px;">
+    <strong>সংযুক্তি:</strong><br>${docsRows}
+  </div>
+
+</div>`.trim();
 }
 
 export default function ReportEditorPage() {
@@ -90,6 +111,7 @@ export default function ReportEditorPage() {
   const navigate = useNavigate();
   const [caseItem, setCaseItem] = useState<Case | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
+  const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
   const [existingReportId, setExistingReportId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,6 +119,10 @@ export default function ReportEditorPage() {
   const editor = useEditor({
     extensions: [
       StarterKit,
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: '<p>Loading...</p>',
     editorProps: {
@@ -116,15 +142,14 @@ export default function ReportEditorPage() {
         setCaseItem(c);
         setArticles(arts);
 
-        // Check for existing report
         const reportsRes = await casesApi.getReports(caseId!);
         const reports = reportsRes.data.data || [];
         if (reports.length > 0) {
           const latest = reports[reports.length - 1];
           setExistingReportId(latest.id);
-          editor?.commands.setContent(latest.content || generateReportTemplate(c, arts));
+          editor?.commands.setContent(latest.content || generateReportTemplate(c));
         } else {
-          editor?.commands.setContent(generateReportTemplate(c, arts));
+          editor?.commands.setContent(generateReportTemplate(c));
         }
       } catch {
         toast.error('Failed to load case data');
@@ -170,6 +195,17 @@ export default function ReportEditorPage() {
     URL.revokeObjectURL(url);
   }, [editor, caseItem]);
 
+  const insertArticles = () => {
+    if (!editor || selectedArticleIds.size === 0) return;
+    const selected = articles.filter(a => selectedArticleIds.has(a.id));
+    const rows = selected.map(a =>
+      `<tr><td style="${tds}">অনুচ্ছেদ নং ${a.articleNo}</td><td style="${tds}"><strong>${a.title}:</strong> ${a.description}</td></tr>`
+    ).join('');
+    const tableHtml = `<table style="${ts}"><thead><tr><th style="${ths}">অনুচ্ছেদ নং</th><th style="${ths}">অনুচ্ছেদের নাম ও ব্যখ্যা</th></tr></thead><tbody>${rows}</tbody></table>`;
+    editor.chain().focus().insertContent(tableHtml).run();
+    toast.success(`${selected.length} article(s) inserted`);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -208,6 +244,38 @@ export default function ReportEditorPage() {
         </div>
       </div>
 
+      {/* Article Selector */}
+      {articles.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 print:hidden">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">প্রযোজ্য অনুচ্ছেদ নির্বাচন করুন (Select Applicable Articles)</h3>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {articles.filter(a => a.isActive).map(article => (
+              <label key={article.id} className="flex items-start gap-2 cursor-pointer hover:bg-blue-50 rounded p-1">
+                <input
+                  type="checkbox"
+                  checked={selectedArticleIds.has(article.id)}
+                  onChange={() => {
+                    setSelectedArticleIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(article.id)) next.delete(article.id); else next.add(article.id);
+                      return next;
+                    });
+                  }}
+                  className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">
+                  <strong>অনুচ্ছেদ {article.articleNo} - {article.title}:</strong> {article.description}
+                </span>
+              </label>
+            ))}
+          </div>
+          <button onClick={insertArticles} disabled={selectedArticleIds.size === 0}
+            className="mt-3 px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+            Insert Selected Articles ({selectedArticleIds.size})
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       {editor && (
         <div className="bg-white rounded-t-xl border border-gray-200 border-b-0 px-3 py-2 flex flex-wrap gap-1 print:hidden">
@@ -239,6 +307,10 @@ export default function ReportEditorPage() {
           <button onClick={() => editor.chain().focus().toggleBlockquote().run()}
             className={`px-2 py-1 text-xs rounded ${editor.isActive('blockquote') ? 'bg-gray-200' : 'hover:bg-gray-100'}`}>
             Quote
+          </button>
+          <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+            className="px-2 py-1 text-xs rounded hover:bg-gray-100">
+            Table
           </button>
           <button onClick={() => editor.chain().focus().setHorizontalRule().run()}
             className="px-2 py-1 text-xs rounded hover:bg-gray-100">
