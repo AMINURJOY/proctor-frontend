@@ -47,19 +47,24 @@ export default function SubmitIncident() {
   const [t2IsConfidential, setT2IsConfidential] = useState(false);
   const [t2IncidentDate, setT2IncidentDate] = useState('');
   const [t2VideoLink, setT2VideoLink] = useState('');
-  // Student details
-  const [t2StudentDepartment, setT2StudentDepartment] = useState('');
-  const [t2StudentContact, setT2StudentContact] = useState('');
-  const [t2AdvisorName, setT2AdvisorName] = useState('');
-  const [t2FatherName, setT2FatherName] = useState('');
-  const [t2FatherContact, setT2FatherContact] = useState('');
-  // Accused details
-  const [t2AccusedName, setT2AccusedName] = useState('');
-  const [t2AccusedId, setT2AccusedId] = useState('');
-  const [t2AccusedDepartment, setT2AccusedDepartment] = useState('');
-  const [t2AccusedContact, setT2AccusedContact] = useState('');
-  const [t2GuardianContact, setT2GuardianContact] = useState('');
+  // Multiple complainants (student details)
+  const emptyComplainant = { name: '', studentId: '', department: '', contact: '', advisorName: '', fatherName: '', fatherContact: '' };
+  const [complainants, setComplainants] = useState([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
+  // Multiple accused
+  const emptyAccused = { name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '' };
+  const [accusedPersons, setAccusedPersons] = useState([{ ...emptyAccused }]);
   const [showPreview, setShowPreview] = useState(false);
+  // Legacy single-field aliases for backward compat in preview
+  const t2StudentDepartment = complainants[0]?.department || '';
+  const t2StudentContact = complainants[0]?.contact || '';
+  const t2AdvisorName = complainants[0]?.advisorName || '';
+  const t2FatherName = complainants[0]?.fatherName || '';
+  const t2FatherContact = complainants[0]?.fatherContact || '';
+  const t2AccusedName = accusedPersons[0]?.name || '';
+  const t2AccusedId = accusedPersons[0]?.accusedStudentId || '';
+  const t2AccusedDepartment = accusedPersons[0]?.department || '';
+  const t2AccusedContact = accusedPersons[0]?.contact || '';
+  const t2GuardianContact = accusedPersons[0]?.guardianContact || '';
 
 
   // Configurable forwarding
@@ -150,6 +155,7 @@ export default function SubmitIncident() {
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
         data.category = t2Category;
+        // Legacy single fields from first complainant/accused
         data.studentDepartment = t2StudentDepartment || undefined;
         data.studentContact = t2StudentContact || undefined;
         data.studentAdvisorName = t2AdvisorName || undefined;
@@ -162,6 +168,16 @@ export default function SubmitIncident() {
         data.accusedGuardianContact = t2GuardianContact || undefined;
         data.videoLink = t2VideoLink || undefined;
         data.incidentDate = t2IncidentDate || undefined;
+        // Multiple complainants and accused
+        data.complainants = complainants.filter(c => c.name.trim()).map(c => ({
+          name: c.name, studentId: c.studentId, department: c.department || undefined,
+          contact: c.contact || undefined, advisorName: c.advisorName || undefined,
+          fatherName: c.fatherName || undefined, fatherContact: c.fatherContact || undefined
+        }));
+        data.accusedPersons = accusedPersons.filter(a => a.name.trim()).map(a => ({
+          name: a.name, accusedStudentId: a.accusedStudentId, department: a.department || undefined,
+          contact: a.contact || undefined, guardianContact: a.guardianContact || undefined
+        }));
       }
 
       const response = await casesApi.create(data);
@@ -532,38 +548,72 @@ export default function SubmitIncident() {
                 </div>
               </div>
 
-              {/* Student & Accused Details - Side by Side */}
+              {/* Student & Accused Details - Multiple entries */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Complainants (Student Details) */}
                 <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
-                  <p className="text-sm font-semibold text-gray-700 mb-3" style={{ color: '#0b2652' }}>Student Details (শিক্ষার্থীর তথ্য)</p>
-                  <div className="space-y-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Department (ডিপার্টমেন্ট)</label>
-                      <input type="text" value={t2StudentDepartment} onChange={e => setT2StudentDepartment(e.target.value)} placeholder="e.g. CSE, EEE" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Contact No (কন্টাক্ট নাম্বার)</label>
-                      <input type="tel" value={t2StudentContact} onChange={e => setT2StudentContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Advisor Name (এডভাইজারের নাম)</label>
-                      <input type="text" value={t2AdvisorName} onChange={e => setT2AdvisorName(e.target.value)} placeholder="Advisor's full name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Father's Name (বাবার নাম)</label>
-                      <input type="text" value={t2FatherName} onChange={e => setT2FatherName(e.target.value)} placeholder="Father's full name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Father's Contact (কন্টাক্ট নাম্বার)</label>
-                      <input type="tel" value={t2FatherContact} onChange={e => setT2FatherContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold" style={{ color: '#0b2652' }}>Complainants (অভিযোগকারী)</p>
+                    <button type="button" onClick={() => setComplainants(prev => [...prev, { ...emptyComplainant }])}
+                      className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">+ Add Another</button>
+                  </div>
+                  <div className="space-y-4">
+                    {complainants.map((c, i) => (
+                      <div key={i} className="p-3 bg-gray-50 rounded-lg relative">
+                        {complainants.length > 1 && (
+                          <button type="button" onClick={() => setComplainants(prev => prev.filter((_, idx) => idx !== i))}
+                            className="absolute top-2 right-2 text-red-400 hover:text-red-600 text-xs">&times;</button>
+                        )}
+                        <p className="text-xs text-gray-500 mb-2">Person {i + 1}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input placeholder="Name (নাম)" value={c.name} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], name: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="ID (আইডি)" value={c.studentId} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], studentId: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Department" value={c.department} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], department: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Contact" value={c.contact} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], contact: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Advisor Name" value={c.advisorName} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], advisorName: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Father's Name" value={c.fatherName} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], fatherName: e.target.value }; setComplainants(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
+                {/* Accused Persons */}
                 <div className="bg-white rounded-xl shadow-md p-5 border border-orange-100">
-                  <p className="text-sm font-semibold text-gray-700 mb-1" style={{ color: '#0b2652' }}>Accused Details (অভিযুক্তের তথ্য)</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-semibold" style={{ color: '#0b2652' }}>Accused (অভিযুক্ত)</p>
+                    <button type="button" onClick={() => setAccusedPersons(prev => [...prev, { ...emptyAccused }])}
+                      className="text-xs px-2 py-1 rounded bg-orange-50 text-orange-600 hover:bg-orange-100">+ Add Another</button>
+                  </div>
                   <p className="text-xs text-gray-400 mb-3">যা যা তথ্য জানা আছে তা দিয়ে সাহায্য করুন</p>
-                  <div className="space-y-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Name (নাম)</label>
-                      <input type="text" value={t2AccusedName} onChange={e => setT2AccusedName(e.target.value)} placeholder="Accused person's name" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">ID (আইডি)</label>
-                      <input type="text" value={t2AccusedId} onChange={e => setT2AccusedId(e.target.value)} placeholder="Student/Employee ID" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Department (ডিপার্টমেন্ট)</label>
-                      <input type="text" value={t2AccusedDepartment} onChange={e => setT2AccusedDepartment(e.target.value)} placeholder="e.g. CSE, EEE" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Contact No (কন্টাক্ট নাম্বার)</label>
-                      <input type="tel" value={t2AccusedContact} onChange={e => setT2AccusedContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Guardian Contact (অভিভাবকের নাম্বার)</label>
-                      <input type="tel" value={t2GuardianContact} onChange={e => setT2GuardianContact(e.target.value)} placeholder="01XXXXXXXXX" className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" /></div>
+                  <div className="space-y-4">
+                    {accusedPersons.map((a, i) => (
+                      <div key={i} className="p-3 bg-orange-50/50 rounded-lg relative">
+                        {accusedPersons.length > 1 && (
+                          <button type="button" onClick={() => setAccusedPersons(prev => prev.filter((_, idx) => idx !== i))}
+                            className="absolute top-2 right-2 text-red-400 hover:text-red-600 text-xs">&times;</button>
+                        )}
+                        <p className="text-xs text-gray-500 mb-2">Person {i + 1}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input placeholder="Name (নাম)" value={a.name} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], name: e.target.value }; setAccusedPersons(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="ID (আইডি)" value={a.accusedStudentId} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], accusedStudentId: e.target.value }; setAccusedPersons(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Department" value={a.department} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], department: e.target.value }; setAccusedPersons(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Contact" value={a.contact} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], contact: e.target.value }; setAccusedPersons(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input placeholder="Guardian Contact" value={a.guardianContact} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], guardianContact: e.target.value }; setAccusedPersons(u); }}
+                            className="col-span-2 px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

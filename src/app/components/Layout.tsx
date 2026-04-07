@@ -133,10 +133,6 @@ export default function Layout() {
   ];
 
   const menuItems = allMenuItems.filter(item => {
-    // My Cases: visible for all except student
-    if (item.menuKey === 'my-cases') return role !== 'student';
-    // Notifications: visible for all
-    if (item.menuKey === 'notifications') return true;
     return isSuperAdmin || permissions[item.menuKey]?.canRead;
   });
 
@@ -144,10 +140,14 @@ export default function Layout() {
 
   // Settings sub-menu items
   const settingsSubItems = [
+    { path: '/settings/menu-access', label: 'Menu Access', superAdminOnly: true },
     { path: '/settings/permissions', label: 'Role Permissions', superAdminOnly: true },
     { path: '/settings/incident-routing', label: 'Incident Routing', superAdminOnly: true },
     { path: '/settings/case-viewing', label: 'Case Viewing', superAdminOnly: true },
     { path: '/settings/checklist', label: 'Verification Checklist', superAdminOnly: true },
+    { path: '/settings/ranks', label: 'Ranks (পদবি)', superAdminOnly: true },
+    { path: '/settings/articles', label: 'Articles (অনুচ্ছেদ)', superAdminOnly: true },
+    { path: '/settings/forwarding', label: 'Case Forwarding', superAdminOnly: true },
     { path: '/settings/profile', label: 'Profile', superAdminOnly: false },
   ].filter(item => isSuperAdmin || !item.superAdminOnly);
 

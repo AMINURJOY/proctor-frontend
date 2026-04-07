@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router';
-import { rolesApi, settingsApi, checklistApi } from '../services/api';
+import { rolesApi, settingsApi, checklistApi, ranksApi, articlesApi, forwardingRulesApi } from '../services/api';
+import { toast } from 'sonner';
 
 const menuItems = [
   'Dashboard', 'Submit Incident', 'Incidents (Type-1)', 'Cases',
   'Hearing Management', 'Confidential Cases', 'VC Monitoring',
-  'Reports', 'Users / Roles', 'Settings',
+  'My Cases', 'Notifications', 'Reports', 'Users / Roles', 'Settings',
 ];
 
 const menuLabelToKey: Record<string, string> = {
@@ -17,6 +18,8 @@ const menuLabelToKey: Record<string, string> = {
   'Hearing Management': 'hearings',
   'Confidential Cases': 'confidential',
   'VC Monitoring': 'monitoring',
+  'My Cases': 'my-cases',
+  'Notifications': 'notifications',
   'Reports': 'reports',
   'Users / Roles': 'users',
   'Settings': 'settings',
@@ -49,10 +52,14 @@ export default function SettingsPage() {
 
   // Determine active tab from route
   const getActiveTab = () => {
+    if (location.pathname.includes('/menu-access')) return 'menu-access';
     if (location.pathname.includes('/permissions')) return 'permissions';
     if (location.pathname.includes('/incident-routing')) return 'incident-routing';
     if (location.pathname.includes('/case-viewing')) return 'case-viewing';
     if (location.pathname.includes('/checklist')) return 'checklist';
+    if (location.pathname.includes('/ranks')) return 'ranks';
+    if (location.pathname.includes('/articles')) return 'articles';
+    if (location.pathname.includes('/forwarding')) return 'forwarding';
     return 'profile';
   };
   const activeTab = getActiveTab();
@@ -356,6 +363,11 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Menu Access Tab */}
+      {activeTab === 'menu-access' && isSuperAdmin && (
+        <MenuAccessManager />
+      )}
+
       {/* Role Permissions Tab */}
       {activeTab === 'permissions' && (
         <div>
@@ -600,6 +612,208 @@ export default function SettingsPage() {
       {activeTab === 'checklist' && isSuperAdmin && (
         <ChecklistManager />
       )}
+      {/* Ranks Tab */}
+      {activeTab === 'ranks' && isSuperAdmin && (
+        <RanksManager />
+      )}
+      {/* Articles Tab */}
+      {activeTab === 'articles' && isSuperAdmin && (
+        <ArticlesManager />
+      )}
+      {/* Forwarding Rules Tab */}
+      {activeTab === 'forwarding' && isSuperAdmin && (
+        <ForwardingManager />
+      )}
+    </div>
+  );
+}
+
+// Ranks manager component
+function RanksManager() {
+  const [ranks, setRanks] = useState<any[]>([]);
+  const [newName, setNewName] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  useEffect(() => { fetchRanks(); }, []);
+  const fetchRanks = async () => {
+    try { const res = await ranksApi.getAll(); setRanks(res.data.data || []); } catch {}
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Manage Ranks (পদবি)</h3>
+      <div className="space-y-2 mb-4">
+        {ranks.map((r: any) => (
+          <div key={r.id} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+            {editId === r.id ? (
+              <>
+                <input value={editName} onChange={e => setEditName(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm" />
+                <button onClick={async () => { await ranksApi.update(r.id, { name: editName }); setEditId(null); fetchRanks(); toast.success('Updated'); }}
+                  className="px-3 py-1 text-xs rounded bg-green-600 text-white">Save</button>
+                <button onClick={() => setEditId(null)} className="px-3 py-1 text-xs rounded border border-gray-300">Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-sm font-medium">{r.name}</span>
+                <button onClick={() => { setEditId(r.id); setEditName(r.name); }} className="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100">Edit</button>
+                <button onClick={async () => { await ranksApi.delete(r.id); fetchRanks(); toast.success('Deleted'); }}
+                  className="px-3 py-1 text-xs rounded text-red-600 hover:bg-red-50">Delete</button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New rank name..."
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) { ranksApi.create({ name: newName }).then(() => { setNewName(''); fetchRanks(); toast.success('Created'); }); } }} />
+        <button disabled={!newName.trim()} onClick={() => { ranksApi.create({ name: newName }).then(() => { setNewName(''); fetchRanks(); toast.success('Created'); }); }}
+          className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>Add</button>
+      </div>
+    </div>
+  );
+}
+
+// Articles manager component
+function ArticlesManager() {
+  const [articles, setArticles] = useState<any[]>([]);
+  const [newNo, setNewNo] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNo, setEditNo] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+
+  useEffect(() => { fetchArticles(); }, []);
+  const fetchArticles = async () => {
+    try { const res = await articlesApi.getAll(); setArticles(res.data.data || []); } catch {}
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Manage Articles (অনুচ্ছেদ / Code of Conduct)</h3>
+      <div className="space-y-2 mb-4">
+        {articles.map((a: any) => (
+          <div key={a.id} className="p-3 bg-gray-50 rounded-lg">
+            {editId === a.id ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input value={editNo} onChange={e => setEditNo(e.target.value)} placeholder="No." className="w-20 px-2 py-1 border border-gray-300 rounded text-sm" />
+                  <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title" className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm" />
+                </div>
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description" className="w-full px-2 py-1 border border-gray-300 rounded text-sm" rows={2} />
+                <div className="flex gap-2">
+                  <button onClick={async () => { await articlesApi.update(a.id, { articleNo: editNo, title: editTitle, description: editDesc }); setEditId(null); fetchArticles(); toast.success('Updated'); }}
+                    className="px-3 py-1 text-xs rounded bg-green-600 text-white">Save</button>
+                  <button onClick={() => setEditId(null)} className="px-3 py-1 text-xs rounded border border-gray-300">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-mono">{a.articleNo}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{a.title}</p>
+                  <p className="text-xs text-gray-500">{a.description}</p>
+                </div>
+                <button onClick={() => { setEditId(a.id); setEditNo(a.articleNo); setEditTitle(a.title); setEditDesc(a.description); }} className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100">Edit</button>
+                <button onClick={async () => { await articlesApi.delete(a.id); fetchArticles(); toast.success('Deleted'); }}
+                  className="px-2 py-1 text-xs rounded text-red-600 hover:bg-red-50">Delete</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+        <p className="text-sm font-medium text-blue-700">Add New Article</p>
+        <div className="flex gap-2">
+          <input value={newNo} onChange={e => setNewNo(e.target.value)} placeholder="Article No." className="w-24 px-2 py-1.5 border border-gray-300 rounded text-sm" />
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Title" className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm" />
+        </div>
+        <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description..." className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" rows={2} />
+        <button disabled={!newNo.trim() || !newTitle.trim()} onClick={() => {
+          articlesApi.create({ articleNo: newNo, title: newTitle, description: newDesc }).then(() => {
+            setNewNo(''); setNewTitle(''); setNewDesc(''); fetchArticles(); toast.success('Article added');
+          });
+        }} className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>Add Article</button>
+      </div>
+    </div>
+  );
+}
+
+// Forwarding rules manager
+function ForwardingManager() {
+  const [rules, setRules] = useState<any[]>([]);
+  const [fromRole, setFromRole] = useState('');
+  const [toRole, setToRole] = useState('');
+  const [resultStatus, setResultStatus] = useState('assigned');
+
+  const allRoles = ['student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'];
+  const allStatuses = ['assigned', 'forwarded-to-registrar', 'forwarded-to-committee', 'verified', 'hearing-scheduled'];
+
+  useEffect(() => { fetchRules(); }, []);
+  const fetchRules = async () => {
+    try { const res = await forwardingRulesApi.getAll(); setRules(res.data.data || []); } catch {}
+  };
+
+  const grouped = allRoles.reduce((acc, role) => {
+    acc[role] = rules.filter((r: any) => r.fromRole === role);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Case Forwarding Rules</h3>
+      <p className="text-sm text-gray-500 mb-4">Configure which roles can forward cases to which other roles.</p>
+
+      {/* Add new rule */}
+      <div className="bg-blue-50 rounded-lg p-4 mb-6">
+        <p className="text-sm font-medium text-blue-700 mb-2">Add Forwarding Rule</p>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">From Role</label>
+            <select value={fromRole} onChange={e => setFromRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
+              <option value="">Select...</option>
+              {allRoles.map(r => <option key={r} value={r}>{r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">To Role</label>
+            <select value={toRole} onChange={e => setToRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
+              <option value="">Select...</option>
+              {allRoles.map(r => <option key={r} value={r}>{r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Result Status</label>
+            <select value={resultStatus} onChange={e => setResultStatus(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
+              {allStatuses.map(s => <option key={s} value={s}>{s.split('-').join(' ')}</option>)}
+            </select>
+          </div>
+          <button disabled={!fromRole || !toRole}
+            onClick={() => { forwardingRulesApi.create({ fromRole, toRole, resultStatus }).then(() => { fetchRules(); toast.success('Rule added'); setFromRole(''); setToRole(''); }).catch((e: any) => toast.error(e?.response?.data?.message || 'Failed')); }}
+            className="px-4 py-1.5 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>Add Rule</button>
+        </div>
+      </div>
+
+      {/* Rules grouped by fromRole */}
+      <div className="space-y-3">
+        {allRoles.filter(r => grouped[r]?.length > 0).map(role => (
+          <div key={role} className="border border-gray-200 rounded-lg p-3">
+            <p className="text-sm font-semibold mb-2 capitalize">{role.split('-').join(' ')}</p>
+            <div className="flex flex-wrap gap-2">
+              {grouped[role].map((rule: any) => (
+                <div key={rule.id} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs">
+                  <span className="font-medium">&rarr; {rule.toRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                  <span className="text-gray-400">({rule.resultStatus})</span>
+                  <button onClick={() => { forwardingRulesApi.delete(rule.id).then(() => { fetchRules(); toast.success('Removed'); }); }}
+                    className="ml-1 text-red-500 hover:text-red-700">&times;</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -673,6 +887,128 @@ function ChecklistManager() {
           className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
           style={{ backgroundColor: '#0b2652' }}>
           Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Menu Access Manager - controls which role can see which menu
+function MenuAccessManager() {
+  const allMenus = [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'submit', label: 'Submit Incident' },
+    { key: 'incidents', label: 'Incidents (Type-1)' },
+    { key: 'cases', label: 'Cases' },
+    { key: 'hearings', label: 'Hearing Management' },
+    { key: 'confidential', label: 'Confidential Cases' },
+    { key: 'monitoring', label: 'VC Monitoring' },
+    { key: 'my-cases', label: 'My Cases' },
+    { key: 'notifications', label: 'Notifications' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'users', label: 'Users / Roles' },
+    { key: 'settings', label: 'Settings' },
+  ];
+
+  const [accessMap, setAccessMap] = useState<Record<string, Record<string, boolean>>>({});
+  const [roleIdMap, setRoleIdMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await rolesApi.getAll();
+        const roles = res.data.data || [];
+        const map: Record<string, Record<string, boolean>> = {};
+        const idMap: Record<string, string> = {};
+        for (const role of roles) {
+          const rName = role.roleName;
+          idMap[rName] = role.id;
+          map[rName] = {};
+          for (const perm of role.menuPermissions || []) {
+            map[rName][perm.menuKey] = perm.canRead;
+          }
+        }
+        setAccessMap(map);
+        setRoleIdMap(idMap);
+      } catch {} finally { setLoading(false); }
+    };
+    fetchData();
+  }, []);
+
+  const toggleAccess = (role: string, menuKey: string) => {
+    setAccessMap(prev => ({
+      ...prev,
+      [role]: { ...prev[role], [menuKey]: !prev[role]?.[menuKey] }
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      for (const role of roleLabels) {
+        const roleId = roleIdMap[role];
+        if (!roleId) continue;
+        const existingRes = await rolesApi.getPermissions(roleId);
+        const existing = existingRes.data.data?.menuPermissions || [];
+        const merged = allMenus.map(menu => {
+          const ex = existing.find((e: any) => e.menuKey === menu.key);
+          return {
+            menuKey: menu.key,
+            canRead: !!accessMap[role]?.[menu.key],
+            canCreate: ex?.canCreate || false,
+            canUpdate: ex?.canUpdate || false,
+            canDelete: ex?.canDelete || false,
+          };
+        });
+        await rolesApi.updatePermissions(roleId, { permissions: merged });
+      }
+      toast.success('Menu access saved successfully');
+    } catch {
+      toast.error('Failed to save menu access');
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+      <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Menu Access Management</h3>
+      <p className="text-sm text-gray-500 mb-4">Control which roles can see each menu item.</p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10">Menu</th>
+              {roleLabels.map(role => (
+                <th key={role} className="border border-gray-200 px-1 py-2 text-center font-semibold text-gray-600 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxWidth: '30px' }}>
+                  {formatRole(role)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allMenus.map(menu => (
+              <tr key={menu.key} className="hover:bg-blue-50/50">
+                <td className="border border-gray-200 px-3 py-2 font-medium text-gray-700 sticky left-0 bg-white z-10">{menu.label}</td>
+                {roleLabels.map(role => (
+                  <td key={role} className="border border-gray-200 px-1 py-2 text-center">
+                    <input type="checkbox" checked={!!accessMap[role]?.[menu.key]} onChange={() => toggleAccess(role, menu.key)}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={handleSave} disabled={saving}
+          className="px-6 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
+          {saving ? 'Saving...' : 'Save Menu Access'}
         </button>
       </div>
     </div>

@@ -39,6 +39,51 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+  rank?: string;
+}
+
+export interface Rank {
+  id: string;
+  name: string;
+  order: number;
+  isActive: boolean;
+}
+
+export interface Article {
+  id: string;
+  articleNo: string;
+  title: string;
+  description: string;
+  isActive: boolean;
+  order: number;
+}
+
+export interface ForwardingRule {
+  id: string;
+  fromRole: string;
+  toRole: string;
+  resultStatus?: string;
+  isActive: boolean;
+}
+
+export interface CaseComplainant {
+  id: string;
+  name: string;
+  studentId: string;
+  department?: string;
+  contact?: string;
+  advisorName?: string;
+  fatherName?: string;
+  fatherContact?: string;
+}
+
+export interface CaseAccused {
+  id: string;
+  name: string;
+  accusedStudentId: string;
+  department?: string;
+  contact?: string;
+  guardianContact?: string;
 }
 
 export interface Case {
@@ -69,6 +114,8 @@ export interface Case {
   accusedGuardianContact?: string;
   videoLink?: string;
   incidentDate?: string;
+  complainants?: CaseComplainant[];
+  accusedPersons?: CaseAccused[];
   documents: Document[];
   notes: Note[];
   hearings: Hearing[];
@@ -84,6 +131,7 @@ export interface Report {
   isDraft: boolean;
   isFinal: boolean;
   createdDate: string;
+  sectionsJson?: string;
 }
 
 export interface Document {

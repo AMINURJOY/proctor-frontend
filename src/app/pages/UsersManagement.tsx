@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { usersApi } from '../services/api';
+import { usersApi, ranksApi } from '../services/api';
 import { User, UserRole } from '../types';
 
 const allRoles: UserRole[] = [
@@ -16,7 +16,8 @@ export default function UsersManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<User | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '' });
+  const [ranks, setRanks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
   const canAccess = currentUser?.role === 'super-admin' || currentUser?.role === 'proctor';
@@ -25,8 +26,9 @@ export default function UsersManagement() {
     const fetchUsers = async () => {
       setLoading(true);
       try {
-        const response = await usersApi.getAll();
-        setUsers(response.data.data || []);
+        const [usersRes, ranksRes] = await Promise.all([usersApi.getAll(), ranksApi.getAll()]);
+        setUsers(usersRes.data.data || []);
+        setRanks(ranksRes.data.data || []);
       } catch {
         setUsers([]);
       } finally {
@@ -267,6 +269,19 @@ export default function UsersManagement() {
                   >
                     {allRoles.map(role => (
                       <option key={role} value={role}>{formatRole(role)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rank (পদবি)</label>
+                  <select
+                    value={formData.rank}
+                    onChange={(e) => setFormData(prev => ({ ...prev, rank: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select rank...</option>
+                    {ranks.filter((r: any) => r.isActive).map((r: any) => (
+                      <option key={r.id} value={r.name}>{r.name}</option>
                     ))}
                   </select>
                 </div>

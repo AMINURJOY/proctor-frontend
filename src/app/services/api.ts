@@ -135,6 +135,7 @@ export const casesApi = {
   createReport: (caseId: string, data: { content: string; isDraft?: boolean; isFinal?: boolean }) =>
     api.post(`/cases/${caseId}/reports`, data),
   getReports: (caseId: string) => api.get(`/cases/${caseId}/reports`),
+  updateReport: (caseId: string, reportId: string, data: any) => api.put(`/cases/${caseId}/reports/${reportId}`, data),
   getMyCases: (params?: any) => api.get('/cases/my-cases', { params }),
   getMyCasesCount: () => api.get('/cases/my-cases/count'),
 };
@@ -187,4 +188,26 @@ export const settingsApi = {
   getByCategory: (category: string) => api.get(`/settings/category/${category}`),
   getByKey: (key: string) => api.get(`/settings/${key}`),
   update: (key: string, value: string) => api.put(`/settings/${key}`, { value }),
+};
+
+export const articlesApi = {
+  getAll: () => api.get('/articles'),
+  create: (data: { articleNo: string; title: string; description: string; order?: number }) => api.post('/articles', data),
+  update: (id: string, data: any) => api.put(`/articles/${id}`, data),
+  delete: (id: string) => api.delete(`/articles/${id}`),
+};
+
+export const ranksApi = {
+  getAll: () => api.get('/ranks'),
+  create: (data: { name: string; order?: number }) => api.post('/ranks', data),
+  update: (id: string, data: any) => api.put(`/ranks/${id}`, data),
+  delete: (id: string) => api.delete(`/ranks/${id}`),
+};
+
+export const forwardingRulesApi = {
+  getAll: () => api.get('/forwarding-rules'),
+  getForRole: (role: string) => api.get(`/forwarding-rules/from/${role}`),
+  create: (data: { fromRole: string; toRole: string; resultStatus?: string }) => api.post('/forwarding-rules', data),
+  update: (id: string, data: any) => api.put(`/forwarding-rules/${id}`, data),
+  delete: (id: string) => api.delete(`/forwarding-rules/${id}`),
 };
