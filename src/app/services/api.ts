@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// Get the base URL from environment variables (Coolify) or fallback to local for development
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5106';
+
 const api = axios.create({
-  baseURL: 'http://localhost:5106/api',
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -64,7 +67,8 @@ api.interceptors.response.use(
       }
 
       try {
-        const response = await axios.post('http://localhost:5106/api/auth/refresh', { refreshToken });
+        // Updated to use dynamic BASE_URL for refresh calls
+        const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, { refreshToken });
         const { token: newToken, refreshToken: newRefreshToken } = response.data.data;
 
         localStorage.setItem('accessToken', newToken);
@@ -90,8 +94,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-export const API_BASE_URL = 'http://localhost:5106';
 
 export default api;
 
@@ -172,7 +174,6 @@ export const notificationsApi = {
 };
 
 // System Settings
-// Verification Checklist
 export const checklistApi = {
   getAll: () => api.get('/verification-checklist'),
   create: (data: { label: string }) => api.post('/verification-checklist', data),
