@@ -69,11 +69,12 @@ export default function LoginPage() {
 
           <div className="relative flex w-full flex-col justify-between gap-10 lg:min-h-[80vh]">
             <div className="max-w-2xl">
-              <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white/85 backdrop-blur">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
+              <div className="mb-6 flex items-center gap-4">
+                <img src="/daffodil_logo.svg" alt="DIU" className="w-16 h-16 rounded-xl bg-white/10 p-1" />
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white/85 backdrop-blur">
                   <LockIcon />
+                  Secure access for university case operations
                 </div>
-                Secure access for university case operations
               </div>
 
               <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">

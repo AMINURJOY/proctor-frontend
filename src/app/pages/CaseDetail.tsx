@@ -1515,7 +1515,7 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
   const roleLabel = targetRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   // Simple mode: just a forward button without user selection (for single-person roles like proctor, registrar)
-  if (simple || users.length <= 1) {
+  if (simple) {
     return (
       <div className="flex flex-wrap gap-2 mb-2">
         <button disabled={actionLoading} onClick={() => withLoading(() => onForward(targetRole))}

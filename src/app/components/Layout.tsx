@@ -175,16 +175,10 @@ export default function Layout() {
       {/* Logo */}
       <div className="p-6 border-b border-blue-900 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
+          <img src="/daffodil_logo.svg" alt="DIU" className="w-10 h-10 rounded-lg" />
           <div>
-            <h1 className="text-white font-semibold text-sm">Proctor Office</h1>
-            <p className="text-blue-200 text-xs">Automation System</p>
+            <h1 className="text-white font-semibold text-sm">Daffodil International University</h1>
+            <p className="text-blue-200 text-xs">Proctor Office Automation</p>
           </div>
         </div>
         {/* Close button - mobile only */}

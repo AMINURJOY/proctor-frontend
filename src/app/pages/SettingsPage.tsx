@@ -814,6 +814,49 @@ function ForwardingManager() {
           </div>
         ))}
       </div>
+      {/* Case Close Permission */}
+      <div className="mt-6 border border-gray-200 rounded-lg p-4">
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Case Close Permission</h4>
+        <p className="text-xs text-gray-500 mb-3">Which roles can close/resolve cases</p>
+        <div className="flex flex-wrap gap-3">
+          {allRoles.map(role => {
+            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__close__' && r.isActive);
+            return (
+              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={hasRule} onChange={async () => {
+                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__close__');
+                  if (existing) { await forwardingRulesApi.delete(existing.id); }
+                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__close__', resultStatus: 'closed' }); }
+                  fetchRules();
+                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Hearing Schedule Permission */}
+      <div className="mt-4 border border-gray-200 rounded-lg p-4">
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Hearing Schedule Permission</h4>
+        <p className="text-xs text-gray-500 mb-3">Which roles can schedule hearings</p>
+        <div className="flex flex-wrap gap-3">
+          {allRoles.map(role => {
+            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__hearing__' && r.isActive);
+            return (
+              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={hasRule} onChange={async () => {
+                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__hearing__');
+                  if (existing) { await forwardingRulesApi.delete(existing.id); }
+                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__hearing__', resultStatus: 'hearing-scheduled' }); }
+                  fetchRules();
+                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

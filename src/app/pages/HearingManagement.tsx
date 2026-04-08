@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { MailIcon, PhoneIcon, CheckIcon, ClockIcon, EyeIcon } from '../components/Icons';
-import { hearingsApi, casesApi } from '../services/api';
+import { hearingsApi, casesApi, forwardingRulesApi } from '../services/api';
+import { toast } from 'sonner';
 import { Case } from '../types';
 
 export default function HearingManagement() {
@@ -59,7 +60,16 @@ export default function HearingManagement() {
   const upcoming = allHearings.filter(h => h.status === 'scheduled');
   const completed = allHearings.filter(h => h.status === 'completed');
 
-  const canSchedule = ['assistant-proctor', 'proctor', 'deputy-proctor', 'disciplinary-committee'].includes(currentUser?.role || '');
+  const [canSchedule, setCanSchedule] = useState(false);
+
+  useEffect(() => {
+    const role = currentUser?.role || '';
+    if (role === 'super-admin') { setCanSchedule(true); return; }
+    forwardingRulesApi.getForRole(role).then(res => {
+      const rules = res.data.data || [];
+      setCanSchedule(rules.some((r: any) => r.toRole === '__hearing__' && r.isActive));
+    }).catch(() => setCanSchedule(false));
+  }, [currentUser?.role]);
 
   const tabs = [
     { id: 'upcoming' as const, label: 'Upcoming', count: upcoming.length },
@@ -178,23 +188,43 @@ export default function HearingManagement() {
                       </div>
                     </div>
 
-                    {/* Notification Status */}
+                    {/* Hearing Remarks */}
                     {canSchedule && (
                       <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-500 mb-2">Notification Status:</p>
-                        <div className="flex flex-wrap gap-3">
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                            <span className="text-gray-600">Email sent to student</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                            <span className="text-gray-600">SMS sent to student</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                            <span className="text-gray-600">Email pending to committee</span>
-                          </div>
+                        <p className="text-xs font-medium text-gray-600 mb-2">Hearing Remarks (বক্তব্য / সাক্ষ্য)</p>
+                        <textarea
+                          defaultValue={hearing.remarks || ''}
+                          placeholder="Write victim statements, witness testimony, and hearing observations here..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                          rows={3}
+                          id={`remarks-${hearing.id}`}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              const el = document.getElementById(`remarks-${hearing.id}`) as HTMLTextAreaElement;
+                              if (!el?.value.trim()) return;
+                              try {
+                                await hearingsApi.update(hearing.id, { remarks: el.value });
+                                toast.success('Remarks saved');
+                              } catch { toast.error('Failed to save remarks'); }
+                            }}
+                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >Save Remarks</button>
+                          <button
+                            onClick={async () => {
+                              const el = document.getElementById(`remarks-${hearing.id}`) as HTMLTextAreaElement;
+                              try {
+                                if (el?.value.trim()) await hearingsApi.update(hearing.id, { remarks: el.value });
+                                await hearingsApi.updateStatus(hearing.id, { status: 'completed' });
+                                toast.success('Hearing completed');
+                                // Refresh
+                                const res = await hearingsApi.getAll();
+                                if (res.data.data) setHearingsData(res.data.data);
+                              } catch { toast.error('Failed to complete hearing'); }
+                            }}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700"
+                          ><CheckIcon /> Complete Hearing</button>
                         </div>
                       </div>
                     )}
@@ -227,6 +257,12 @@ export default function HearingManagement() {
                           <div className="bg-gray-50 rounded-lg p-3 mt-2">
                             <p className="text-xs text-gray-500 mb-1">Hearing Notes:</p>
                             <p className="text-sm text-gray-700">{hearing.notes}</p>
+                          </div>
+                        )}
+                        {hearing.remarks && (
+                          <div className="bg-blue-50 rounded-lg p-3 mt-2">
+                            <p className="text-xs text-blue-600 mb-1">Hearing Remarks (বক্তব্য):</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{hearing.remarks}</p>
                           </div>
                         )}
                       </div>
