@@ -208,6 +208,7 @@ export const ranksApi = {
 export const forwardingRulesApi = {
   getAll: () => api.get('/forwarding-rules'),
   getForRole: (role: string) => api.get(`/forwarding-rules/from/${role}`),
+  getSpecial: (role: string) => api.get(`/forwarding-rules/special/${role}`),
   create: (data: { fromRole: string; toRole: string; resultStatus?: string }) => api.post('/forwarding-rules', data),
   update: (id: string, data: any) => api.put(`/forwarding-rules/${id}`, data),
   delete: (id: string) => api.delete(`/forwarding-rules/${id}`),

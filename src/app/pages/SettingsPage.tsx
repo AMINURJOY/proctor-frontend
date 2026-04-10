@@ -363,16 +363,86 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Menu Access Tab */}
+      {/* Menu Access Tab — controls who can SEE each menu (R only) */}
       {activeTab === 'menu-access' && isSuperAdmin && (
-        <MenuAccessManager />
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-gray-500">Toggle which menus each role can see in the sidebar</p>
+            <div className="flex items-center gap-3">
+              {savedMessage && (
+                <span className={`text-sm ${savedMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                  {savedMessage}
+                </span>
+              )}
+              <button
+                onClick={handleSavePermissions}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
+                style={{ backgroundColor: '#0b2652' }}
+              >
+                {saving ? 'Saving...' : 'Save Menu Access'}
+              </button>
+            </div>
+          </div>
+
+          {permLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200" style={{ backgroundColor: '#f5f7fb' }}>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
+                        Menu Item
+                      </th>
+                      {roleLabels.map(role => (
+                        <th key={role} className="px-2 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[80px]">
+                          <div className="whitespace-nowrap">{formatRole(role)}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {menuItems.map((menu) => (
+                      <tr key={menu} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-100">
+                          {menu}
+                        </td>
+                        {roleLabels.map(role => {
+                          const perms = permissions[role]?.[menu] || { create: false, read: false, update: false, delete: false };
+                          return (
+                            <td key={role} className="px-2 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={perms.read}
+                                onChange={() => togglePermission(role, menu, 'read')}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                title="Visible in sidebar"
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          <div className="mt-4 bg-white rounded-xl shadow-md p-4 border border-gray-100">
+            <p className="text-sm text-gray-600">A checked box means that role will see this menu in the sidebar. CRUD operations within each menu are configured under <strong>Permissions (CRUD)</strong>.</p>
+          </div>
+        </div>
       )}
 
-      {/* Role Permissions Tab */}
+      {/* Permissions (CRUD) Tab — fine-grained C/U/D operations per menu */}
       {activeTab === 'permissions' && (
         <div>
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">Configure CRUD access for each role per menu item</p>
+            <p className="text-sm text-gray-500">Configure Create, Update, and Delete operations for each role per menu item. (Visibility is controlled in <strong>Menu Access</strong>.)</p>
             <div className="flex items-center gap-3">
               {savedMessage && (
                 <span className={`text-sm ${savedMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
@@ -404,10 +474,10 @@ export default function SettingsPage() {
                         Menu Item
                       </th>
                       {roleLabels.map(role => (
-                        <th key={role} className="px-2 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[120px]">
+                        <th key={role} className="px-2 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[100px]">
                           <div className="whitespace-nowrap">{formatRole(role)}</div>
                           <div className="flex justify-center gap-1 mt-1 text-[10px] text-gray-400 font-normal">
-                            <span>C</span><span>R</span><span>U</span><span>D</span>
+                            <span>C</span><span>U</span><span>D</span>
                           </div>
                         </th>
                       ))}
@@ -424,7 +494,7 @@ export default function SettingsPage() {
                           return (
                             <td key={role} className="px-2 py-3">
                               <div className="flex justify-center gap-1">
-                                {(['create', 'read', 'update', 'delete'] as const).map(perm => (
+                                {(['create', 'update', 'delete'] as const).map(perm => (
                                   <label key={perm} className="cursor-pointer" title={perm}>
                                     <input
                                       type="checkbox"
@@ -449,7 +519,6 @@ export default function SettingsPage() {
             <p className="text-sm font-medium text-gray-700 mb-2">Legend:</p>
             <div className="flex flex-wrap gap-4 text-sm text-gray-600">
               <span><strong>C</strong> = Create</span>
-              <span><strong>R</strong> = Read</span>
               <span><strong>U</strong> = Update</span>
               <span><strong>D</strong> = Delete</span>
             </div>
@@ -936,124 +1005,3 @@ function ChecklistManager() {
   );
 }
 
-// Menu Access Manager - controls which role can see which menu
-function MenuAccessManager() {
-  const allMenus = [
-    { key: 'dashboard', label: 'Dashboard' },
-    { key: 'submit', label: 'Submit Incident' },
-    { key: 'incidents', label: 'Incidents (Type-1)' },
-    { key: 'cases', label: 'Cases' },
-    { key: 'hearings', label: 'Hearing Management' },
-    { key: 'confidential', label: 'Confidential Cases' },
-    { key: 'monitoring', label: 'VC Monitoring' },
-    { key: 'my-cases', label: 'My Cases' },
-    { key: 'notifications', label: 'Notifications' },
-    { key: 'reports', label: 'Reports' },
-    { key: 'users', label: 'Users / Roles' },
-    { key: 'settings', label: 'Settings' },
-  ];
-
-  const [accessMap, setAccessMap] = useState<Record<string, Record<string, boolean>>>({});
-  const [roleIdMap, setRoleIdMap] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await rolesApi.getAll();
-        const roles = res.data.data || [];
-        const map: Record<string, Record<string, boolean>> = {};
-        const idMap: Record<string, string> = {};
-        for (const role of roles) {
-          const rName = role.roleName;
-          idMap[rName] = role.id;
-          map[rName] = {};
-          for (const perm of role.menuPermissions || []) {
-            map[rName][perm.menuKey] = perm.canRead;
-          }
-        }
-        setAccessMap(map);
-        setRoleIdMap(idMap);
-      } catch {} finally { setLoading(false); }
-    };
-    fetchData();
-  }, []);
-
-  const toggleAccess = (role: string, menuKey: string) => {
-    setAccessMap(prev => ({
-      ...prev,
-      [role]: { ...prev[role], [menuKey]: !prev[role]?.[menuKey] }
-    }));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      for (const role of roleLabels) {
-        const roleId = roleIdMap[role];
-        if (!roleId) continue;
-        const existingRes = await rolesApi.getPermissions(roleId);
-        const existing = existingRes.data.data?.menuPermissions || [];
-        const merged = allMenus.map(menu => {
-          const ex = existing.find((e: any) => e.menuKey === menu.key);
-          return {
-            menuKey: menu.key,
-            canRead: !!accessMap[role]?.[menu.key],
-            canCreate: ex?.canCreate || false,
-            canUpdate: ex?.canUpdate || false,
-            canDelete: ex?.canDelete || false,
-          };
-        });
-        await rolesApi.updatePermissions(roleId, { permissions: merged });
-      }
-      toast.success('Menu access saved successfully');
-    } catch {
-      toast.error('Failed to save menu access');
-    } finally { setSaving(false); }
-  };
-
-  if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
-
-  return (
-    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-      <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Menu Access Management</h3>
-      <p className="text-sm text-gray-500 mb-4">Control which roles can see each menu item.</p>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10">Menu</th>
-              {roleLabels.map(role => (
-                <th key={role} className="border border-gray-200 px-1 py-2 text-center font-semibold text-gray-600 whitespace-nowrap" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxWidth: '30px' }}>
-                  {formatRole(role)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {allMenus.map(menu => (
-              <tr key={menu.key} className="hover:bg-blue-50/50">
-                <td className="border border-gray-200 px-3 py-2 font-medium text-gray-700 sticky left-0 bg-white z-10">{menu.label}</td>
-                {roleLabels.map(role => (
-                  <td key={role} className="border border-gray-200 px-1 py-2 text-center">
-                    <input type="checkbox" checked={!!accessMap[role]?.[menu.key]} onChange={() => toggleAccess(role, menu.key)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex items-center gap-3 mt-4">
-        <button onClick={handleSave} disabled={saving}
-          className="px-6 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
-          {saving ? 'Saving...' : 'Save Menu Access'}
-        </button>
-      </div>
-    </div>
-  );
-}

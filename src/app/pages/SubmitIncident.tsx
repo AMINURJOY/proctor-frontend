@@ -233,7 +233,7 @@ export default function SubmitIncident() {
           )}
           <div className="flex gap-3 justify-center">
             <button
-              onClick={() => navigate('/cases')}
+              onClick={() => navigate('/my-cases')}
               className="px-4 py-2 rounded-lg text-white"
               style={{ backgroundColor: '#0b2652' }}
             >
@@ -252,16 +252,8 @@ export default function SubmitIncident() {
                 setT2IsConfidential(false);
                 setT2IncidentDate('');
                 setT2VideoLink('');
-                setT2StudentDepartment('');
-                setT2StudentContact('');
-                setT2AdvisorName('');
-                setT2FatherName('');
-                setT2FatherContact('');
-                setT2AccusedName('');
-                setT2AccusedId('');
-                setT2AccusedDepartment('');
-                setT2AccusedContact('');
-                setT2GuardianContact('');
+                setComplainants([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
+                setAccusedPersons([{ ...emptyAccused }]);
                 setCaseNumber('');
               }}
               className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"

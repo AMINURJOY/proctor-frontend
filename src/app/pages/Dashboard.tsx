@@ -45,42 +45,41 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  // Compute the cases this user is allowed to see (role-scoped). Stats, charts, and tabs all derive from this.
+  const visibleCases = (() => {
+    // VC and super-admin see everything
+    if (role === 'super-admin' || role === 'vc') return cases;
+
+    // Students see only their own submissions
+    if (role === 'student') {
+      return cases.filter(c => c.studentId === currentUser?.id || (c as any).submittedByUserId === currentUser?.id);
+    }
+
+    // All other staff: cases assigned to them OR forwarded to their role
+    const confidentialAccess = ['proctor', 'female-coordinator', 'sexual-harassment-committee'].includes(role);
+    return cases.filter(c => {
+      if (c.type === 'confidential' && !confidentialAccess) return false;
+      return c.forwardedToRole === role || c.assignedTo === currentUser?.name;
+    });
+  })();
+
   // Filter cases based on role - uses forwardedToRole for accurate matching
   const getMyTasks = () => {
-    return cases.filter(c => {
+    return visibleCases.filter(c => {
       if (c.status === 'closed' || c.status === 'resolved' || c.status === 'rejected') return false;
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
-
       switch (role) {
-        case 'student': return c.studentId === currentUser?.id;
+        case 'student': return true; // any open case they submitted
         case 'coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type !== 'confidential';
         case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type === 'confidential';
-        case 'proctor': return c.forwardedToRole === 'proctor';
-        case 'assistant-proctor': return c.forwardedToRole === 'assistant-proctor';
-        case 'deputy-proctor': return c.forwardedToRole === 'deputy-proctor';
-        case 'registrar': return c.forwardedToRole === 'registrar';
-        case 'disciplinary-committee': return c.forwardedToRole === 'disciplinary-committee';
-        case 'sexual-harassment-committee': return c.forwardedToRole === 'sexual-harassment-committee';
         case 'vc': return false; // VC only monitors
         case 'super-admin': return true;
-        default: return false;
+        default: return c.forwardedToRole === role; // only what's currently in their role queue
       }
     });
   };
 
-  const getPendingCases = () => {
-    return cases.filter(c => {
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
-      return !['closed', 'resolved', 'rejected'].includes(c.status);
-    });
-  };
-
-  const getCompletedCases = () => {
-    return cases.filter(c => {
-      if (c.type === 'confidential' && !['proctor', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'].includes(role)) return false;
-      return ['closed', 'resolved', 'rejected'].includes(c.status);
-    });
-  };
+  const getPendingCases = () => visibleCases.filter(c => !['closed', 'resolved', 'rejected'].includes(c.status));
+  const getCompletedCases = () => visibleCases.filter(c => ['closed', 'resolved', 'rejected'].includes(c.status));
 
   const myTasks = getMyTasks();
   const pendingCases = getPendingCases();
@@ -112,26 +111,37 @@ export default function Dashboard() {
     'urgent': 'bg-red-100 text-red-700'
   };
 
-  const statsCards = [
-    { label: 'Total Cases', value: dashboardStats.totalCases, icon: CasesIcon, color: '#0b2652', bgColor: '#e0e7ff' },
+  // For VC/super-admin stat cards we still surface the global totals from the backend.
+  // For all other roles, derive stats from visibleCases (their personal subset).
+  const isGlobalView = role === 'super-admin' || role === 'vc';
+  const totalCount = isGlobalView ? dashboardStats.totalCases : visibleCases.length;
+  const totalLabel = role === 'student' ? 'My Cases' : (isGlobalView ? 'Total Cases' : 'My Cases');
+
+  const isStudent = role === 'student';
+  const baseStatsCards = [
+    { label: totalLabel, value: totalCount, icon: CasesIcon, color: '#0b2652', bgColor: '#e0e7ff' },
     { label: 'My Tasks', value: myTasks.length, icon: ClockIcon, color: '#f59e0b', bgColor: '#fef3c7' },
     { label: 'Pending', value: pendingCases.length, icon: EyeIcon, color: '#1e3a8a', bgColor: '#dbeafe' },
     { label: 'Resolved', value: completedCases.length, icon: CheckIcon, color: '#16a34a', bgColor: '#dcfce7' }
   ];
+  // Students don't have a "tasks" workload — drop the My Tasks card.
+  const statsCards = isStudent ? baseStatsCards.filter(s => s.label !== 'My Tasks') : baseStatsCards;
 
+  // Charts derive from visibleCases so non-VC roles only see their scoped data
+  const chartCases = visibleCases;
   const pieData = [
-    { name: 'Submitted', value: cases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
-    { name: 'Under Review', value: cases.filter(c => c.status === 'under-review' || c.status === 'verified').length, color: '#4f46e5' },
-    { name: 'Hearing', value: cases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
-    { name: 'On Hold', value: cases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
-    { name: 'Closed', value: cases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
-    { name: 'Rejected', value: cases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
+    { name: 'Submitted', value: chartCases.filter(c => c.status === 'submitted').length, color: '#3b82f6' },
+    { name: 'Under Review', value: chartCases.filter(c => c.status === 'under-review' || c.status === 'verified').length, color: '#4f46e5' },
+    { name: 'Hearing', value: chartCases.filter(c => c.status === 'hearing-scheduled').length, color: '#f97316' },
+    { name: 'On Hold', value: chartCases.filter(c => c.status === 'on-hold').length, color: '#f59e0b' },
+    { name: 'Closed', value: chartCases.filter(c => c.status === 'closed' || c.status === 'resolved').length, color: '#16a34a' },
+    { name: 'Rejected', value: chartCases.filter(c => c.status === 'rejected').length, color: '#dc2626' },
   ].filter(d => d.value > 0);
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const lineData = (() => {
     const counts: Record<string, number> = {};
-    cases.forEach(c => {
+    chartCases.forEach(c => {
       const d = new Date(c.createdDate);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
       counts[key] = (counts[key] || 0) + 1;
@@ -176,12 +186,14 @@ export default function Dashboard() {
     </div>
   );
 
-  const tabs = [
+  const allTabs = [
     { id: 'overview' as const, label: 'Overview' },
     { id: 'my-tasks' as const, label: `My Tasks (${myTasks.length})` },
     { id: 'pending' as const, label: `Pending (${pendingCases.length})` },
     { id: 'completed' as const, label: `Completed (${completedCases.length})` },
   ];
+  // Students don't have a tasks workload tab — they just see overview/pending/completed.
+  const tabs = isStudent ? allTabs.filter(t => t.id !== 'my-tasks') : allTabs;
 
   if (loading) {
     return (
@@ -201,7 +213,9 @@ export default function Dashboard() {
           Welcome back, {currentUser?.name}
         </h1>
         <p className="text-gray-600">
-          Here's what's happening with your cases today
+          {role === 'student' && 'Here are the cases you have submitted.'}
+          {(role === 'super-admin' || role === 'vc') && 'Global system overview.'}
+          {role !== 'student' && role !== 'super-admin' && role !== 'vc' && "Here's your case workload."}
         </p>
       </div>
 
@@ -248,8 +262,8 @@ export default function Dashboard() {
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div>
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Charts — students only see status distribution, no monthly trends */}
+              <div className={`grid grid-cols-1 ${isStudent ? '' : 'lg:grid-cols-2'} gap-6 mb-6`}>
                 <div>
                   <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Case Status Distribution</h3>
                   <ResponsiveContainer width="100%" height={280}>
@@ -265,6 +279,7 @@ export default function Dashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
+                {!isStudent && (
                 <div>
                   <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Monthly Case Trends</h3>
                   <ResponsiveContainer width="100%" height={280}>
@@ -278,6 +293,7 @@ export default function Dashboard() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+                )}
               </div>
 
               {/* Recent Activity */}

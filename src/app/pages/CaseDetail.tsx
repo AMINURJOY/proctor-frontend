@@ -703,6 +703,14 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   const [hearingLocation, setHearingLocation] = useState('');
   const verdictFileInputRef = useRef<HTMLInputElement>(null);
   const [verdictUploading, setVerdictUploading] = useState(false);
+  const [canHearing, setCanHearing] = useState(false);
+
+  useEffect(() => {
+    if (!role) return;
+    forwardingRulesApi.getSpecial(role).then(res => {
+      setCanHearing(!!res.data.data?.canHearing);
+    }).catch(() => {});
+  }, [role]);
 
   const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected' || caseItem.status === 'police-case';
 
@@ -793,17 +801,19 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          <div className="bg-indigo-50 rounded-lg p-4">
-            <p className="text-sm font-medium text-indigo-700 mb-2">Schedule Hearing</p>
-            <div className="space-y-2">
-              <input type="date" value={hearingDate} onChange={e => setHearingDate(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-              <input type="time" value={hearingTime} onChange={e => setHearingTime(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-              <input type="text" value={hearingLocation} onChange={e => setHearingLocation(e.target.value)} placeholder="Location" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-              <button disabled={actionLoading || !hearingDate || !hearingTime || !hearingLocation} onClick={() => withLoading(handleScheduleHearing)}
-                className="w-full px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">Schedule</button>
+        <div className={`grid grid-cols-1 ${canHearing ? 'sm:grid-cols-2' : ''} gap-4 mb-4`}>
+          {canHearing && (
+            <div className="bg-indigo-50 rounded-lg p-4">
+              <p className="text-sm font-medium text-indigo-700 mb-2">Schedule Hearing</p>
+              <div className="space-y-2">
+                <input type="date" value={hearingDate} onChange={e => setHearingDate(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                <input type="time" value={hearingTime} onChange={e => setHearingTime(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                <input type="text" value={hearingLocation} onChange={e => setHearingLocation(e.target.value)} placeholder="Location" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                <button disabled={actionLoading || !hearingDate || !hearingTime || !hearingLocation} onClick={() => withLoading(handleScheduleHearing)}
+                  className="w-full px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">Schedule</button>
+              </div>
             </div>
-          </div>
+          )}
           <div className="bg-purple-50 rounded-lg p-4">
             <p className="text-sm font-medium text-purple-700 mb-2">Draft Report</p>
             <div className="space-y-2">
@@ -872,7 +882,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   // Registrar panel
   if (role === 'registrar') {
-    return <RegistrarPanel actionLoading={actionLoading} withLoading={withLoading} onForward={onForward} caseItem={caseItem} recommendation={recommendation} setRecommendation={setRecommendation} />;
+    return <RegistrarPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} recommendation={recommendation} setRecommendation={setRecommendation} />;
   }
 
   // Disciplinary Committee panel
@@ -908,9 +918,15 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
   setVerdictUploading: (v: boolean) => void;
 }) {
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+  const [canClose, setCanClose] = useState(false);
   useEffect(() => {
     forwardingRulesApi.getForRole('disciplinary-committee').then(res => {
-      setAllowedTargets((res.data.data || []).filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      setAllowedTargets((res.data.data || [])
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
+    }).catch(() => {});
+    forwardingRulesApi.getSpecial('disciplinary-committee').then(res => {
+      setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
   }, []);
 
@@ -969,13 +985,15 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
             <ForwardIcon /> Forward to {target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
           </button>
         ))}
-        <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(async () => {
-          await casesApi.createReport(caseItem.id, { content: verdict, isDraft: false, isFinal: true });
-          await onStatusChange('closed', { verdict });
-        })}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
-          <CheckIcon /> Issue Verdict & Close Case
-        </button>
+        {canClose && (
+          <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(async () => {
+            await casesApi.createReport(caseItem.id, { content: verdict, isDraft: false, isFinal: true });
+            await onStatusChange('closed', { verdict });
+          })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
+            <CheckIcon /> Issue Verdict & Close Case
+          </button>
+        )}
         <button onClick={() => window.open(`/cases/${caseItem.id}/report`, '_blank')}
           className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
           <FileIcon /> View / Print Report
@@ -995,7 +1013,9 @@ function FemaleCoordinatorPanel({ actionLoading, withLoading, onStatusChange, on
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   useEffect(() => {
     forwardingRulesApi.getForRole('female-coordinator').then(res => {
-      setAllowedTargets((res.data.data || []).filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      setAllowedTargets((res.data.data || [])
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
     }).catch(() => {});
   }, []);
 
@@ -1042,9 +1062,15 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
   setInvestigationNotes: (v: string) => void;
 }) {
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+  const [canClose, setCanClose] = useState(false);
   useEffect(() => {
     forwardingRulesApi.getForRole('sexual-harassment-committee').then(res => {
-      setAllowedTargets((res.data.data || []).filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      setAllowedTargets((res.data.data || [])
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
+    }).catch(() => {});
+    forwardingRulesApi.getSpecial('sexual-harassment-committee').then(res => {
+      setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
   }, []);
 
@@ -1071,14 +1097,12 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50">
           <SendIcon /> Add Investigation Report
         </button>
-        <button disabled={actionLoading || !investigationNotes.trim()} onClick={() => withLoading(() => onStatusChange('resolved', { verdict: investigationNotes }))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-          <CheckIcon /> Issue Decision
-        </button>
-        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('closed'))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
-          <CheckIcon /> Close Case
-        </button>
+        {canClose && (
+          <button disabled={actionLoading || !investigationNotes.trim()} onClick={() => withLoading(() => onStatusChange('closed', { verdict: investigationNotes }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
+            <CheckIcon /> Close Case
+          </button>
+        )}
         {allowedTargets.includes('registrar') && (
           <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
@@ -1105,11 +1129,18 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
   caseItem: Case;
 }) {
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+  const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
     forwardingRulesApi.getForRole('proctor').then(res => {
       const rules = res.data.data || [];
-      setAllowedTargets(rules.filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      // Defensive: also strip any leftover __close__/__hearing__ in case backend hasn't filtered
+      setAllowedTargets(rules
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
+    }).catch(() => {});
+    forwardingRulesApi.getSpecial('proctor').then(res => {
+      setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
   }, []);
 
@@ -1128,14 +1159,18 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resolved'))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50">
-          <CheckIcon /> Resolve Case
-        </button>
-        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('police-case'))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800 disabled:opacity-50">
-          <XIcon /> Mark as Police Case
-        </button>
+        {canClose && (
+          <>
+            <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('closed'))}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
+              <CheckIcon /> Close Case
+            </button>
+            <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('police-case'))}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800 disabled:opacity-50">
+              <XIcon /> Mark as Police Case
+            </button>
+          </>
+        )}
         {allowedTargets.includes('registrar') && (
           <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
@@ -1168,20 +1203,27 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
 }
 
 // Registrar panel with dynamic forwarding rules
-function RegistrarPanel({ actionLoading, withLoading, onForward, caseItem, recommendation, setRecommendation }: {
+function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem, recommendation, setRecommendation }: {
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
+  onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
   recommendation: string;
   setRecommendation: (v: string) => void;
 }) {
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+  const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
     forwardingRulesApi.getForRole('registrar').then(res => {
       const rules = res.data.data || [];
-      setAllowedTargets(rules.filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      setAllowedTargets(rules
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
+    }).catch(() => {});
+    forwardingRulesApi.getSpecial('registrar').then(res => {
+      setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
   }, []);
 
@@ -1214,6 +1256,12 @@ function RegistrarPanel({ actionLoading, withLoading, onForward, caseItem, recom
           <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('proctor', { recommendation }))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
             <ArrowLeftIcon /> Send Back with Recommendation
+          </button>
+        )}
+        {canClose && (
+          <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('closed', { recommendation }))}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
+            <CheckIcon /> Close Case
           </button>
         )}
       </div>
@@ -1291,7 +1339,9 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
   useEffect(() => {
     forwardingRulesApi.getForRole(coordRole).then(res => {
       const rules = res.data.data || [];
-      setAllowedTargets(rules.filter((r: any) => r.isActive).map((r: any) => r.toRole));
+      setAllowedTargets(rules
+        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
+        .map((r: any) => r.toRole));
     }).catch(() => {});
   }, [coordRole]);
 
@@ -1499,17 +1549,18 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
 
   const handleForwardSelected = async () => {
     if (selectedUsers.length === 0) return;
-    if (selectedUsers.length === 1) {
-      await casesApi.forward(caseId, { targetRole, assignedToUserId: selectedUsers[0] });
-    } else {
-      for (const uid of selectedUsers) {
-        await casesApi.forward(caseId, { targetRole, assignedToUserId: uid });
-      }
+    // Use onForward callback so parent's toast + auto-refresh logic runs
+    for (const uid of selectedUsers) {
+      await onForward(targetRole, { assignedToUserId: uid });
     }
+    setSelectedUsers([]);
+    setShowDropdown(false);
   };
 
   const handleForwardAll = async () => {
-    await casesApi.forward(caseId, { targetRole, forwardToAll: true });
+    await onForward(targetRole, { forwardToAll: true });
+    setSelectedUsers([]);
+    setShowDropdown(false);
   };
 
   const roleLabel = targetRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
