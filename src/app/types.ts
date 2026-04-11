@@ -101,6 +101,7 @@ export interface Case {
   verdict?: string;
   recommendation?: string;
   forwardedToRole?: string;
+  submittedByUserId?: string;
   // Type-2 form fields
   studentDepartment?: string;
   studentContact?: string;

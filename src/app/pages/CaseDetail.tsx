@@ -63,6 +63,7 @@ export default function CaseDetail() {
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'timeline'>('overview');
   const [newNote, setNewNote] = useState('');
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
+  const [verifications, setVerifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingNote, setAddingNote] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -77,6 +78,11 @@ export default function CaseDetail() {
       try {
         const response = await casesApi.getById(id!);
         setCaseItem(response.data.data || response.data);
+        // Also fetch coordinator checklist verifications for this case
+        try {
+          const vRes = await checklistApi.getVerifications(id!);
+          setVerifications(vRes.data.data || []);
+        } catch { setVerifications([]); }
       } catch {
         setCaseItem(null);
       } finally {
@@ -164,6 +170,10 @@ export default function CaseDetail() {
     try {
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
+      try {
+        const vRes = await checklistApi.getVerifications(caseItem.id);
+        setVerifications(vRes.data.data || []);
+      } catch { /* silent */ }
     } catch { /* silent */ }
   };
 
@@ -187,10 +197,18 @@ export default function CaseDetail() {
   }
 
   const isConfidential = caseItem.type === 'confidential';
-  const canViewConfidential = currentUser?.role === 'proctor' ||
-    currentUser?.role === 'female-coordinator' ||
-    currentUser?.role === 'sexual-harassment-committee' ||
-    currentUser?.role === 'vc';
+  const isOwnSubmission = !!currentUser?.id && (
+    caseItem.submittedByUserId === currentUser.id ||
+    caseItem.studentId === currentUser.id
+  );
+  const isAssignedToMe = !!currentUser?.name && caseItem.assignedTo === currentUser.name;
+  const isInMyRoleQueue = !!currentUser?.role && caseItem.forwardedToRole === currentUser.role;
+  const hasConfidentialMenu = permissions['confidential']?.canRead === true;
+  const canViewConfidential = isOwnSubmission
+    || isAssignedToMe
+    || isInMyRoleQueue
+    || hasConfidentialMenu
+    || currentUser?.role === 'super-admin';
 
   if (isConfidential && !canViewConfidential) {
     return (
@@ -593,7 +611,42 @@ export default function CaseDetail() {
                 </div>
               )}
 
-              {caseItem.notes.length === 0 ? (
+              {/* Coordinator checklist verifications (rendered above regular notes) */}
+              {verifications.length > 0 && (
+                <div className="space-y-4 mb-4">
+                  {verifications.map((v: any) => {
+                    let items: { label: string; passed: boolean }[] = [];
+                    try { items = JSON.parse(v.checklistResultsJson || '[]'); } catch { items = []; }
+                    return (
+                      <div key={v.id} className="border border-orange-200 bg-orange-50 rounded-lg p-4">
+                        <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                          <p className="font-medium text-orange-700">Coordinator Checklist Verification — {v.createdByName || 'Coordinator'}</p>
+                          <p className="text-sm text-gray-500">{new Date(v.createdAt).toLocaleString()}</p>
+                        </div>
+                        {v.comment && (
+                          <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{v.comment}</p>
+                        )}
+                        {items.length > 0 && (
+                          <ul className="space-y-1">
+                            {items.map((item, i) => (
+                              <li key={i} className="flex items-center gap-2 text-sm">
+                                {item.passed ? (
+                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs">✓</span>
+                                ) : (
+                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-700 text-xs">✕</span>
+                                )}
+                                <span className={item.passed ? 'text-gray-700' : 'text-red-700 line-through'}>{item.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {caseItem.notes.length === 0 && verifications.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No notes added yet</p>
               ) : (
                 <div className="space-y-4">
@@ -603,7 +656,7 @@ export default function CaseDetail() {
                         <p className="font-medium">{note.author}</p>
                         <p className="text-sm text-gray-500">{new Date(note.createdDate).toLocaleString()}</p>
                       </div>
-                      <p className="text-gray-700">{note.content}</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
                     </div>
                   ))}
                 </div>
@@ -763,7 +816,12 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   // Proctor panel
   if (role === 'proctor') {
-    return <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} />;
+    return (
+      <>
+        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
+        <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} />
+      </>
+    );
   }
 
   // Assistant Proctor panel
@@ -841,6 +899,8 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   // Deputy Proctor panel
   if (role === 'deputy-proctor') {
     return (
+      <>
+      <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -875,19 +935,30 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
         </div>
 
         <ForwardToRoleSection label="Send Back to Asst. Proctor" targetRole="assistant-proctor" fromRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
-        <ForwardToRoleSection label="Forward to Proctor" targetRole="proctor" fromRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} simple />
+        <ForwardToRoleSection label="Forward to Proctor" targetRole="proctor" fromRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
       </div>
+      </>
     );
   }
 
   // Registrar panel
   if (role === 'registrar') {
-    return <RegistrarPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} recommendation={recommendation} setRecommendation={setRecommendation} />;
+    return (
+      <>
+        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
+        <RegistrarPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} recommendation={recommendation} setRecommendation={setRecommendation} />
+      </>
+    );
   }
 
   // Disciplinary Committee panel
   if (role === 'disciplinary-committee') {
-    return <DisciplinaryCommitteePanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} onRefresh={onRefresh} verdict={verdict} setVerdict={setVerdict} verdictFileInputRef={verdictFileInputRef} verdictUploading={verdictUploading} setVerdictUploading={setVerdictUploading} />;
+    return (
+      <>
+        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
+        <DisciplinaryCommitteePanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} onRefresh={onRefresh} verdict={verdict} setVerdict={setVerdict} verdictFileInputRef={verdictFileInputRef} verdictUploading={verdictUploading} setVerdictUploading={setVerdictUploading} />
+      </>
+    );
   }
 
   // Female Coordinator panel
@@ -1330,7 +1401,16 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
       comment: comment || 'Resubmission requested',
       checklistResultsJson: resultsJson
     });
-    await onStatusChange('resubmission-requested', { note: comment || `Resubmission requested. Failed items: ${failedItems.join(', ')}` });
+
+    // Build a meaningful note even when comment is empty or no items failed
+    const failedSummary = failedItems.length > 0
+      ? `Failed items:\n- ${failedItems.join('\n- ')}`
+      : 'All checklist items were marked, but the coordinator requested clarification.';
+    const noteText = comment.trim()
+      ? `${comment.trim()}\n\n${failedSummary}`
+      : `Resubmission requested.\n\n${failedSummary}`;
+
+    await onStatusChange('resubmission-requested', { note: noteText });
   };
 
   const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
@@ -1436,11 +1516,13 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
 }) {
   const [description, setDescription] = useState(caseItem.description);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [busyDocId, setBusyDocId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleResubmit = async () => {
     setSaving(true);
     try {
-      // Update the case description if changed
       if (description !== caseItem.description) {
         await casesApi.update(caseItem.id, { description });
       }
@@ -1450,6 +1532,37 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
       toast.error('Resubmit failed', { description: err?.response?.data?.message || 'Could not resubmit case' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(e.target.files)) {
+        await casesApi.addDocument(caseItem.id, file);
+      }
+      await onRefresh();
+      toast.success('Files uploaded');
+    } catch (err: any) {
+      toast.error('Upload failed', { description: err?.response?.data?.message || 'Unable to upload files' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string, docName: string) => {
+    if (!confirm(`Delete document "${docName}"?`)) return;
+    setBusyDocId(docId);
+    try {
+      await casesApi.deleteDocument(caseItem.id, docId);
+      await onRefresh();
+      toast.success('Document deleted');
+    } catch (err: any) {
+      toast.error('Delete failed', { description: err?.response?.data?.message || 'Unable to delete document' });
+    } finally {
+      setBusyDocId(null);
     }
   };
 
@@ -1469,7 +1582,7 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
       {caseItem.notes.length > 0 && (
         <div className="bg-white rounded-lg p-4 mb-4 border border-orange-200">
           <p className="text-sm font-medium text-gray-700 mb-2">Coordinator Comments:</p>
-          <p className="text-sm text-gray-700">{caseItem.notes[caseItem.notes.length - 1].content}</p>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{caseItem.notes[caseItem.notes.length - 1].content}</p>
           <p className="text-xs text-gray-500 mt-1">by {caseItem.notes[caseItem.notes.length - 1].author}</p>
         </div>
       )}
@@ -1483,6 +1596,54 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
           rows={5}
         />
+      </div>
+
+      {/* Existing documents with delete + upload new */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Supporting Documents</label>
+        {caseItem.documents.length > 0 ? (
+          <div className="space-y-2 mb-3">
+            {caseItem.documents.map(doc => (
+              <div key={doc.id} className="flex items-center justify-between bg-white border border-orange-200 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0b2652" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span className="text-sm text-gray-700 truncate">{doc.name}</span>
+                  <span className="text-xs text-gray-400">({doc.type})</span>
+                </div>
+                <button
+                  disabled={busyDocId === doc.id}
+                  onClick={() => handleDeleteDoc(doc.id, doc.name)}
+                  className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                  title="Delete document"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 mb-3">No documents uploaded yet.</p>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,application/pdf,.doc,.docx"
+          onChange={handleAddFiles}
+          className="hidden"
+        />
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          {uploading ? 'Uploading...' : 'Add new file'}
+        </button>
       </div>
 
       <button disabled={actionLoading || saving || !description.trim()} onClick={() => withLoading(handleResubmit)}
@@ -1653,6 +1814,58 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
           <ForwardIcon /> Forward to All {roleLabel}
         </button>
       </div>
+    </div>
+  );
+}
+
+// Reusable hearing schedule form. Renders only when the current role has __hearing__ permission.
+// Used inside any role panel (proctor, deputy proctor, disciplinary committee, etc.) on the case detail.
+function HearingScheduleSection({ caseItem, canHearing, onRefresh }: {
+  caseItem: Case;
+  canHearing: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  if (!canHearing) return null;
+
+  const handleSchedule = async () => {
+    if (!date || !time || !location) return;
+    setBusy(true);
+    try {
+      await hearingsApi.create({
+        caseId: caseItem.id,
+        date, time, location,
+        participants: [caseItem.studentName],
+      });
+      await onRefresh();
+      toast.success('Hearing scheduled');
+      setDate(''); setTime(''); setLocation('');
+    } catch (err: any) {
+      toast.error('Schedule failed', { description: err?.response?.data?.message || 'Unable to schedule' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
+      <p className="text-sm font-semibold text-indigo-700 mb-2">Schedule Hearing</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <input type="time" value={time} onChange={e => setTime(e.target.value)}
+          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Location"
+          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+      </div>
+      <button disabled={busy || !date || !time || !location} onClick={handleSchedule}
+        className="mt-3 px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+        {busy ? 'Scheduling...' : 'Schedule Hearing'}
+      </button>
     </div>
   );
 }

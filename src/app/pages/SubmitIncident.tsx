@@ -36,6 +36,7 @@ export default function SubmitIncident() {
   const [t1Description, setT1Description] = useState('');
   const [t1Priority, setT1Priority] = useState('medium');
   const [t1Files, setT1Files] = useState<UploadedFile[]>([]);
+  const [t1VideoLink, setT1VideoLink] = useState('');
   const t1FileRef = useRef<HTMLInputElement>(null);
 
   // Type-2 form state
@@ -152,6 +153,9 @@ export default function SubmitIncident() {
         description: selectedType === 'type-1' ? t1Description : t2Description,
         priority: selectedType === 'type-1' ? t1Priority : t2Priority,
       };
+      if (selectedType === 'type-1') {
+        data.videoLink = t1VideoLink || undefined;
+      }
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
         data.category = t2Category;
@@ -245,6 +249,7 @@ export default function SubmitIncident() {
                 setSelectedType(null);
                 setT1Description('');
                 setT1Files([]);
+                setT1VideoLink('');
                 setT2Subject('');
                 setT2Description('');
                 setT2Category('');
@@ -438,6 +443,18 @@ export default function SubmitIncident() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Upload Evidence (Image/Video) *</label>
                 {renderFileUploadArea('type-1')}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Video Evidence (Google Drive Link)</label>
+                <input
+                  type="url"
+                  value={t1VideoLink}
+                  onChange={(e) => setT1VideoLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional — paste a Google Drive link for video evidence</p>
               </div>
 
               <div>

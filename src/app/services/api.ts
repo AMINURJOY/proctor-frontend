@@ -131,6 +131,8 @@ export const casesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  deleteDocument: (caseId: string, documentId: string) =>
+    api.delete(`/cases/${caseId}/documents/${documentId}`),
   delete: (id: string) => api.delete(`/cases/${id}`),
   forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string; assignedToUserId?: string; forwardToAll?: boolean }) =>
     api.post(`/cases/${id}/forward`, data),
@@ -171,6 +173,7 @@ export const notificationsApi = {
   markAsRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllAsRead: () => api.patch('/notifications/read-all'),
   getUnreadCount: () => api.get('/notifications/unread-count'),
+  getCategoryCounts: () => api.get('/notifications/category-counts'),
 };
 
 // System Settings

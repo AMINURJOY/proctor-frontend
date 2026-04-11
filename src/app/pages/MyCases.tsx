@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { useAuth } from '../context/AuthContext';
 import { casesApi } from '../services/api';
-import { Case } from '../types';
+import { usePermissions } from '../hooks/usePermissions';
+import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -22,31 +22,51 @@ const statusColors: Record<string, string> = {
 
 export default function MyCases() {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const permissions = usePermissions();
+  const canDelete = permissions['cases']?.canDelete ?? false;
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const pageSize = 10;
 
-  useEffect(() => {
-    const fetchMyCases = async () => {
-      setLoading(true);
-      try {
-        const response = await casesApi.getMyCases({ page, pageSize });
-        const data = response.data.data || response.data;
-        setCases(data.items || []);
-        setTotalCount(data.totalCount || 0);
-      } catch {
-        setCases([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMyCases();
+  const fetchMyCases = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await casesApi.getMyCases({ page, pageSize });
+      const data = response.data.data || response.data;
+      setCases(data.items || []);
+      setTotalCount(data.totalCount || 0);
+    } catch {
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
   }, [page]);
 
+  useEffect(() => {
+    fetchMyCases();
+  }, [fetchMyCases]);
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await casesApi.delete(deleteId);
+      toast.success('Case deleted');
+      setDeleteId(null);
+      await fetchMyCases();
+    } catch (err: any) {
+      toast.error('Delete failed', { description: err?.response?.data?.message || 'Unable to delete case' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const totalPages = Math.ceil(totalCount / pageSize);
+  const deletingCase = cases.find(c => c.id === deleteId);
 
   return (
     <div>
@@ -132,6 +152,20 @@ export default function MyCases() {
                               <line x1="16" y1="17" x2="8" y2="17"/>
                             </svg>
                           </button>
+                          {canDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteId(c.id); }}
+                              title="Delete Case"
+                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                <line x1="10" y1="11" x2="10" y2="17"/>
+                                <line x1="14" y1="11" x2="14" y2="17"/>
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -150,6 +184,31 @@ export default function MyCases() {
                 className="px-3 py-1 text-sm rounded border border-gray-300 disabled:opacity-50">Next</button>
             </div>
           )}
+        </>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteId && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !deleting && setDeleteId(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2 text-red-700">Delete Case</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to delete case <strong>{deletingCase?.caseNumber}</strong>? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button disabled={deleting} onClick={() => setDeleteId(null)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button disabled={deleting} onClick={handleDelete}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { LockIcon, EyeIcon, ShieldIcon, CheckIcon } from '../components/Icons';
 import { Case, CaseStatus } from '../types';
 import { casesApi } from '../services/api';
@@ -8,15 +9,12 @@ import { casesApi } from '../services/api';
 export default function ConfidentialCases() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const permissions = usePermissions();
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const canView = currentUser?.role === 'female-coordinator' ||
-    currentUser?.role === 'sexual-harassment-committee' ||
-    currentUser?.role === 'proctor' ||
-    currentUser?.role === 'vc' ||
-    currentUser?.role === 'super-admin';
+  const canView = currentUser?.role === 'super-admin' || permissions['confidential']?.canRead === true;
 
   useEffect(() => {
     if (!canView) return;
@@ -46,7 +44,7 @@ export default function ConfidentialCases() {
             This section contains confidential cases and is only accessible to authorized personnel.
           </p>
           <div className="bg-red-50 rounded-lg p-3 text-sm text-red-700">
-            <p>Authorized roles: Female Coordinator, Sexual Harassment Committee, Proctor, Vice Chancellor</p>
+            <p>Contact your administrator to request access via the Permissions or Menu Access settings.</p>
           </div>
         </div>
       </div>

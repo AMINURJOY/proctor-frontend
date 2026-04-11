@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { EyeIcon, ImageIcon, VideoIcon, ArrowRightIcon, XIcon } from '../components/Icons';
 import { Case, CaseStatus, Priority } from '../types';
@@ -231,7 +232,10 @@ export default function IncidentsList() {
                     try {
                       await casesApi.updateStatus(showSuggestModal, { status: 'suggested-type-2', note: suggestReason });
                       setCases(prev => prev.map(c => c.id === showSuggestModal ? { ...c, status: 'suggested-type-2' as const } : c));
-                    } catch { /* silent */ }
+                      toast.success('Case marked as Suggested Type-2');
+                    } catch (err: any) {
+                      toast.error('Action failed', { description: err?.response?.data?.message || 'Could not update status' });
+                    }
                     setShowSuggestModal(null);
                     setSuggestReason('');
                   }}
@@ -277,7 +281,10 @@ export default function IncidentsList() {
                     try {
                       await casesApi.updateStatus(showCloseModal, { status: 'closed', note: closeNote });
                       setCases(prev => prev.map(c => c.id === showCloseModal ? { ...c, status: 'closed' as const } : c));
-                    } catch { /* silent */ }
+                      toast.success('Case closed');
+                    } catch (err: any) {
+                      toast.error('Action failed', { description: err?.response?.data?.message || 'Could not close case' });
+                    }
                     setShowCloseModal(null);
                     setCloseNote('');
                   }}

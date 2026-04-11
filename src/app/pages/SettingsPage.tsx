@@ -85,9 +85,10 @@ export default function SettingsPage() {
   const [caseViewingSaving, setCaseViewingSaving] = useState(false);
   const [caseViewingSavedMsg, setCaseViewingSavedMsg] = useState('');
 
-  // Fetch permissions data
+  // Fetch permissions data — used by both the Permissions (CRUD) tab and the Menu Access tab,
+  // since both consume the same role/menu permission rows.
   useEffect(() => {
-    if (!isSuperAdmin || activeTab !== 'permissions') return;
+    if (!isSuperAdmin || (activeTab !== 'permissions' && activeTab !== 'menu-access')) return;
     const fetchRoles = async () => {
       setPermLoading(true);
       try {

@@ -16,6 +16,9 @@ export default function HearingManagement() {
   const [loading, setLoading] = useState(true);
   const [scheduleForm, setScheduleForm] = useState({ caseId: '', date: '', time: '', location: '', notes: '' });
   const [scheduling, setScheduling] = useState(false);
+  const [closingHearing, setClosingHearing] = useState<any | null>(null);
+  const [closeRemarks, setCloseRemarks] = useState('');
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -190,42 +193,13 @@ export default function HearingManagement() {
 
                     {/* Hearing Remarks */}
                     {canSchedule && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-600 mb-2">Hearing Remarks (বক্তব্য / সাক্ষ্য)</p>
-                        <textarea
-                          defaultValue={hearing.remarks || ''}
-                          placeholder="Write victim statements, witness testimony, and hearing observations here..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-                          rows={3}
-                          id={`remarks-${hearing.id}`}
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              const el = document.getElementById(`remarks-${hearing.id}`) as HTMLTextAreaElement;
-                              if (!el?.value.trim()) return;
-                              try {
-                                await hearingsApi.update(hearing.id, { remarks: el.value });
-                                toast.success('Remarks saved');
-                              } catch { toast.error('Failed to save remarks'); }
-                            }}
-                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                          >Save Remarks</button>
-                          <button
-                            onClick={async () => {
-                              const el = document.getElementById(`remarks-${hearing.id}`) as HTMLTextAreaElement;
-                              try {
-                                if (el?.value.trim()) await hearingsApi.update(hearing.id, { remarks: el.value });
-                                await hearingsApi.updateStatus(hearing.id, { status: 'completed' });
-                                toast.success('Hearing completed');
-                                // Refresh
-                                const res = await hearingsApi.getAll();
-                                if (res.data.data) setHearingsData(res.data.data);
-                              } catch { toast.error('Failed to complete hearing'); }
-                            }}
-                            className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white hover:bg-green-700"
-                          ><CheckIcon /> Complete Hearing</button>
-                        </div>
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                        <button
+                          onClick={() => { setClosingHearing(hearing); setCloseRemarks(hearing.remarks || ''); }}
+                          className="flex items-center gap-2 px-4 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700"
+                        >
+                          <CheckIcon /> Close Hearing
+                        </button>
                       </div>
                     )}
                   </div>
@@ -389,6 +363,71 @@ export default function HearingManagement() {
                     {scheduling ? 'Scheduling...' : 'Schedule Hearing'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Close Hearing Modal */}
+      {closingHearing && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !closing && setClosingHearing(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>
+                  Close Hearing — <span className="font-mono text-sm">{closingHearing.caseNumber || closingHearing.caseId}</span>
+                </h3>
+                <button onClick={() => !closing && setClosingHearing(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div className="mb-4 text-sm text-gray-600">
+                <p><span className="font-medium">Date:</span> {closingHearing.date} at {closingHearing.time}</p>
+                <p><span className="font-medium">Location:</span> {closingHearing.location}</p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  What did the victim/witnesses say? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={closeRemarks}
+                  onChange={e => setCloseRemarks(e.target.value)}
+                  placeholder="Write the statements heard during the hearing — victim testimony, witness accounts, observations, decisions made..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={8}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button disabled={closing} onClick={() => setClosingHearing(null)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button
+                  disabled={closing || !closeRemarks.trim()}
+                  onClick={async () => {
+                    if (!closingHearing) return;
+                    setClosing(true);
+                    try {
+                      await hearingsApi.update(closingHearing.id, { remarks: closeRemarks });
+                      await hearingsApi.updateStatus(closingHearing.id, { status: 'completed' });
+                      const res = await hearingsApi.getAll();
+                      if (res.data.data) setHearingsData(res.data.data);
+                      toast.success('Hearing closed successfully');
+                      setClosingHearing(null);
+                      setCloseRemarks('');
+                    } catch (err: any) {
+                      toast.error('Failed to close hearing', { description: err?.response?.data?.message || 'Try again' });
+                    } finally {
+                      setClosing(false);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {closing ? 'Closing...' : 'Save & Close Hearing'}
+                </button>
               </div>
             </div>
           </div>

@@ -33,6 +33,8 @@ export default function Layout() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [myCasesCount, setMyCasesCount] = useState(0);
+  const [type1Count, setType1Count] = useState(0);
+  const [confidentialCount, setConfidentialCount] = useState(0);
   const permissions = usePermissions();
 
   const handleLogout = () => {
@@ -66,6 +68,15 @@ export default function Layout() {
     } catch { /* silent */ }
   }, [role]);
 
+  const fetchCategoryCounts = useCallback(async () => {
+    try {
+      const res = await notificationsApi.getCategoryCounts();
+      const data = res.data.data ?? res.data;
+      setType1Count(data?.type1 ?? 0);
+      setConfidentialCount(data?.confidential ?? 0);
+    } catch { /* silent */ }
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getAll();
@@ -76,11 +87,12 @@ export default function Layout() {
   useEffect(() => {
     fetchUnreadCount();
     fetchMyCasesCount();
-    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); }, 30000);
-    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); } };
+    fetchCategoryCounts();
+    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); }, 30000);
+    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); } };
     document.addEventListener('visibilitychange', onFocus);
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onFocus); };
-  }, [fetchUnreadCount, fetchMyCasesCount]);
+  }, [fetchUnreadCount, fetchMyCasesCount, fetchCategoryCounts]);
 
   const handleBellClick = () => {
     setShowNotifications(!showNotifications);
@@ -175,11 +187,11 @@ export default function Layout() {
       {/* Logo */}
       <div className="p-6 border-b border-blue-900 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/daffodil_logo.svg" alt="DIU" className="w-10 h-10 rounded-lg" />
-          <div>
+          <img src="/daffodil_logo.svg" alt="DIU" className="w-40 h-10 rounded-lg" />
+          {/* <div>
             <h1 className="text-white font-semibold text-sm">Daffodil International University</h1>
             <p className="text-blue-200 text-xs">Proctor Office Automation</p>
-          </div>
+          </div> */}
         </div>
         {/* Close button - mobile only */}
         <button
@@ -214,6 +226,12 @@ export default function Layout() {
               )}
               {item.menuKey === 'notifications' && unreadCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+              {item.menuKey === 'incidents' && type1Count > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{type1Count > 99 ? '99+' : type1Count}</span>
+              )}
+              {item.menuKey === 'confidential' && confidentialCount > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{confidentialCount > 99 ? '99+' : confidentialCount}</span>
               )}
             </button>
           );
