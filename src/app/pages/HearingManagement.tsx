@@ -9,7 +9,9 @@ import { Case } from '../types';
 export default function HearingManagement() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'schedule'>('upcoming');
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'tracker'>('upcoming');
+  const [tracker, setTracker] = useState<{ today: any[]; tomorrow: any[]; thisWeek: any[]; later: any[] } | null>(null);
+  const [trackerLoading, setTrackerLoading] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [cases, setCases] = useState<Case[]>([]);
   const [hearingsData, setHearingsData] = useState<any[]>([]);
@@ -74,10 +76,32 @@ export default function HearingManagement() {
     }).catch(() => setCanSchedule(false));
   }, [currentUser?.role]);
 
+  const trackerTotal = tracker ? tracker.today.length + tracker.tomorrow.length + tracker.thisWeek.length + tracker.later.length : 0;
   const tabs = [
     { id: 'upcoming' as const, label: 'Upcoming', count: upcoming.length },
+    { id: 'tracker' as const, label: 'Tracker', count: trackerTotal },
     { id: 'completed' as const, label: 'Completed', count: completed.length },
   ];
+
+  useEffect(() => {
+    if (activeTab !== 'tracker') return;
+    let cancelled = false;
+    setTrackerLoading(true);
+    hearingsApi.getUpcoming(false)
+      .then(res => {
+        if (cancelled) return;
+        const data = res.data?.data || res.data;
+        setTracker({
+          today: data?.today || [],
+          tomorrow: data?.tomorrow || [],
+          thisWeek: data?.thisWeek || [],
+          later: data?.later || [],
+        });
+      })
+      .catch(() => { if (!cancelled) setTracker({ today: [], tomorrow: [], thisWeek: [], later: [] }); })
+      .finally(() => { if (!cancelled) setTrackerLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   return (
     <div>
@@ -204,6 +228,62 @@ export default function HearingManagement() {
                     )}
                   </div>
                 ))
+              )}
+            </div>
+          )}
+
+          {/* Tracker tab — buckets by date */}
+          {activeTab === 'tracker' && (
+            <div className="space-y-6">
+              {trackerLoading ? (
+                <p className="text-gray-500 text-center py-8">Loading…</p>
+              ) : tracker && trackerTotal === 0 ? (
+                <p className="text-gray-500 text-center py-8">No upcoming hearings.</p>
+              ) : tracker && (
+                <>
+                  {(['today', 'tomorrow', 'thisWeek', 'later'] as const).map(bucket => {
+                    const labels: Record<typeof bucket, string> = {
+                      today: 'Today',
+                      tomorrow: 'Tomorrow',
+                      thisWeek: 'This Week',
+                      later: 'Later',
+                    } as const;
+                    const items: any[] = tracker[bucket];
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={bucket}>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wider">
+                          {labels[bucket]} <span className="text-gray-400">({items.length})</span>
+                        </h3>
+                        <div className="space-y-2">
+                          {items.map(h => (
+                            <div key={h.id} className="border border-gray-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium" style={{ color: '#0b2652' }}>
+                                  {h.caseNumber} <span className="text-gray-500 text-sm">· {h.studentName}</span>
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {h.date} at {h.time} · {h.location}
+                                </p>
+                                {h.participants?.length > 0 && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    With: {h.participants.join(', ')}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => navigate(`/cases/${h.caseId}`)}
+                                className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50"
+                              >
+                                View Case
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           )}

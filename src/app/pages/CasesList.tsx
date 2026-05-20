@@ -219,80 +219,121 @@ export default function CasesList() {
             <table className="w-full">
               <thead className="border-b border-gray-200" style={{ backgroundColor: '#f5f7fb' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Case ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Student Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Priority
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Assigned To
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Case ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Student / Submitter</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Accused</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Type / Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Priority</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Assigned To</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date / Location</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {displayedCases.map((caseItem) => (
+                {displayedCases.map((caseItem) => {
+                  const accusedList = caseItem.accusedPersons && caseItem.accusedPersons.length > 0
+                    ? caseItem.accusedPersons
+                    : (caseItem.accusedName ? [{ id: 'legacy', name: caseItem.accusedName, accusedStudentId: caseItem.accusedId || '', department: caseItem.accusedDepartment, contact: caseItem.accusedContact, guardianContact: caseItem.accusedGuardianContact }] : []);
+                  return (
                   <tr
                     key={caseItem.id}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    className="hover:bg-gray-50 transition-colors cursor-pointer align-top"
                     onClick={() => navigate(`/cases/${caseItem.id}`)}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{caseItem.caseNumber}</span>
-                        {caseItem.type === 'confidential' && (
-                          <LockIcon />
+                        {caseItem.type === 'confidential' && <LockIcon />}
+                        {caseItem.isAcknowledged && (
+                          <span title="Acknowledged" className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
                         )}
                       </div>
+                      {caseItem.description && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2 max-w-[18ch]">{caseItem.description}</p>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="font-medium text-gray-900">{caseItem.studentName}</div>
-                        <div className="text-sm text-gray-500">{caseItem.studentId}</div>
-                      </div>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{caseItem.studentName}</div>
+                      <div className="text-xs text-gray-500">{caseItem.studentId}</div>
+                      {caseItem.studentDepartment && (
+                        <div className="text-xs text-gray-500">{caseItem.studentDepartment}</div>
+                      )}
+                      {caseItem.studentContact && (
+                        <div className="text-xs text-gray-500">\ud83d\udcde {caseItem.studentContact}</div>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs rounded-full ${typeColors[caseItem.type]}`}>
+                    <td className="px-4 py-3">
+                      {accusedList.length === 0 ? (
+                        <span className="text-xs text-gray-400">\u2014</span>
+                      ) : (
+                        <div className="space-y-1">
+                          {accusedList.slice(0, 2).map(a => (
+                            <div key={a.id}>
+                              <div className="text-sm font-medium text-gray-800">{a.name}</div>
+                              {a.accusedStudentId && <div className="text-xs text-gray-500">{a.accusedStudentId}</div>}
+                              {a.department && <div className="text-xs text-gray-500">{a.department}</div>}
+                            </div>
+                          ))}
+                          {accusedList.length > 2 && (
+                            <div className="text-xs text-gray-500">+{accusedList.length - 2} more</div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${typeColors[caseItem.type]}`}>
                         {caseItem.type === 'type-1' ? 'Type-1' : caseItem.type === 'type-2' ? 'Type-2' : 'Confidential'}
                       </span>
+                      {caseItem.categoryName && (
+                        <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                          {caseItem.categoryName}
+                          {caseItem.categoryIsConfidential && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">Confidential</span>
+                          )}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs rounded-full ${statusColors[caseItem.status]}`}>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${statusColors[caseItem.status]}`}>
                         {caseItem.status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                       </span>
                       {caseItem.forwardedToRole && (
-                        <span className="ml-1 inline-flex px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-600">
-                          {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                        </span>
+                        <div className="mt-1">
+                          <span className="inline-flex px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-600">
+                            \u2192 {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          </span>
+                        </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs rounded-full ${priorityColors[caseItem.priority]}`}>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${priorityColors[caseItem.priority]}`}>
                         {caseItem.priority.charAt(0).toUpperCase() + caseItem.priority.slice(1)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {caseItem.assignedTo || '\u2014'}
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {caseItem.assignedTo || <span className="text-gray-400">\u2014</span>}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(caseItem.createdDate).toLocaleDateString()}
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      <div>Created: {new Date(caseItem.createdDate).toLocaleDateString()}</div>
+                      {caseItem.incidentDate && (
+                        <div>Incident: {new Date(caseItem.incidentDate).toLocaleDateString()}</div>
+                      )}
+                      {caseItem.incidentLocationDescription && (
+                        <div className="mt-1 max-w-[20ch] truncate" title={caseItem.incidentLocationDescription}>\ud83d\udccd {caseItem.incidentLocationDescription}</div>
+                      )}
+                      {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
+                        <a
+                          href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
+                          target="_blank" rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-blue-600 hover:underline"
+                        >
+                          View map
+                        </a>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 text-sm">
                       <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => {
@@ -339,7 +380,8 @@ export default function CasesList() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

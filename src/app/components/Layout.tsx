@@ -152,11 +152,11 @@ export default function Layout() {
 
   // Settings sub-menu items
   const settingsSubItems = [
-    { path: '/settings/menu-access', label: 'Menu Access', superAdminOnly: true },
-    { path: '/settings/permissions', label: 'Permissions (CRUD)', superAdminOnly: true },
+    { path: '/settings/permissions', label: 'Roles & Permissions', superAdminOnly: true },
     { path: '/settings/incident-routing', label: 'Incident Routing', superAdminOnly: true },
     { path: '/settings/case-viewing', label: 'Case Viewing', superAdminOnly: true },
     { path: '/settings/checklist', label: 'Verification Checklist', superAdminOnly: true },
+    { path: '/settings/case-categories', label: 'Case Categories', superAdminOnly: true },
     { path: '/settings/ranks', label: 'Ranks (পদবি)', superAdminOnly: true },
     { path: '/settings/articles', label: 'Articles (অনুচ্ছেদ)', superAdminOnly: true },
     { path: '/settings/forwarding', label: 'Case Forwarding', superAdminOnly: true },

@@ -33,13 +33,36 @@ export type CaseStatus =
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 
+export type Gender = 'unspecified' | 'male' | 'female' | 'other';
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  gender?: Gender;
   avatar?: string;
   rank?: string;
+}
+
+export interface CaseCategory {
+  id: string;
+  name: string;
+  description?: string;
+  isConfidential: boolean;
+  isActive: boolean;
+  appliesToType: 'type-1' | 'type-2' | 'both';
+  sortOrder: number;
+}
+
+export interface CaseAssignment {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  assignedAt: string;
+  isPrimary: boolean;
+  isActive: boolean;
 }
 
 export interface Rank {
@@ -122,6 +145,34 @@ export interface Case {
   hearings: Hearing[];
   timeline: TimelineEvent[];
   reports?: Report[];
+
+  // Category
+  categoryId?: string;
+  categoryName?: string;
+  categoryIsConfidential?: boolean;
+
+  // Acknowledgment (Type-1)
+  isAcknowledged?: boolean;
+  acknowledgedAt?: string;
+  acknowledgedById?: string;
+  acknowledgedByName?: string;
+  acknowledgmentComment?: string;
+
+  // Location (Type-1)
+  incidentLatitude?: number;
+  incidentLongitude?: number;
+  incidentLocationDescription?: string;
+
+  // Multi-assignment
+  assignedToId?: string;
+  assignments?: CaseAssignment[];
+}
+
+export interface UpcomingHearings {
+  today: Hearing[];
+  tomorrow: Hearing[];
+  thisWeek: Hearing[];
+  later: Hearing[];
 }
 
 export interface Report {
@@ -155,12 +206,15 @@ export interface Note {
 export interface Hearing {
   id: string;
   caseId: string;
+  caseNumber?: string;
+  studentName?: string;
   date: string;
   time: string;
   location: string;
   participants: string[];
   status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
+  remarks?: string;
 }
 
 export interface TimelineEvent {

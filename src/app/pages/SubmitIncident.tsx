@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../components/Icons';
-import { casesApi, settingsApi } from '../services/api';
+import { casesApi, settingsApi, caseCategoriesApi } from '../services/api';
+import { CaseCategory } from '../types';
 import { toast } from 'sonner';
 
 type SubmissionType = null | 'type-1' | 'type-2';
@@ -37,17 +38,24 @@ export default function SubmitIncident() {
   const [t1Priority, setT1Priority] = useState('medium');
   const [t1Files, setT1Files] = useState<UploadedFile[]>([]);
   const [t1VideoLink, setT1VideoLink] = useState('');
+  const [t1Latitude, setT1Latitude] = useState<number | null>(null);
+  const [t1Longitude, setT1Longitude] = useState<number | null>(null);
+  const [t1LocationDescription, setT1LocationDescription] = useState('');
+  const [t1LocationLoading, setT1LocationLoading] = useState(false);
+  const [t1CategoryId, setT1CategoryId] = useState('');
   const t1FileRef = useRef<HTMLInputElement>(null);
 
   // Type-2 form state
   const [t2Subject, setT2Subject] = useState('');
   const [t2Description, setT2Description] = useState('');
-  const [t2Category, setT2Category] = useState('');
+  const [t2CategoryId, setT2CategoryId] = useState('');
   const [t2Priority, setT2Priority] = useState('medium');
   const [t2Files, setT2Files] = useState<UploadedFile[]>([]);
-  const [t2IsConfidential, setT2IsConfidential] = useState(false);
   const [t2IncidentDate, setT2IncidentDate] = useState('');
   const [t2VideoLink, setT2VideoLink] = useState('');
+
+  // Categories (admin-managed)
+  const [categories, setCategories] = useState<CaseCategory[]>([]);
   // Multiple complainants (student details)
   const emptyComplainant = { name: '', studentId: '', department: '', contact: '', advisorName: '', fatherName: '', fatherContact: '' };
   const [complainants, setComplainants] = useState([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
@@ -82,7 +90,33 @@ export default function SubmitIncident() {
         if (label) setForwardingLabel(label);
       }
     }).catch(() => {});
+
+    caseCategoriesApi.getAll().then(res => {
+      const items: CaseCategory[] = res.data?.data || [];
+      setCategories(items);
+    }).catch(() => {});
   }, []);
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      return;
+    }
+    setT1LocationLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setT1Latitude(pos.coords.latitude);
+        setT1Longitude(pos.coords.longitude);
+        setT1LocationLoading(false);
+        toast.success('Location captured');
+      },
+      (err) => {
+        setT1LocationLoading(false);
+        toast.error('Could not get location', { description: err.message });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
   const t2FileRef = useRef<HTMLInputElement>(null);
 
   const [dragOver, setDragOver] = useState(false);
@@ -149,16 +183,20 @@ export default function SubmitIncident() {
       const data: any = {
         studentName: currentUser?.name || '',
         studentId: currentUser?.id || '',
-        type: t2IsConfidential && selectedType === 'type-2' ? 'confidential' : selectedType,
+        type: selectedType,
         description: selectedType === 'type-1' ? t1Description : t2Description,
         priority: selectedType === 'type-1' ? t1Priority : t2Priority,
       };
       if (selectedType === 'type-1') {
         data.videoLink = t1VideoLink || undefined;
+        data.categoryId = t1CategoryId || undefined;
+        if (t1Latitude !== null) data.incidentLatitude = t1Latitude;
+        if (t1Longitude !== null) data.incidentLongitude = t1Longitude;
+        if (t1LocationDescription.trim()) data.incidentLocationDescription = t1LocationDescription.trim();
       }
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
-        data.category = t2Category;
+        data.categoryId = t2CategoryId || undefined;
         // Legacy single fields from first complainant/accused
         data.studentDepartment = t2StudentDepartment || undefined;
         data.studentContact = t2StudentContact || undefined;
@@ -225,9 +263,7 @@ export default function SubmitIncident() {
           <p className="text-gray-600 mb-2">
             {selectedType === 'type-1'
               ? 'Your instant incident has been submitted and forwarded to the Proctor Office.'
-              : t2IsConfidential
-                ? 'Your confidential case has been submitted and routed to the Female Coordinator.'
-                : 'Your formal case has been submitted and sent to the Coordinator for review.'
+              : 'Your formal case has been submitted and sent to the Coordinator for review.'
             }
           </p>
           {caseNumber && (
@@ -250,11 +286,14 @@ export default function SubmitIncident() {
                 setT1Description('');
                 setT1Files([]);
                 setT1VideoLink('');
+                setT1Latitude(null);
+                setT1Longitude(null);
+                setT1LocationDescription('');
+                setT1CategoryId('');
                 setT2Subject('');
                 setT2Description('');
-                setT2Category('');
+                setT2CategoryId('');
                 setT2Files([]);
-                setT2IsConfidential(false);
                 setT2IncidentDate('');
                 setT2VideoLink('');
                 setComplainants([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
@@ -458,6 +497,56 @@ export default function SubmitIncident() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={t1CategoryId}
+                  onChange={(e) => setT1CategoryId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a category (optional)...</option>
+                  {categories.filter(c => c.isActive && (c.appliesToType === 'type-1' || c.appliesToType === 'both')).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Incident Location</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={captureLocation}
+                    disabled={t1LocationLoading}
+                    className="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {t1LocationLoading ? 'Getting location…' : (t1Latitude !== null ? 'Recapture' : 'Use my current location')}
+                  </button>
+                  {t1Latitude !== null && t1Longitude !== null && (
+                    <a
+                      href={`https://maps.google.com/?q=${t1Latitude},${t1Longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm hover:bg-blue-100"
+                    >
+                      View on Google Maps
+                    </a>
+                  )}
+                </div>
+                {t1Latitude !== null && t1Longitude !== null && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Lat: {t1Latitude.toFixed(6)}, Lng: {t1Longitude.toFixed(6)}
+                  </p>
+                )}
+                <input
+                  type="text"
+                  value={t1LocationDescription}
+                  onChange={(e) => setT1LocationDescription(e.target.value)}
+                  placeholder="Describe the location (e.g. AB-4 Building, 3rd floor lobby)"
+                  className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
                 <select
                   value={t1Priority}
@@ -521,7 +610,7 @@ export default function SubmitIncident() {
 
                 <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700">
                   <ArrowRightIcon />
-                  <span>{t2IsConfidential ? 'Routed to: Female Coordinator \u2192 SH Committee' : 'Sent to: Coordinator for verification'}</span>
+                  <span>Sent to: Coordinator for verification. Confidential cases are determined by the selected category.</span>
                 </div>
 
                 <div className="space-y-4">
@@ -534,17 +623,16 @@ export default function SubmitIncident() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                      <select value={t2Category} onChange={e => setT2Category(e.target.value)}
+                      <select value={t2CategoryId} onChange={e => setT2CategoryId(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                         <option value="">Select category...</option>
-                        <option value="plagiarism">Plagiarism</option>
-                        <option value="cheating">Cheating in Examination</option>
-                        <option value="misconduct">Academic Misconduct</option>
-                        <option value="fraud">Document Fraud</option>
-                        <option value="harassment">Harassment</option>
-                        <option value="disciplinary">Disciplinary Issue</option>
-                        <option value="other">Other</option>
+                        {categories
+                          .filter(c => c.isActive && (c.appliesToType === 'type-2' || c.appliesToType === 'both'))
+                          .map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                       </select>
+                      {categories.length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">No categories configured yet. Ask an admin to add some in Settings → Case Categories.</p>
+                      )}
                     </div>
                   </div>
 
@@ -661,21 +749,10 @@ export default function SubmitIncident() {
                 </div>
               </div>
 
-              <div className="bg-red-50 rounded-xl shadow-md p-4 border border-red-100">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" checked={t2IsConfidential} onChange={e => setT2IsConfidential(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500" />
-                  <div>
-                    <p className="font-medium text-red-700 text-sm">Mark as Confidential</p>
-                    <p className="text-xs text-red-600">Routes through Female Coordinator to SH Committee.</p>
-                  </div>
-                </label>
-              </div>
-
               <button onClick={handleSubmit} disabled={submitting || !t2Description.trim() || !t2Subject.trim()}
-                className={`w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60 ${t2IsConfidential ? 'bg-red-600' : ''}`}
-                style={t2IsConfidential ? {} : { backgroundColor: '#0b2652' }}>
-                {submitting ? 'Submitting...' : t2IsConfidential ? 'Submit Confidential Case' : 'Submit Formal Case'}
+                className="w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: '#0b2652' }}>
+                {submitting ? 'Submitting...' : 'Submit Formal Case'}
               </button>
             </div>
           </div>
@@ -763,7 +840,7 @@ export default function SubmitIncident() {
 
               {/* Extra info */}
               <div className="grid grid-cols-3 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">
-                <div><span className="text-gray-500">Category: </span><span className="font-medium">{t2Category || '—'}</span></div>
+                <div><span className="text-gray-500">Category: </span><span className="font-medium">{categories.find(c => c.id === t2CategoryId)?.name || '—'}</span></div>
                 <div><span className="text-gray-500">Priority: </span><span className="font-medium capitalize">{t2Priority}</span></div>
                 <div><span className="text-gray-500">Incident Date: </span><span className="font-medium">{t2IncidentDate || '—'}</span></div>
               </div>

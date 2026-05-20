@@ -91,34 +91,72 @@ export default function MyCases() {
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Case ID</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Student</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Student / Submitter</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Accused</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Type / Category</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Priority</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Forwarded To</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Updated</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Forwarded / Updated</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cases.map((c: any) => (
+                  {cases.map((c: any) => {
+                    const accusedList = c.accusedPersons && c.accusedPersons.length > 0
+                      ? c.accusedPersons
+                      : (c.accusedName ? [{ id: 'legacy', name: c.accusedName, accusedStudentId: c.accusedId || '', department: c.accusedDepartment }] : []);
+                    return (
                     <tr key={c.id}
                       onClick={() => navigate(`/cases/${c.id}`)}
-                      className="border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors">
-                      <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: '#0b2652' }}>{c.caseNumber}</td>
-                      <td className="px-4 py-3 text-sm">{c.studentName}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                          {c.type === 'type-1' ? 'Type-1' : c.type === 'type-2' ? 'Type-2' : 'Confidential'}
-                        </span>
+                      className="border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors align-top">
+                      <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: '#0b2652' }}>
+                        {c.caseNumber}
+                        {c.isAcknowledged && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-emerald-500" title="Acknowledged" />}
+                        {c.description && (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2 max-w-[18ch] font-sans font-normal">{c.description}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="font-medium">{c.studentName}</div>
+                        <div className="text-xs text-gray-500">{c.studentId}</div>
+                        {c.studentDepartment && <div className="text-xs text-gray-500">{c.studentDepartment}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {accusedList.length === 0 ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <div className="space-y-1">
+                            {accusedList.slice(0, 2).map((a: any) => (
+                              <div key={a.id}>
+                                <div className="font-medium">{a.name}</div>
+                                {a.accusedStudentId && <div className="text-xs text-gray-500">{a.accusedStudentId}</div>}
+                                {a.department && <div className="text-xs text-gray-500">{a.department}</div>}
+                              </div>
+                            ))}
+                            {accusedList.length > 2 && (
+                              <div className="text-xs text-gray-500">+{accusedList.length - 2} more</div>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded-full ${statusColors[c.status] || 'bg-gray-100 text-gray-700'}`}>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                          {c.type === 'type-1' ? 'Type-1' : c.type === 'type-2' ? 'Type-2' : 'Confidential'}
+                        </span>
+                        {c.categoryName && (
+                          <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                            {c.categoryName}
+                            {c.categoryIsConfidential && <span className="text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">Confidential</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[c.status] || 'bg-gray-100 text-gray-700'}`}>
                           {c.status.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded-full ${
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
                           c.priority === 'urgent' ? 'bg-red-100 text-red-700' :
                           c.priority === 'high' ? 'bg-orange-100 text-orange-700' :
                           c.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
@@ -127,10 +165,15 @@ export default function MyCases() {
                           {c.priority.charAt(0).toUpperCase() + c.priority.slice(1)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {c.forwardedToRole ? c.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '-'}
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {c.forwardedToRole && (
+                          <div>→ {c.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
+                        )}
+                        <div>{new Date(c.updatedDate).toLocaleDateString()}</div>
+                        {c.incidentLocationDescription && (
+                          <div className="mt-1 max-w-[18ch] truncate" title={c.incidentLocationDescription}>📍 {c.incidentLocationDescription}</div>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.updatedDate).toLocaleDateString()}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button
@@ -169,7 +212,8 @@ export default function MyCases() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

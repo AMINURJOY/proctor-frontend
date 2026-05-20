@@ -115,13 +115,75 @@ export default function IncidentsList() {
                     <span className={`px-2 py-0.5 text-xs rounded-full ${priorityColors[incident.priority]}`}>
                       {incident.priority.charAt(0).toUpperCase() + incident.priority.slice(1)}
                     </span>
+                    {incident.categoryName && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+                        {incident.categoryName}
+                        {incident.categoryIsConfidential && ' (Confidential)'}
+                      </span>
+                    )}
+                    {incident.isAcknowledged && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700">✓ Acknowledged</span>
+                    )}
+                    {incident.forwardedToRole && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
+                        → {incident.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-600 mb-1">
                     <span className="font-medium">{incident.studentName}</span> ({incident.studentId})
+                    {incident.studentDepartment && <span className="text-gray-500"> · {incident.studentDepartment}</span>}
+                    {incident.studentContact && <span className="text-gray-500"> · 📞 {incident.studentContact}</span>}
                   </p>
-                  <p className="text-sm text-gray-500 mb-3">{incident.description}</p>
+                  <p className="text-sm text-gray-500 mb-3 whitespace-pre-wrap">{incident.description}</p>
+
+                  {/* Accused persons (Type-1 may or may not have these) */}
+                  {(() => {
+                    const accusedList = incident.accusedPersons && incident.accusedPersons.length > 0
+                      ? incident.accusedPersons
+                      : (incident.accusedName ? [{ id: 'legacy', name: incident.accusedName, accusedStudentId: incident.accusedId || '', department: incident.accusedDepartment, contact: incident.accusedContact, guardianContact: incident.accusedGuardianContact }] : []);
+                    return accusedList.length > 0 ? (
+                      <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 mb-3">
+                        <p className="text-xs font-medium text-orange-700 mb-1">Accused ({accusedList.length})</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {accusedList.map(a => (
+                            <div key={a.id} className="text-xs text-gray-700">
+                              <span className="font-medium">{a.name}</span>
+                              {a.accusedStudentId && <span className="text-gray-500"> · {a.accusedStudentId}</span>}
+                              {a.department && <span className="text-gray-500"> · {a.department}</span>}
+                              {a.contact && <span className="text-gray-500"> · 📞 {a.contact}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {(incident.incidentLocationDescription || incident.incidentLatitude != null) && (
+                    <div className="text-xs text-gray-600 mb-2">
+                      📍 {incident.incidentLocationDescription || '—'}
+                      {incident.incidentLatitude != null && incident.incidentLongitude != null && (
+                        <a
+                          href={`https://maps.google.com/?q=${incident.incidentLatitude},${incident.incidentLongitude}`}
+                          target="_blank" rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-2 text-blue-600 hover:underline"
+                        >
+                          ({incident.incidentLatitude.toFixed(4)}, {incident.incidentLongitude.toFixed(4)}) — View on Maps
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {incident.videoLink && (
+                    <div className="text-xs text-gray-600 mb-2">
+                      🎥 <a href={incident.videoLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline break-all">{incident.videoLink}</a>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                     <span>Submitted: {new Date(incident.createdDate).toLocaleDateString()}</span>
+                    {incident.incidentDate && <span>Incident: {new Date(incident.incidentDate).toLocaleDateString()}</span>}
                     {incident.assignedTo && <span>Assigned: {incident.assignedTo}</span>}
                   </div>
                 </div>

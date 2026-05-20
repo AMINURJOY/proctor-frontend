@@ -17,6 +17,7 @@ import SettingsPage from './pages/SettingsPage';
 import MyCases from './pages/MyCases';
 import NotificationsPage from './pages/NotificationsPage';
 import CaseReport from './pages/CaseReport';
+import CaseEdit from './pages/CaseEdit';
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
       { path: 'cases/:id', Component: CaseDetail },
+      { path: 'cases/:id/edit', Component: CaseEdit },
       { path: 'cases/:id/report', Component: CaseReport },
       { path: 'my-cases', Component: MyCases },
       { path: 'notifications', Component: NotificationsPage },
@@ -47,6 +49,7 @@ export const router = createBrowserRouter([
       { path: 'settings/incident-routing', Component: SettingsPage },
       { path: 'settings/case-viewing', Component: SettingsPage },
       { path: 'settings/checklist', Component: SettingsPage },
+      { path: 'settings/case-categories', Component: SettingsPage },
       { path: 'settings/ranks', Component: SettingsPage },
       { path: 'settings/articles', Component: SettingsPage },
       { path: 'settings/forwarding', Component: SettingsPage },

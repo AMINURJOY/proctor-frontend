@@ -20,6 +20,7 @@ import { Case, CaseStatus, User } from '../types';
 import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, API_BASE_URL } from '../services/api';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
+import HearingCountdown from '../components/HearingCountdown';
 
 // Workflow steps for the stepper
 const workflowSteps = [
@@ -71,6 +72,28 @@ export default function CaseDetail() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
+
+  // Acknowledge dialog
+  const [showAckDialog, setShowAckDialog] = useState(false);
+  const [ackComment, setAckComment] = useState('');
+  const [ackSubmitting, setAckSubmitting] = useState(false);
+
+  // Multi-assignment dialog
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState<User[]>([]);
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
+  const [primaryAssigneeId, setPrimaryAssigneeId] = useState<string>('');
+  const [assignSubmitting, setAssignSubmitting] = useState(false);
+  // Dynamic case-assignment permission (Settings → Forwarding → Case Assignment Permission)
+  const [canAssign, setCanAssign] = useState(false);
+
+  useEffect(() => {
+    const r = currentUser?.role;
+    if (!r) { setCanAssign(false); return; }
+    forwardingRulesApi.getSpecial(r)
+      .then(res => setCanAssign(!!res.data.data?.canAssign))
+      .catch(() => setCanAssign(false));
+  }, [currentUser?.role]);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -175,6 +198,62 @@ export default function CaseDetail() {
         setVerifications(vRes.data.data || []);
       } catch { /* silent */ }
     } catch { /* silent */ }
+  };
+
+  const handleAcknowledge = async () => {
+    if (!caseItem) return;
+    setAckSubmitting(true);
+    try {
+      await casesApi.acknowledge(caseItem.id, ackComment.trim());
+      toast.success('Incident acknowledged');
+      setShowAckDialog(false);
+      setAckComment('');
+      await refreshCase();
+    } catch (err: any) {
+      toast.error('Acknowledge failed', { description: err?.response?.data?.message || 'Could not acknowledge' });
+    } finally {
+      setAckSubmitting(false);
+    }
+  };
+
+  const openAssignDialog = async () => {
+    if (!caseItem) return;
+    try {
+      const [aRes, dRes] = await Promise.all([
+        usersApi.getByRole('assistant-proctor'),
+        usersApi.getByRole('deputy-proctor'),
+      ]);
+      const combined: User[] = [
+        ...(aRes.data?.data || []),
+        ...(dRes.data?.data || []),
+      ];
+      setAssignableUsers(combined);
+      const existing = (caseItem.assignments || []).filter(a => a.isActive);
+      setSelectedAssigneeIds(existing.map(a => a.userId));
+      setPrimaryAssigneeId(existing.find(a => a.isPrimary)?.userId || '');
+      setShowAssignDialog(true);
+    } catch (err: any) {
+      toast.error('Failed to load users', { description: err?.response?.data?.message || '' });
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!caseItem) return;
+    if (selectedAssigneeIds.length === 0) {
+      toast.error('Select at least one user');
+      return;
+    }
+    setAssignSubmitting(true);
+    try {
+      await casesApi.assign(caseItem.id, selectedAssigneeIds, primaryAssigneeId || undefined);
+      toast.success('Assignments updated');
+      setShowAssignDialog(false);
+      await refreshCase();
+    } catch (err: any) {
+      toast.error('Assignment failed', { description: err?.response?.data?.message || 'Could not assign' });
+    } finally {
+      setAssignSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -298,14 +377,53 @@ export default function CaseDetail() {
               {caseItem.type === 'type-2' && ' &middot; Type-2 (Formal Case)'}
             </p>
           </div>
-          {canDelete && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 transition-colors flex-shrink-0"
-            >
-              <XIcon /> Delete Case
-            </button>
-          )}
+          <div className="flex flex-col gap-3 items-end">
+            {(() => {
+              const upcoming = (caseItem.hearings || [])
+                .filter(h => h.status === 'scheduled' && h.date)
+                .map(h => {
+                  const dt = new Date(`${h.date}T${h.time && h.time.length === 5 ? h.time + ':00' : h.time || '00:00:00'}`);
+                  return { hearing: h, dt };
+                })
+                .filter(x => !isNaN(x.dt.getTime()) && x.dt.getTime() > Date.now())
+                .sort((a, b) => a.dt.getTime() - b.dt.getTime())[0];
+              return upcoming ? <HearingCountdown date={upcoming.hearing.date} time={upcoming.hearing.time} /> : null;
+            })()}
+            <div className="flex flex-wrap gap-2 justify-end">
+              {isOwnSubmission && currentUser?.role === 'student' && (
+                <button
+                  onClick={() => navigate(`/cases/${caseItem.id}/edit`)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
+                >
+                  Edit Case
+                </button>
+              )}
+              {caseItem.type === 'type-1' && !caseItem.isAcknowledged && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
+                <button
+                  onClick={() => setShowAckDialog(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+                >
+                  <CheckIcon /> Acknowledge
+                </button>
+              )}
+              {canAssign && (
+                <button
+                  onClick={openAssignDialog}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100"
+                >
+                  Manage Assignments
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 transition-colors flex-shrink-0"
+                >
+                  <XIcon /> Delete Case
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -414,9 +532,22 @@ export default function CaseDetail() {
                     <p className="font-medium capitalize">{caseItem.priority}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Assigned To</p>
+                    <p className="text-sm text-gray-500">Primary Assignee</p>
                     <p className="font-medium">{caseItem.assignedTo || 'Not assigned'}</p>
                   </div>
+                  {caseItem.categoryName && (
+                    <div>
+                      <p className="text-sm text-gray-500">Category</p>
+                      <p className="font-medium">
+                        {caseItem.categoryName}
+                        {caseItem.categoryIsConfidential && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">
+                            <LockIcon /> Confidential
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-gray-500">Created Date</p>
                     <p className="font-medium">{new Date(caseItem.createdDate).toLocaleString()}</p>
@@ -429,6 +560,20 @@ export default function CaseDetail() {
                     <p className="text-sm text-gray-500">Documents</p>
                     <p className="font-medium">{caseItem.documents.length} file(s)</p>
                   </div>
+                  {caseItem.incidentDate && (
+                    <div>
+                      <p className="text-sm text-gray-500">Incident Date</p>
+                      <p className="font-medium">{new Date(caseItem.incidentDate).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {caseItem.videoLink && (
+                    <div className="md:col-span-2">
+                      <p className="text-sm text-gray-500">Video Evidence Link</p>
+                      <a href={caseItem.videoLink} target="_blank" rel="noreferrer" className="font-medium text-blue-600 break-all hover:underline">
+                        {caseItem.videoLink}
+                      </a>
+                    </div>
+                  )}
                   {caseItem.forwardedToRole && (
                     <div>
                       <p className="text-sm text-gray-500">Currently With</p>
@@ -437,9 +582,126 @@ export default function CaseDetail() {
                   )}
                 </div>
               </div>
+
+              {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    {caseItem.incidentLocationDescription && (
+                      <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
+                    )}
+                    {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="text-gray-500">
+                          {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
+                        </span>
+                        <a
+                          href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
+                          target="_blank" rel="noreferrer"
+                          className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        >
+                          Open in Google Maps
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {caseItem.isAcknowledged && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Acknowledgment</h3>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-1">
+                    <p className="text-sm text-gray-500">
+                      <span className="font-medium text-emerald-700">Received — taking action shortly.</span>
+                      {caseItem.acknowledgedByName && <> Acknowledged by <strong>{caseItem.acknowledgedByName}</strong></>}
+                      {caseItem.acknowledgedAt && <> on {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
+                    </p>
+                    {caseItem.acknowledgmentComment && (
+                      <p className="text-gray-700">{caseItem.acknowledgmentComment}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {caseItem.assignments && caseItem.assignments.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Assigned Officers ({caseItem.assignments.length})</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {caseItem.assignments.map(a => (
+                      <span key={a.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${a.isPrimary ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                        {a.userName}
+                        <span className="text-xs text-gray-500">({a.userRole.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')})</span>
+                        {a.isPrimary && <span className="text-xs font-semibold">★ Primary</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Submitter / student info (works for both Type-1 and Type-2) */}
+              {(caseItem.studentName || caseItem.studentId || caseItem.studentDepartment || caseItem.studentContact || caseItem.studentAdvisorName || caseItem.studentFatherName) && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Submitter / Student Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4 text-sm">
+                    {caseItem.studentName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.studentName}</span></div>}
+                    {caseItem.studentId && <div><span className="text-gray-500">Student ID: </span><span className="font-medium">{caseItem.studentId}</span></div>}
+                    {caseItem.studentDepartment && <div><span className="text-gray-500">Department: </span><span className="font-medium">{caseItem.studentDepartment}</span></div>}
+                    {caseItem.studentContact && <div><span className="text-gray-500">Contact: </span><span className="font-medium">{caseItem.studentContact}</span></div>}
+                    {caseItem.studentAdvisorName && <div><span className="text-gray-500">Advisor: </span><span className="font-medium">{caseItem.studentAdvisorName}</span></div>}
+                    {caseItem.studentFatherName && <div><span className="text-gray-500">Father's Name: </span><span className="font-medium">{caseItem.studentFatherName}</span></div>}
+                    {caseItem.studentFatherContact && <div><span className="text-gray-500">Father's Contact: </span><span className="font-medium">{caseItem.studentFatherContact}</span></div>}
+                  </div>
+                </div>
+              )}
+
+              {(caseItem.complainants?.length || 0) > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Complainants ({caseItem.complainants!.length})</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {caseItem.complainants!.map((c) => (
+                      <div key={c.id} className="border border-gray-200 rounded-lg p-3 text-sm space-y-0.5">
+                        <p className="font-medium">{c.name} {c.studentId && <span className="text-gray-400 text-xs">({c.studentId})</span>}</p>
+                        {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
+                        {c.contact && <p className="text-gray-600">Contact: {c.contact}</p>}
+                        {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
+                        {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(caseItem.accusedPersons?.length || 0) > 0 ? (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused Persons ({caseItem.accusedPersons!.length})</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {caseItem.accusedPersons!.map((a) => (
+                      <div key={a.id} className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm space-y-0.5">
+                        <p className="font-medium">{a.name} {a.accusedStudentId && <span className="text-gray-400 text-xs">({a.accusedStudentId})</span>}</p>
+                        {a.department && <p className="text-gray-600">Dept: {a.department}</p>}
+                        {a.contact && <p className="text-gray-600">Contact: {a.contact}</p>}
+                        {a.guardianContact && <p className="text-gray-600">Guardian: {a.guardianContact}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (caseItem.accusedName || caseItem.accusedId || caseItem.accusedDepartment || caseItem.accusedContact || caseItem.accusedGuardianContact) ? (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused Person</h3>
+                  <div className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {caseItem.accusedName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.accusedName}</span></div>}
+                    {caseItem.accusedId && <div><span className="text-gray-500">ID: </span><span className="font-medium">{caseItem.accusedId}</span></div>}
+                    {caseItem.accusedDepartment && <div><span className="text-gray-500">Dept: </span><span className="font-medium">{caseItem.accusedDepartment}</span></div>}
+                    {caseItem.accusedContact && <div><span className="text-gray-500">Contact: </span><span className="font-medium">{caseItem.accusedContact}</span></div>}
+                    {caseItem.accusedGuardianContact && <div className="md:col-span-2"><span className="text-gray-500">Guardian Contact: </span><span className="font-medium">{caseItem.accusedGuardianContact}</span></div>}
+                  </div>
+                </div>
+              ) : null}
+
               <div>
                 <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
-                <p className="text-gray-700 leading-relaxed">{caseItem.description}</p>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
               </div>
               {caseItem.recommendation && (
                 <div>
@@ -589,8 +851,8 @@ export default function CaseDetail() {
                 Case Notes & Remarks
               </h3>
 
-              {/* Add Note */}
-              {role !== 'student' && role !== 'vc' && (
+              {/* Add Note - any assigned officer (or any non-student/non-VC role) can add */}
+              {(role !== 'student' && role !== 'vc') && (
                 <div className="border border-gray-200 rounded-lg p-4 mb-6">
                   <textarea
                     value={newNote}
@@ -694,6 +956,94 @@ export default function CaseDetail() {
           )}
         </div>
       </div>
+
+      {/* Acknowledge dialog */}
+      {showAckDialog && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowAckDialog(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Acknowledge Incident</h3>
+              <p className="text-sm text-gray-600 mb-4">Send a quick "received — taking action shortly" note to the student.</p>
+              <textarea
+                value={ackComment}
+                onChange={(e) => setAckComment(e.target.value)}
+                rows={3}
+                placeholder="Received — taking action shortly. Please standby for further updates."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
+              />
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setShowAckDialog(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                <button
+                  onClick={handleAcknowledge}
+                  disabled={ackSubmitting || !ackComment.trim()}
+                  className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {ackSubmitting ? 'Acknowledging…' : 'Acknowledge & Notify Student'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Assignment dialog */}
+      {showAssignDialog && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowAssignDialog(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[80vh] overflow-auto">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Manage Assignments</h3>
+              <p className="text-sm text-gray-600 mb-4">Assign one or more Assistant or Deputy Proctors. Mark one as primary.</p>
+              <div className="space-y-2 mb-4">
+                {assignableUsers.length === 0 ? (
+                  <p className="text-sm text-gray-500">No assignable users found.</p>
+                ) : assignableUsers.map(u => {
+                  const checked = selectedAssigneeIds.includes(u.id);
+                  return (
+                    <label key={u.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedAssigneeIds(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
+                          if (!e.target.checked && primaryAssigneeId === u.id) setPrimaryAssigneeId('');
+                        }}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{u.name}</p>
+                        <p className="text-xs text-gray-500">{u.role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</p>
+                      </div>
+                      {checked && (
+                        <label className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="radio"
+                            name="primary"
+                            checked={primaryAssigneeId === u.id}
+                            onChange={() => setPrimaryAssigneeId(u.id)}
+                          />
+                          Primary
+                        </label>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setShowAssignDialog(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                <button
+                  onClick={handleAssign}
+                  disabled={assignSubmitting || selectedAssigneeIds.length === 0}
+                  className="px-4 py-2 text-sm rounded-lg text-white hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: '#0b2652' }}
+                >
+                  {assignSubmitting ? 'Saving…' : 'Save Assignments'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
@@ -883,11 +1233,8 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           </div>
         </div>
 
-        <ForwardToRoleSection
-          label="Forward to Deputy Proctor"
-          targetRole="deputy-proctor"
+        <UnifiedForwardSection
           fromRole="assistant-proctor"
-          caseId={caseItem.id}
           actionLoading={actionLoading}
           withLoading={withLoading}
           onForward={onForward}
@@ -934,8 +1281,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
           />
         </div>
 
-        <ForwardToRoleSection label="Send Back to Asst. Proctor" targetRole="assistant-proctor" fromRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
-        <ForwardToRoleSection label="Forward to Proctor" targetRole="proctor" fromRole="deputy-proctor" caseId={caseItem.id} actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
+        <UnifiedForwardSection fromRole="deputy-proctor" actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
       </div>
       </>
     );
@@ -988,14 +1334,8 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
   verdictUploading: boolean;
   setVerdictUploading: (v: boolean) => void;
 }) {
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   const [canClose, setCanClose] = useState(false);
   useEffect(() => {
-    forwardingRulesApi.getForRole('disciplinary-committee').then(res => {
-      setAllowedTargets((res.data.data || [])
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
     forwardingRulesApi.getSpecial('disciplinary-committee').then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
@@ -1043,19 +1383,14 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
         </div>
       </div>
 
+      <UnifiedForwardSection
+        fromRole="disciplinary-committee"
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        onForward={(r: string, ex?: any) => onForward(r, { ...ex, verdict })}
+      />
+
       <div className="flex flex-wrap gap-2">
-        {allowedTargets.includes('proctor') && (
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('proctor'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
-            <ArrowLeftIcon /> Return to Proctor
-          </button>
-        )}
-        {allowedTargets.filter(t => t !== 'proctor').map(target => (
-          <button key={target} disabled={actionLoading} onClick={() => withLoading(() => onForward(target))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50">
-            <ForwardIcon /> Forward to {target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-          </button>
-        ))}
         {canClose && (
           <button disabled={actionLoading || !verdict.trim()} onClick={() => withLoading(async () => {
             await casesApi.createReport(caseItem.id, { content: verdict, isDraft: false, isFinal: true });
@@ -1081,15 +1416,6 @@ function FemaleCoordinatorPanel({ actionLoading, withLoading, onStatusChange, on
   onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
 }) {
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
-  useEffect(() => {
-    forwardingRulesApi.getForRole('female-coordinator').then(res => {
-      setAllowedTargets((res.data.data || [])
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
-  }, []);
-
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-red-200 mb-6">
       <div className="flex items-center gap-2 mb-4">
@@ -1099,19 +1425,14 @@ function FemaleCoordinatorPanel({ actionLoading, withLoading, onStatusChange, on
           <p className="text-xs text-red-500">Review and forward case</p>
         </div>
       </div>
+      <UnifiedForwardSection
+        fromRole="female-coordinator"
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        title="Verify & Forward to:"
+        onForward={async (r: string, ex?: any) => { await onStatusChange('verified'); await onForward(r, ex); }}
+      />
       <div className="flex flex-wrap gap-2">
-        {allowedTargets.includes('sexual-harassment-committee') && (
-          <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward('sexual-harassment-committee'); })}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-            <ForwardIcon /> Verify & Forward to SH Committee
-          </button>
-        )}
-        {allowedTargets.includes('proctor') && (
-          <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); await onForward('proctor'); })}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
-            <ForwardIcon /> Verify & Forward to Proctor
-          </button>
-        )}
         <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resubmission-requested'))}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
           <RefreshIcon /> Request More Information
@@ -1132,14 +1453,8 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
   investigationNotes: string;
   setInvestigationNotes: (v: string) => void;
 }) {
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   const [canClose, setCanClose] = useState(false);
   useEffect(() => {
-    forwardingRulesApi.getForRole('sexual-harassment-committee').then(res => {
-      setAllowedTargets((res.data.data || [])
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
     forwardingRulesApi.getSpecial('sexual-harassment-committee').then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
@@ -1174,24 +1489,18 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
             <CheckIcon /> Close Case
           </button>
         )}
-        {allowedTargets.includes('registrar') && (
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
-            <ForwardIcon /> Forward to Registrar
-          </button>
-        )}
-        {allowedTargets.filter(t => t !== 'registrar').map(target => (
-          <button key={target} disabled={actionLoading} onClick={() => withLoading(() => onForward(target))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50">
-            <ForwardIcon /> Forward to {target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-          </button>
-        ))}
       </div>
+      <UnifiedForwardSection
+        fromRole="sexual-harassment-committee"
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        onForward={onForward}
+      />
     </div>
   );
 }
 
-// Proctor panel using shared ForwardToRoleSection + dynamic forwarding rules
+// Proctor panel using shared UnifiedForwardSection + dynamic forwarding rules
 function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem }: {
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
@@ -1199,17 +1508,9 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
 }) {
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
-    forwardingRulesApi.getForRole('proctor').then(res => {
-      const rules = res.data.data || [];
-      // Defensive: also strip any leftover __close__/__hearing__ in case backend hasn't filtered
-      setAllowedTargets(rules
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
     forwardingRulesApi.getSpecial('proctor').then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
@@ -1242,33 +1543,15 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
             </button>
           </>
         )}
-        {allowedTargets.includes('registrar') && (
-          <button disabled={actionLoading} onClick={() => withLoading(() => onForward('registrar'))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 disabled:opacity-50">
-            <ForwardIcon /> Forward to Registrar
-          </button>
-        )}
       </div>
 
-      {allowedTargets.length > 0 && (
-        <>
-          <p className="text-sm font-medium text-gray-700 mb-3">Assign / Forward to:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {allowedTargets.filter(t => t !== 'registrar').map(target => (
-              <ForwardToRoleSection
-                key={target}
-                label={target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                targetRole={target}
-                fromRole="proctor"
-                caseId={caseItem.id}
-                actionLoading={actionLoading}
-                withLoading={withLoading}
-                onForward={onForward}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <UnifiedForwardSection
+        fromRole="proctor"
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        title="Assign / Forward to:"
+        onForward={onForward}
+      />
     </div>
   );
 }
@@ -1283,16 +1566,9 @@ function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward,
   recommendation: string;
   setRecommendation: (v: string) => void;
 }) {
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
-    forwardingRulesApi.getForRole('registrar').then(res => {
-      const rules = res.data.data || [];
-      setAllowedTargets(rules
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
     forwardingRulesApi.getSpecial('registrar').then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
@@ -1322,32 +1598,20 @@ function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward,
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {allowedTargets.includes('proctor') && (
-          <button disabled={actionLoading || !recommendation.trim()} onClick={() => withLoading(() => onForward('proctor', { recommendation }))}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600 disabled:opacity-50">
-            <ArrowLeftIcon /> Send Back with Recommendation
-          </button>
-        )}
-        {canClose && (
+      {canClose && (
+        <div className="flex flex-wrap gap-2 mb-4">
           <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('closed', { recommendation }))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
             <CheckIcon /> Close Case
           </button>
-        )}
-      </div>
-      {allowedTargets.filter(t => t !== 'proctor').map(target => (
-        <ForwardToRoleSection
-          key={target}
-          label={`Forward to ${target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`}
-          targetRole={target}
-          fromRole="registrar"
-          caseId={caseItem.id}
-          actionLoading={actionLoading}
-          withLoading={withLoading}
-          onForward={(r: string, ex?: any) => onForward(r, { ...ex, recommendation })}
-        />
-      ))}
+        </div>
+      )}
+      <UnifiedForwardSection
+        fromRole="registrar"
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        onForward={(r: string, ex?: any) => onForward(r, { ...ex, recommendation })}
+      />
     </div>
   );
 }
@@ -1414,16 +1678,6 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
   };
 
   const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
-  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
-
-  useEffect(() => {
-    forwardingRulesApi.getForRole(coordRole).then(res => {
-      const rules = res.data.data || [];
-      setAllowedTargets(rules
-        .filter((r: any) => r.isActive && r.toRole !== '__close__' && r.toRole !== '__hearing__')
-        .map((r: any) => r.toRole));
-    }).catch(() => {});
-  }, [coordRole]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -1466,27 +1720,18 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
         />
       </div>
 
-      {/* Accept & Forward - dynamic based on forwarding rules with person selection */}
-      {allowedTargets.length > 0 && (
-        <div className="mb-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">Accept & Forward to:</p>
-          {allowedTargets.map(target => (
-            <ForwardToRoleSection
-              key={target}
-              label={target.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-              targetRole={target}
-              fromRole={coordRole}
-              caseId={caseItem.id}
-              actionLoading={actionLoading}
-              withLoading={withLoading}
-              onForward={async (role: string, extra?: any) => {
-                await onStatusChange('verified');
-                await onForward(role, extra);
-              }}
-            />
-          ))}
-        </div>
-      )}
+      {/* Accept & Forward - one unified people dropdown across every role the
+          coordinator is permitted to forward to (driven by forwarding rules). */}
+      <UnifiedForwardSection
+        fromRole={coordRole}
+        actionLoading={actionLoading}
+        withLoading={withLoading}
+        title="Accept & Forward to:"
+        onForward={async (role: string, extra?: any) => {
+          await onStatusChange('verified');
+          await onForward(role, extra);
+        }}
+      />
 
       <div className="flex flex-wrap gap-2">
         <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
@@ -1654,38 +1899,32 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
   );
 }
 
-// Reusable forward-to-role section with searchable user picker
-// Checks forwarding rules - renders nothing if no rule allows this forward
-function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoading, withLoading, onForward, simple }: {
-  label: string;
-  targetRole: string;
-  fromRole?: string;
-  caseId: string;
+// Unified forward control: ONE searchable people dropdown that aggregates every
+// user the current role is permitted to forward to (derived from the forwarding
+// rules in Settings). Selecting people and clicking Forward assigns the case to
+// each of them, deriving the target role from each person's own role.
+// Renders nothing when the role has no forwarding permission / no eligible users.
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title }: {
+  fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
-  simple?: boolean;
+  title?: string;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const [ruleAllowed, setRuleAllowed] = useState<boolean | null>(null); // null = loading
+  const [loaded, setLoaded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    usersApi.getByRole(targetRole).then(res => setUsers(res.data.data || [])).catch(() => {});
-  }, [targetRole]);
-
-  // Check if forwarding rule exists for fromRole -> targetRole
-  useEffect(() => {
-    if (!fromRole) { setRuleAllowed(true); return; }
-    forwardingRulesApi.getForRole(fromRole).then(res => {
-      const rules = res.data.data || [];
-      const allowed = rules.some((r: any) => r.toRole === targetRole && r.isActive);
-      setRuleAllowed(allowed);
-    }).catch(() => setRuleAllowed(true));
-  }, [fromRole, targetRole]);
+    if (!fromRole) { setLoaded(true); return; }
+    usersApi.getForwardable(fromRole)
+      .then(res => setUsers(res.data.data || []))
+      .catch(() => setUsers([]))
+      .finally(() => setLoaded(true));
+  }, [fromRole]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1695,13 +1934,16 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Don't render if rule check says not allowed (AFTER all hooks)
-  if (ruleAllowed === false) return null;
-  if (ruleAllowed === null) return null;
+  const roleLabel = (r: string) => r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  // Nothing to forward to: hide the whole section (no forwarding permission).
+  if (!loaded) return null;
+  if (users.length === 0) return null;
 
   const filteredUsers = users.filter(u =>
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    roleLabel(u.role).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const toggleUser = (userId: string) => {
@@ -1710,39 +1952,21 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
 
   const handleForwardSelected = async () => {
     if (selectedUsers.length === 0) return;
-    // Use onForward callback so parent's toast + auto-refresh logic runs
     for (const uid of selectedUsers) {
-      await onForward(targetRole, { assignedToUserId: uid });
+      const u = users.find(x => x.id === uid);
+      if (!u) continue;
+      // Target role is derived from the selected person's role.
+      await onForward(u.role, { assignedToUserId: uid });
     }
     setSelectedUsers([]);
     setShowDropdown(false);
   };
 
-  const handleForwardAll = async () => {
-    await onForward(targetRole, { forwardToAll: true });
-    setSelectedUsers([]);
-    setShowDropdown(false);
-  };
-
-  const roleLabel = targetRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-  // Simple mode: just a forward button without user selection (for single-person roles like proctor, registrar)
-  if (simple) {
-    return (
-      <div className="flex flex-wrap gap-2 mb-2">
-        <button disabled={actionLoading} onClick={() => withLoading(() => onForward(targetRole))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>
-          <ForwardIcon /> {label}
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-gray-50 rounded-lg p-4 mb-3">
-      <p className="text-sm font-medium text-gray-700 mb-2">{label}</p>
+    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+      <p className="text-sm font-medium text-gray-700 mb-2">{title || 'Forward to:'}</p>
 
-      {/* Searchable multi-select dropdown */}
+      {/* Single searchable multi-select people dropdown across all permitted roles */}
       <div className="relative mb-3" ref={dropdownRef}>
         <div
           onClick={() => setShowDropdown(!showDropdown)}
@@ -1750,13 +1974,13 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
         >
           <div className="flex flex-wrap gap-1 flex-1">
             {selectedUsers.length === 0 ? (
-              <span className="text-gray-400">Search and select {roleLabel}...</span>
+              <span className="text-gray-400">Search and select people to forward to...</span>
             ) : (
               selectedUsers.map(uid => {
                 const u = users.find(x => x.id === uid);
                 return u ? (
                   <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                    {u.name}
+                    {u.name} <span className="opacity-60">· {roleLabel(u.role)}</span>
                     <button onClick={(e) => { e.stopPropagation(); toggleUser(uid); }} className="hover:text-blue-900">&times;</button>
                   </span>
                 ) : null;
@@ -1773,7 +1997,7 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
                 type="text"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Search by name..."
+                placeholder="Search by name, email or role..."
                 className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                 autoFocus
                 onClick={e => e.stopPropagation()}
@@ -1790,7 +2014,8 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
                 >
                   <input type="checkbox" checked={selectedUsers.includes(u.id)} readOnly className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
                   <span className="font-medium">{u.name}</span>
-                  <span className="text-gray-400 text-xs">{u.email}</span>
+                  <span className="text-gray-400 text-xs flex-1 truncate">{u.email}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{roleLabel(u.role)}</span>
                 </div>
               ))
             )}
@@ -1798,22 +2023,13 @@ function ForwardToRoleSection({ label, targetRole, fromRole, caseId, actionLoadi
         )}
       </div>
 
-      <div className="flex gap-2">
-        <button
-          disabled={actionLoading || selectedUsers.length === 0}
-          onClick={() => withLoading(handleForwardSelected)}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          <ForwardIcon /> Assign Selected ({selectedUsers.length})
-        </button>
-        <button
-          disabled={actionLoading}
-          onClick={() => withLoading(handleForwardAll)}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-        >
-          <ForwardIcon /> Forward to All {roleLabel}
-        </button>
-      </div>
+      <button
+        disabled={actionLoading || selectedUsers.length === 0}
+        onClick={() => withLoading(handleForwardSelected)}
+        className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+      >
+        <ForwardIcon /> Forward{selectedUsers.length > 0 ? ` (${selectedUsers.length})` : ''}
+      </button>
     </div>
   );
 }

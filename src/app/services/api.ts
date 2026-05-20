@@ -110,6 +110,8 @@ export const usersApi = {
   getById: (id: string) => api.get(`/users/${id}`),
   getMe: () => api.get('/users/me'),
   getByRole: (role: string) => api.get(`/users/by-role/${role}`),
+  // All users `fromRole` is permitted to forward to, derived from forwarding rules.
+  getForwardable: (fromRole: string) => api.get(`/users/forwardable/${fromRole}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
@@ -142,6 +144,19 @@ export const casesApi = {
   updateReport: (caseId: string, reportId: string, data: any) => api.put(`/cases/${caseId}/reports/${reportId}`, data),
   getMyCases: (params?: any) => api.get('/cases/my-cases', { params }),
   getMyCasesCount: () => api.get('/cases/my-cases/count'),
+  acknowledge: (id: string, comment: string) => api.post(`/cases/${id}/acknowledge`, { comment }),
+  assign: (id: string, userIds: string[], primaryUserId?: string) =>
+    api.post(`/cases/${id}/assignments`, { userIds, primaryUserId }),
+};
+
+// Case categories (admin-managed)
+export const caseCategoriesApi = {
+  getAll: (includeInactive = false) => api.get('/case-categories', { params: { includeInactive } }),
+  getById: (id: string) => api.get(`/case-categories/${id}`),
+  create: (data: { name: string; description?: string; isConfidential?: boolean; isActive?: boolean; appliesToType?: string; sortOrder?: number }) =>
+    api.post('/case-categories', data),
+  update: (id: string, data: any) => api.put(`/case-categories/${id}`, data),
+  delete: (id: string) => api.delete(`/case-categories/${id}`),
 };
 
 // Hearings
@@ -151,6 +166,7 @@ export const hearingsApi = {
   create: (data: any) => api.post('/hearings', data),
   update: (id: string, data: any) => api.put(`/hearings/${id}`, data),
   updateStatus: (id: string, status: string) => api.patch(`/hearings/${id}/status`, { status }),
+  getUpcoming: (mineOnly = false) => api.get('/hearings/upcoming', { params: { mineOnly } }),
 };
 
 // Dashboard

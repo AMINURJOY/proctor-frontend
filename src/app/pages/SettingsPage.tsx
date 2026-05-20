@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router';
-import { rolesApi, settingsApi, checklistApi, ranksApi, articlesApi, forwardingRulesApi } from '../services/api';
+import { rolesApi, settingsApi, checklistApi, ranksApi, articlesApi, forwardingRulesApi, caseCategoriesApi } from '../services/api';
 import { toast } from 'sonner';
 
 const menuItems = [
@@ -41,6 +41,15 @@ const allRolesForRouting = [
 
 type PermissionMap = Record<string, Record<string, { create: boolean; read: boolean; update: boolean; delete: boolean }>>;
 
+// The four permission cards shown per menu group in the combined editor.
+// "View" is the menu-access flag (sidebar visibility); the rest are CRUD ops.
+const permDefs = [
+  { key: 'read' as const, label: 'View', desc: 'Visible in sidebar' },
+  { key: 'create' as const, label: 'Create', desc: 'Add new records' },
+  { key: 'update' as const, label: 'Update', desc: 'Edit existing records' },
+  { key: 'delete' as const, label: 'Delete', desc: 'Remove records' },
+];
+
 const formatRole = (role: string) =>
   role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
@@ -57,6 +66,7 @@ export default function SettingsPage() {
     if (location.pathname.includes('/incident-routing')) return 'incident-routing';
     if (location.pathname.includes('/case-viewing')) return 'case-viewing';
     if (location.pathname.includes('/checklist')) return 'checklist';
+    if (location.pathname.includes('/case-categories')) return 'case-categories';
     if (location.pathname.includes('/ranks')) return 'ranks';
     if (location.pathname.includes('/articles')) return 'articles';
     if (location.pathname.includes('/forwarding')) return 'forwarding';
@@ -70,6 +80,9 @@ export default function SettingsPage() {
   const [permLoading, setPermLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
+  // Combined Roles & Permissions editor: which role is being edited + search filter
+  const [selectedRole, setSelectedRole] = useState('proctor');
+  const [permSearch, setPermSearch] = useState('');
 
   // --- Incident Routing State ---
   const [forwardingRoles, setForwardingRoles] = useState<string[]>(['proctor', 'deputy-proctor']);
@@ -204,6 +217,30 @@ export default function SettingsPage() {
     }));
   };
 
+  // Bulk-set every CRUD flag for one menu of the selected role (Select All / Clear per group).
+  const setMenuAll = (role: string, menu: string, value: boolean) => {
+    setPermissions(prev => ({
+      ...prev,
+      [role]: {
+        ...prev[role],
+        [menu]: { create: value, read: value, update: value, delete: value },
+      },
+    }));
+  };
+
+  // Total enabled permission flags for a role (shown as the "N selected" badge).
+  const countRolePerms = (role: string) => {
+    const rp = permissions[role] || {};
+    let n = 0;
+    for (const m of Object.values(rp)) {
+      if (m.create) n++;
+      if (m.read) n++;
+      if (m.update) n++;
+      if (m.delete) n++;
+    }
+    return n;
+  };
+
   const handleSavePermissions = async () => {
     setSaving(true);
     setSavedMessage('');
@@ -319,7 +356,7 @@ export default function SettingsPage() {
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 max-w-fit">
         {[
           { key: 'profile', label: 'Profile', path: '/settings/profile' },
-          { key: 'permissions', label: 'Role Permissions', path: '/settings/permissions' },
+          { key: 'permissions', label: 'Roles & Permissions', path: '/settings/permissions' },
           { key: 'incident-routing', label: 'Incident Routing', path: '/settings/incident-routing' },
           { key: 'case-viewing', label: 'Case Viewing', path: '/settings/case-viewing' },
         ].map(tab => (
@@ -364,167 +401,128 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Menu Access Tab — controls who can SEE each menu (R only) */}
-      {activeTab === 'menu-access' && isSuperAdmin && (
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">Toggle which menus each role can see in the sidebar</p>
-            <div className="flex items-center gap-3">
-              {savedMessage && (
-                <span className={`text-sm ${savedMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
-                  {savedMessage}
-                </span>
-              )}
-              <button
-                onClick={handleSavePermissions}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                style={{ backgroundColor: '#0b2652' }}
-              >
-                {saving ? 'Saving...' : 'Save Menu Access'}
-              </button>
-            </div>
+      {/* Combined Roles & Permissions — menu access (View) + CRUD in one page */}
+      {(activeTab === 'permissions' || activeTab === 'menu-access') && isSuperAdmin && (
+        permLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
           </div>
-
-          {permLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200" style={{ backgroundColor: '#f5f7fb' }}>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
-                        Menu Item
-                      </th>
-                      {roleLabels.map(role => (
-                        <th key={role} className="px-2 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[80px]">
-                          <div className="whitespace-nowrap">{formatRole(role)}</div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {menuItems.map((menu) => (
-                      <tr key={menu} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-100">
-                          {menu}
-                        </td>
-                        {roleLabels.map(role => {
-                          const perms = permissions[role]?.[menu] || { create: false, read: false, update: false, delete: false };
-                          return (
-                            <td key={role} className="px-2 py-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={perms.read}
-                                onChange={() => togglePermission(role, menu, 'read')}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                title="Visible in sidebar"
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+            {/* Left: Role Basics */}
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
+                <h3 className="text-base font-semibold mb-4" style={{ color: '#0b2652' }}>Role Basics</h3>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <select
+                  value={selectedRole}
+                  onChange={e => setSelectedRole(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {roleLabels.map(role => (
+                    <option key={role} value={role}>{formatRole(role)}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  Roles are system-defined. Select a role to manage its menu access and actions.
+                </p>
               </div>
-            </div>
-          )}
-          <div className="mt-4 bg-white rounded-xl shadow-md p-4 border border-gray-100">
-            <p className="text-sm text-gray-600">A checked box means that role will see this menu in the sidebar. CRUD operations within each menu are configured under <strong>Permissions (CRUD)</strong>.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Permissions (CRUD) Tab — fine-grained C/U/D operations per menu */}
-      {activeTab === 'permissions' && (
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">Configure Create, Update, and Delete operations for each role per menu item. (Visibility is controlled in <strong>Menu Access</strong>.)</p>
-            <div className="flex items-center gap-3">
-              {savedMessage && (
-                <span className={`text-sm ${savedMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
-                  {savedMessage}
-                </span>
-              )}
               <button
                 onClick={handleSavePermissions}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
-                style={{ backgroundColor: '#0b2652' }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-white text-sm font-medium disabled:opacity-50"
+                style={{ backgroundColor: '#0b7a4b' }}
               >
-                {saving ? 'Saving...' : 'Save Permissions'}
+                {saving ? 'Saving...' : 'Update Role'}
               </button>
+              {savedMessage && (
+                <p className={`text-sm text-center ${savedMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                  {savedMessage}
+                </p>
+              )}
             </div>
-          </div>
 
-          {permLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200" style={{ backgroundColor: '#f5f7fb' }}>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
-                        Menu Item
-                      </th>
-                      {roleLabels.map(role => (
-                        <th key={role} className="px-2 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[100px]">
-                          <div className="whitespace-nowrap">{formatRole(role)}</div>
-                          <div className="flex justify-center gap-1 mt-1 text-[10px] text-gray-400 font-normal">
-                            <span>C</span><span>U</span><span>D</span>
+            {/* Right: Assign Permissions */}
+            <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <h3 className="text-base font-semibold" style={{ color: '#0b2652' }}>Assign Permissions</h3>
+                  <p className="text-sm text-gray-500">Select the level of access for {formatRole(selectedRole)}</p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium whitespace-nowrap">
+                  {countRolePerms(selectedRole)} selected
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={permSearch}
+                onChange={e => setPermSearch(e.target.value)}
+                placeholder="Search permissions..."
+                className="w-full px-3 py-2 my-4 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+
+              <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
+                {menuItems
+                  .filter(menu => menu.toLowerCase().includes(permSearch.toLowerCase()))
+                  .map(menu => {
+                    const perms = permissions[selectedRole]?.[menu] || { create: false, read: false, update: false, delete: false };
+                    const enabledCount = permDefs.filter(d => perms[d.key]).length;
+                    return (
+                      <div key={menu} className="border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0b7a4b" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{menu}</p>
+                              <p className="text-[11px] text-gray-500">{enabledCount} of {permDefs.length} enabled</p>
+                            </div>
                           </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {menuItems.map((menu) => (
-                      <tr key={menu} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-100">
-                          {menu}
-                        </td>
-                        {roleLabels.map(role => {
-                          const perms = permissions[role]?.[menu] || { create: false, read: false, update: false, delete: false };
-                          return (
-                            <td key={role} className="px-2 py-3">
-                              <div className="flex justify-center gap-1">
-                                {(['create', 'update', 'delete'] as const).map(perm => (
-                                  <label key={perm} className="cursor-pointer" title={perm}>
-                                    <input
-                                      type="checkbox"
-                                      checked={perms[perm]}
-                                      onChange={() => togglePermission(role, menu, perm)}
-                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                  </label>
-                                ))}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <div className="flex items-center gap-3 text-xs font-medium">
+                            <button onClick={() => setMenuAll(selectedRole, menu, true)} className="text-green-600 hover:text-green-700">Select All</button>
+                            <button onClick={() => setMenuAll(selectedRole, menu, false)} className="text-gray-500 hover:text-gray-700">Clear</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {permDefs.map(def => {
+                            const active = perms[def.key];
+                            return (
+                              <button
+                                key={def.key}
+                                onClick={() => togglePermission(selectedRole, menu, def.key)}
+                                className={`flex items-start gap-2 p-3 rounded-lg border text-left transition-colors ${
+                                  active
+                                    ? 'border-green-400 bg-green-50'
+                                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                                }`}
+                              >
+                                <span className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border ${
+                                  active ? 'bg-green-600 border-green-600' : 'border-gray-300'
+                                }`}>
+                                  {active && (
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                                  )}
+                                </span>
+                                <span>
+                                  <span className="block text-sm font-semibold text-gray-900 uppercase tracking-wide">{def.label}</span>
+                                  <span className="block text-[11px] text-gray-500">{def.desc}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                {menuItems.filter(menu => menu.toLowerCase().includes(permSearch.toLowerCase())).length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-6">No permissions match "{permSearch}"</p>
+                )}
               </div>
             </div>
-          )}
-          <div className="mt-4 bg-white rounded-xl shadow-md p-4 border border-gray-100">
-            <p className="text-sm font-medium text-gray-700 mb-2">Legend:</p>
-            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-              <span><strong>C</strong> = Create</span>
-              <span><strong>U</strong> = Update</span>
-              <span><strong>D</strong> = Delete</span>
-            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Incident Routing Tab */}
@@ -682,6 +680,10 @@ export default function SettingsPage() {
       {activeTab === 'checklist' && isSuperAdmin && (
         <ChecklistManager />
       )}
+      {/* Case Categories Tab */}
+      {activeTab === 'case-categories' && isSuperAdmin && (
+        <CaseCategoriesManager />
+      )}
       {/* Ranks Tab */}
       {activeTab === 'ranks' && isSuperAdmin && (
         <RanksManager />
@@ -833,8 +835,12 @@ function ForwardingManager() {
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Case Forwarding Rules</h3>
-      <p className="text-sm text-gray-500 mb-4">Configure which roles can forward cases to which other roles.</p>
+      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Case Forwarding Rules &amp; Permissions</h3>
+      <p className="text-sm text-gray-500 mb-4">
+        These rules are the forwarding permissions. Each rule (<span className="font-medium">From role → To role</span>)
+        grants that role the ability to forward cases — every active member of the allowed target roles
+        will appear in that role's unified <span className="font-medium">Forward</span> dropdown on the case screen.
+      </p>
 
       {/* Add new rule */}
       <div className="bg-blue-50 rounded-lg p-4 mb-6">
@@ -927,6 +933,28 @@ function ForwardingManager() {
           })}
         </div>
       </div>
+
+      {/* Case Assignment Permission */}
+      <div className="mt-4 border border-gray-200 rounded-lg p-4">
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Case Assignment Permission</h4>
+        <p className="text-xs text-gray-500 mb-3">Which roles can assign cases to team members (an <span className="font-medium">Assign</span> button appears on the case for these roles)</p>
+        <div className="flex flex-wrap gap-3">
+          {allRoles.map(role => {
+            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__assign__' && r.isActive);
+            return (
+              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={hasRule} onChange={async () => {
+                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__assign__');
+                  if (existing) { await forwardingRulesApi.delete(existing.id); }
+                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__assign__', resultStatus: 'assigned' }); }
+                  fetchRules();
+                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1002,6 +1030,198 @@ function ChecklistManager() {
           Add
         </button>
       </div>
+    </div>
+  );
+}
+
+// Case Categories manager
+function CaseCategoriesManager() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState({
+    name: '', description: '', isConfidential: false, isActive: true,
+    appliesToType: 'both', sortOrder: 0
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await caseCategoriesApi.getAll(true);
+      setItems(res.data?.data || []);
+    } catch (err: any) {
+      toast.error('Failed to load categories', { description: err?.response?.data?.message || '' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const resetForm = () => {
+    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0 });
+    setEditingId(null);
+    setShowNew(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      if (editingId) {
+        await caseCategoriesApi.update(editingId, form);
+        toast.success('Category updated');
+      } else {
+        await caseCategoriesApi.create(form);
+        toast.success('Category created');
+      }
+      resetForm();
+      await load();
+    } catch (err: any) {
+      toast.error('Save failed', { description: err?.response?.data?.message || '' });
+    }
+  };
+
+  const startEdit = (item: any) => {
+    setForm({
+      name: item.name,
+      description: item.description || '',
+      isConfidential: !!item.isConfidential,
+      isActive: !!item.isActive,
+      appliesToType: item.appliesToType || 'both',
+      sortOrder: item.sortOrder || 0
+    });
+    setEditingId(item.id);
+    setShowNew(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Deactivate this category? (Existing cases referencing it will not be affected.)')) return;
+    try {
+      await caseCategoriesApi.delete(id);
+      toast.success('Category deactivated');
+      await load();
+    } catch (err: any) {
+      toast.error('Delete failed', { description: err?.response?.data?.message || '' });
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 max-w-4xl">
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Case Categories</h3>
+          <p className="text-sm text-gray-500">Manage the categories students choose when filing a Type-2 case. Categories marked Confidential auto-route the case privately.</p>
+        </div>
+        <button
+          onClick={() => { resetForm(); setShowNew(true); }}
+          className="px-3 py-2 rounded-lg text-white text-sm hover:opacity-90"
+          style={{ backgroundColor: '#0b2652' }}
+        >
+          + New Category
+        </button>
+      </div>
+
+      {showNew && (
+        <div className="border border-gray-200 rounded-lg p-4 mb-4 bg-gray-50">
+          <h4 className="font-medium mb-3">{editingId ? 'Edit Category' : 'New Category'}</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Name *</label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Applies To</label>
+              <select value={form.appliesToType} onChange={e => setForm({ ...form, appliesToType: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+                <option value="both">Both Type-1 and Type-2</option>
+                <option value="type-1">Type-1 only</option>
+                <option value="type-2">Type-2 only</option>
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Description</label>
+              <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Sort Order</label>
+              <input type="number" value={form.sortOrder} onChange={e => setForm({ ...form, sortOrder: parseInt(e.target.value || '0', 10) })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+            </div>
+            <div className="flex items-center gap-4 mt-5">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.isConfidential}
+                  onChange={e => setForm({ ...form, isConfidential: e.target.checked })} />
+                Confidential
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.isActive}
+                  onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+                Active
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <button onClick={resetForm} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-white">
+              Cancel
+            </button>
+            <button onClick={handleSave}
+              className="px-3 py-1.5 text-sm rounded text-white"
+              style={{ backgroundColor: '#0b2652' }}>
+              {editingId ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-gray-500">No categories yet. Add one to enable the category dropdown for Type-2 case submissions.</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg border ${!item.isActive ? 'bg-gray-50 opacity-60' : 'bg-white'}`}>
+              <div>
+                <p className="font-medium text-sm">
+                  {item.name}
+                  {item.isConfidential && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-100 text-red-700">
+                      Confidential
+                    </span>
+                  )}
+                  {!item.isActive && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-200 text-gray-700">
+                      Inactive
+                    </span>
+                  )}
+                </p>
+                {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+                <p className="text-xs text-gray-400">
+                  Applies to: {item.appliesToType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} · Order {item.sortOrder}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => startEdit(item)}
+                  className="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50">
+                  Edit
+                </button>
+                {item.isActive && (
+                  <button onClick={() => handleDelete(item.id)}
+                    className="px-3 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50">
+                    Deactivate
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
