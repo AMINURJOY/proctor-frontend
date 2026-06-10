@@ -35,6 +35,7 @@ export default function SubmitIncident() {
 
   // Type-1 form state
   const [t1Description, setT1Description] = useState('');
+  const [t1Phone, setT1Phone] = useState('');
   const [t1Priority, setT1Priority] = useState('medium');
   const [t1Files, setT1Files] = useState<UploadedFile[]>([]);
   const [t1VideoLink, setT1VideoLink] = useState('');
@@ -112,7 +113,11 @@ export default function SubmitIncident() {
       },
       (err) => {
         setT1LocationLoading(false);
-        toast.error('Could not get location', { description: err.message });
+        const insecure = typeof window !== 'undefined' && !window.isSecureContext;
+        const description = insecure
+          ? 'Location requires a secure connection (https:// or localhost). Open the app over HTTPS and allow the location permission.'
+          : err.message;
+        toast.error('Could not get location', { description });
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -193,6 +198,7 @@ export default function SubmitIncident() {
         if (t1Latitude !== null) data.incidentLatitude = t1Latitude;
         if (t1Longitude !== null) data.incidentLongitude = t1Longitude;
         if (t1LocationDescription.trim()) data.incidentLocationDescription = t1LocationDescription.trim();
+        if (t1Phone.trim()) data.studentContact = t1Phone.trim();
       }
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
@@ -547,17 +553,14 @@ export default function SubmitIncident() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                <select
-                  value={t1Priority}
-                  onChange={(e) => setT1Priority(e.target.value)}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={t1Phone}
+                  onChange={(e) => setT1Phone(e.target.value)}
+                  placeholder="Your contact phone number"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                />
               </div>
 
               <button
@@ -733,18 +736,8 @@ export default function SubmitIncident() {
 
               <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100 space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                  <select value={t2Priority} onChange={e => setT2Priority(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Incident Date</label>
-                  <input type="date" value={t2IncidentDate} onChange={e => setT2IncidentDate(e.target.value)}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Incident Date &amp; Time</label>
+                  <input type="datetime-local" value={t2IncidentDate} onChange={e => setT2IncidentDate(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                 </div>
               </div>
@@ -839,10 +832,9 @@ export default function SubmitIncident() {
               </div>
 
               {/* Extra info */}
-              <div className="grid grid-cols-3 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">
+              <div className="grid grid-cols-2 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">
                 <div><span className="text-gray-500">Category: </span><span className="font-medium">{categories.find(c => c.id === t2CategoryId)?.name || '—'}</span></div>
-                <div><span className="text-gray-500">Priority: </span><span className="font-medium capitalize">{t2Priority}</span></div>
-                <div><span className="text-gray-500">Incident Date: </span><span className="font-medium">{t2IncidentDate || '—'}</span></div>
+                <div><span className="text-gray-500">Incident Date: </span><span className="font-medium">{t2IncidentDate ? new Date(t2IncidentDate).toLocaleString() : '—'}</span></div>
               </div>
 
               {t2VideoLink && (

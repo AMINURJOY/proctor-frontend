@@ -167,6 +167,8 @@ export const hearingsApi = {
   update: (id: string, data: any) => api.put(`/hearings/${id}`, data),
   updateStatus: (id: string, status: string) => api.patch(`/hearings/${id}/status`, { status }),
   getUpcoming: (mineOnly = false) => api.get('/hearings/upcoming', { params: { mineOnly } }),
+  notifyEmail: (id: string, data: { recipients: string[]; subject?: string; message: string }) =>
+    api.post(`/hearings/${id}/notify-email`, data),
 };
 
 // Dashboard

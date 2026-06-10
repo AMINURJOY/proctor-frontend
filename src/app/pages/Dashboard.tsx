@@ -24,7 +24,9 @@ export default function Dashboard() {
         const [statsRes, activityRes, casesRes] = await Promise.allSettled([
           dashboardApi.getStats(),
           dashboardApi.getRecentActivity(),
-          casesApi.getAll(),
+          // The list endpoint defaults to pageSize 10; the dashboard derives all its
+          // stats/charts from this set, so request a large page to avoid truncated counts.
+          casesApi.getAll({ pageSize: 1000 }),
         ]);
 
         if (statsRes.status === 'fulfilled') {
@@ -57,9 +59,17 @@ export default function Dashboard() {
 
     // All other staff: cases assigned to them OR forwarded to their role
     const confidentialAccess = ['proctor', 'female-coordinator', 'sexual-harassment-committee'].includes(role);
+    const isMyAssignment = (c: Case) =>
+      c.assignedTo === currentUser?.name ||
+      (c.assignedUserIds || []).includes(currentUser?.id || '\0') ||
+      (c.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
+    // Coordinators triage freshly-submitted cases that haven't been routed to anyone yet.
+    const isNewSubmission = (c: Case) => c.status === 'submitted' || c.status === 'resubmission-requested';
     return cases.filter(c => {
       if (c.type === 'confidential' && !confidentialAccess) return false;
-      return c.forwardedToRole === role || c.assignedTo === currentUser?.name;
+      if (role === 'coordinator' && c.type !== 'confidential' && isNewSubmission(c)) return true;
+      if (role === 'female-coordinator' && c.type === 'confidential' && isNewSubmission(c)) return true;
+      return c.forwardedToRole === role || isMyAssignment(c);
     });
   })();
 
@@ -73,7 +83,12 @@ export default function Dashboard() {
         case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type === 'confidential';
         case 'vc': return false; // VC only monitors
         case 'super-admin': return true;
-        default: return c.forwardedToRole === role; // only what's currently in their role queue
+        // In their role queue OR directly assigned to them (e.g. assistant/deputy proctors
+        // who receive cases via assignment rather than role forwarding).
+        default:
+          return c.forwardedToRole === role
+            || c.assignedTo === currentUser?.name
+            || (c.assignedUserIds || []).includes(currentUser?.id || '\0');
       }
     });
   };

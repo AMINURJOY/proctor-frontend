@@ -118,6 +118,7 @@ export interface Case {
   status: CaseStatus;
   priority: Priority;
   assignedTo?: string;
+  assignedUserIds?: string[];
   createdDate: string;
   updatedDate: string;
   description: string;

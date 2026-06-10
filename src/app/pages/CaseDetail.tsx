@@ -323,13 +323,17 @@ export default function CaseDetail() {
     'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
-  const tabs = [
+  const allTabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: 'Documents' },
     { id: 'hearing', label: 'Hearing' },
     { id: 'notes', label: 'Notes' },
     { id: 'timeline', label: 'Activity Timeline' }
   ] as const;
+  // Type-1 (instant incident) cases have no hearings, so hide that tab.
+  const tabs = caseItem.type === 'type-1'
+    ? allTabs.filter(t => t.id !== 'hearing')
+    : allTabs;
 
   const currentStepIndex = getStepIndex(caseItem.status);
   const isRejected = caseItem.status === 'rejected';
@@ -562,8 +566,8 @@ export default function CaseDetail() {
                   </div>
                   {caseItem.incidentDate && (
                     <div>
-                      <p className="text-sm text-gray-500">Incident Date</p>
-                      <p className="font-medium">{new Date(caseItem.incidentDate).toLocaleDateString()}</p>
+                      <p className="text-sm text-gray-500">Incident Date &amp; Time</p>
+                      <p className="font-medium">{new Date(caseItem.incidentDate).toLocaleString()}</p>
                     </div>
                   )}
                   {caseItem.videoLink && (
@@ -591,18 +595,27 @@ export default function CaseDetail() {
                       <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
                     )}
                     {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
-                      <div className="flex items-center gap-3 text-sm">
-                        <span className="text-gray-500">
-                          {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
-                        </span>
-                        <a
-                          href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
-                          target="_blank" rel="noreferrer"
-                          className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
-                        >
-                          Open in Google Maps
-                        </a>
-                      </div>
+                      <>
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className="text-gray-500">
+                            {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
+                          </span>
+                          <a
+                            href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
+                            target="_blank" rel="noreferrer"
+                            className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          >
+                            Open in Google Maps
+                          </a>
+                        </div>
+                        <iframe
+                          title="Incident location map"
+                          className="w-full h-64 rounded-lg border border-gray-200"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          src={`https://maps.google.com/maps?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}&z=16&output=embed`}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
@@ -643,6 +656,24 @@ export default function CaseDetail() {
               {(caseItem.studentName || caseItem.studentId || caseItem.studentDepartment || caseItem.studentContact || caseItem.studentAdvisorName || caseItem.studentFatherName) && (
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Submitter / Student Information</h3>
+                  {(caseItem.studentName || caseItem.studentContact) && (
+                    <div className="flex flex-wrap items-center gap-3 mb-3 rounded-lg p-4 text-white" style={{ backgroundColor: '#0b2652' }}>
+                      {caseItem.studentName && (
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-blue-200">Name</p>
+                          <p className="text-lg font-semibold">{caseItem.studentName}</p>
+                        </div>
+                      )}
+                      {caseItem.studentContact && (
+                        <div className="md:ml-auto">
+                          <p className="text-xs uppercase tracking-wide text-blue-200">Phone</p>
+                          <a href={`tel:${caseItem.studentContact}`} className="text-lg font-semibold underline-offset-2 hover:underline">
+                            {caseItem.studentContact}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4 text-sm">
                     {caseItem.studentName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.studentName}</span></div>}
                     {caseItem.studentId && <div><span className="text-gray-500">Student ID: </span><span className="font-medium">{caseItem.studentId}</span></div>}
@@ -660,12 +691,24 @@ export default function CaseDetail() {
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Complainants ({caseItem.complainants!.length})</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {caseItem.complainants!.map((c) => (
-                      <div key={c.id} className="border border-gray-200 rounded-lg p-3 text-sm space-y-0.5">
-                        <p className="font-medium">{c.name} {c.studentId && <span className="text-gray-400 text-xs">({c.studentId})</span>}</p>
-                        {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
-                        {c.contact && <p className="text-gray-600">Contact: {c.contact}</p>}
-                        {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
-                        {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
+                      <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden text-sm">
+                        <div className="flex flex-wrap items-center gap-3 p-3 text-white" style={{ backgroundColor: '#0b2652' }}>
+                          <div className="min-w-0">
+                            <p className="text-[11px] uppercase tracking-wide text-blue-200">Name</p>
+                            <p className="text-base font-semibold truncate">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
+                          </div>
+                          {c.contact && (
+                            <div className="md:ml-auto">
+                              <p className="text-[11px] uppercase tracking-wide text-blue-200">Phone</p>
+                              <a href={`tel:${c.contact}`} className="text-base font-semibold underline-offset-2 hover:underline">{c.contact}</a>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 space-y-0.5">
+                          {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
+                          {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
+                          {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -795,7 +838,7 @@ export default function CaseDetail() {
           )}
 
           {/* Hearing Tab */}
-          {activeTab === 'hearing' && (
+          {activeTab === 'hearing' && caseItem.type !== 'type-1' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium" style={{ color: '#0b2652' }}>
@@ -1095,6 +1138,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   onForward: (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => Promise<void>;
   onRefresh: () => Promise<void>;
 }) {
+  const { currentUser } = useAuth();
   const [actionLoading, setActionLoading] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [recommendation, setRecommendation] = useState('');
@@ -1148,7 +1192,14 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     'super-admin': true,
   };
 
-  const canAct = roleForwardMap[role] ?? false;
+  // A user can also act when the case is directly assigned to them (primary or co-assignee),
+  // not only when it sits in their role's forward queue. This lets all assigned/forwarded
+  // officers share the case — e.g. an assistant proctor assigned to a case can schedule a
+  // hearing or add to it, the same as the rest of the team.
+  const isActiveAssignee =
+    caseItem.assignedTo === currentUser?.name ||
+    (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
+  const canAct = (roleForwardMap[role] ?? false) || isActiveAssignee;
   if (!canAct) {
     return (
       <div className="bg-yellow-50 rounded-xl shadow-md p-4 border border-yellow-200 mb-6">
@@ -1161,7 +1212,12 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   // Coordinator panel
   if (role === 'coordinator' || role === 'female-coordinator') {
-    return <CoordinatorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} isConfidential={isConfidential} />;
+    return (
+      <>
+        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
+        <CoordinatorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} isConfidential={isConfidential} />
+      </>
+    );
   }
 
   // Proctor panel
@@ -1430,7 +1486,8 @@ function FemaleCoordinatorPanel({ actionLoading, withLoading, onStatusChange, on
         actionLoading={actionLoading}
         withLoading={withLoading}
         title="Verify & Forward to:"
-        onForward={async (r: string, ex?: any) => { await onStatusChange('verified'); await onForward(r, ex); }}
+        beforeForward={async () => { await onStatusChange('verified'); }}
+        onForward={onForward}
       />
       <div className="flex flex-wrap gap-2">
         <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('resubmission-requested'))}
@@ -1727,10 +1784,15 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
         actionLoading={actionLoading}
         withLoading={withLoading}
         title="Accept & Forward to:"
-        onForward={async (role: string, extra?: any) => {
-          await onStatusChange('verified');
-          await onForward(role, extra);
+        beforeForward={async () => {
+          // Verify only once, and only if the case is still awaiting verification —
+          // otherwise forwarding to a second/third person would retry submitted→verified
+          // on an already-assigned case and be rejected by the workflow.
+          if (['submitted', 'resubmission-requested', 'on-hold'].includes(caseItem.status)) {
+            await onStatusChange('verified');
+          }
         }}
+        onForward={onForward}
       />
 
       <div className="flex flex-wrap gap-2">
@@ -1904,12 +1966,16 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
 // rules in Settings). Selecting people and clicking Forward assigns the case to
 // each of them, deriving the target role from each person's own role.
 // Renders nothing when the role has no forwarding permission / no eligible users.
-function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title }: {
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward }: {
   fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   title?: string;
+  // Runs ONCE before forwarding to the selected users (e.g. verify the case).
+  // Must not be re-run per recipient, or a one-time transition (submitted→verified)
+  // would be attempted again on an already-advanced case and fail.
+  beforeForward?: () => Promise<void>;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -1952,6 +2018,8 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
 
   const handleForwardSelected = async () => {
     if (selectedUsers.length === 0) return;
+    // One-time pre-step (e.g. coordinator verification) before forwarding to everyone.
+    if (beforeForward) await beforeForward();
     for (const uid of selectedUsers) {
       const u = users.find(x => x.id === uid);
       if (!u) continue;

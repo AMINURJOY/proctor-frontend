@@ -21,6 +21,38 @@ export default function HearingManagement() {
   const [closingHearing, setClosingHearing] = useState<any | null>(null);
   const [closeRemarks, setCloseRemarks] = useState('');
   const [closing, setClosing] = useState(false);
+  // External email notification modal
+  const [emailHearing, setEmailHearing] = useState<any | null>(null);
+  const [emailRecipients, setEmailRecipients] = useState<string[]>(['']);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const openEmailModal = (hearing: any) => {
+    setEmailHearing(hearing);
+    setEmailRecipients(['']);
+    setEmailSubject(`Hearing notification — ${hearing.caseNumber || ''}`.trim());
+    setEmailMessage(`You are requested to attend the hearing for case ${hearing.caseNumber || ''} on ${hearing.date} at ${hearing.time}, ${hearing.location}.`);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailHearing) return;
+    const recipients = emailRecipients.map(r => r.trim()).filter(Boolean);
+    if (recipients.length === 0) { toast.error('Add at least one email address'); return; }
+    if (!emailMessage.trim()) { toast.error('Write a message'); return; }
+    setSendingEmail(true);
+    try {
+      await hearingsApi.notifyEmail(emailHearing.id, { recipients, subject: emailSubject.trim() || undefined, message: emailMessage.trim() });
+      const res = await hearingsApi.getAll();
+      if (res.data.data) setHearingsData(res.data.data);
+      toast.success(`Email sent to ${recipients.length} recipient(s)`);
+      setEmailHearing(null);
+    } catch (err: any) {
+      toast.error('Failed to send email', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,17 +94,24 @@ export default function HearingManagement() {
 
   const allHearings = hearingsData;
 
-  const upcoming = allHearings.filter(h => h.status === 'scheduled');
-  const completed = allHearings.filter(h => h.status === 'completed');
+  const [emailFilter, setEmailFilter] = useState<'all' | 'emailed' | 'not-emailed'>('all');
+  const matchesEmailFilter = (h: any) => {
+    const sent = (h.emailNotifications?.length || 0) > 0;
+    return emailFilter === 'all' || (emailFilter === 'emailed' ? sent : !sent);
+  };
+
+  const upcoming = allHearings.filter(h => h.status === 'scheduled').filter(matchesEmailFilter);
+  const completed = allHearings.filter(h => h.status === 'completed').filter(matchesEmailFilter);
 
   const [canSchedule, setCanSchedule] = useState(false);
 
   useEffect(() => {
     const role = currentUser?.role || '';
-    if (role === 'super-admin') { setCanSchedule(true); return; }
-    forwardingRulesApi.getForRole(role).then(res => {
-      const rules = res.data.data || [];
-      setCanSchedule(rules.some((r: any) => r.toRole === '__hearing__' && r.isActive));
+    if (!role) { setCanSchedule(false); return; }
+    // Use the special-permissions endpoint (returns canHearing). The role-rules endpoint
+    // deliberately strips the internal __hearing__ rule, so it can never report this.
+    forwardingRulesApi.getSpecial(role).then(res => {
+      setCanSchedule(!!res.data.data?.canHearing);
     }).catch(() => setCanSchedule(false));
   }, [currentUser?.role]);
 
@@ -149,6 +188,30 @@ export default function HearingManagement() {
         </div>
 
         <div className="p-6">
+          {/* Email-status filter (applies to Upcoming & Completed lists) */}
+          {activeTab !== 'tracker' && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-sm text-gray-500">Filter:</span>
+              {([
+                { id: 'all', label: 'All' },
+                { id: 'emailed', label: 'Email sent' },
+                { id: 'not-emailed', label: 'No email' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setEmailFilter(opt.id)}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    emailFilter === opt.id
+                      ? 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Upcoming Hearings */}
           {activeTab === 'upcoming' && (
             <div className="space-y-4">
@@ -190,6 +253,21 @@ export default function HearingManagement() {
                             ))}
                           </div>
                         </div>
+                        {(hearing.emailNotifications?.length || 0) > 0 && (
+                          <div className="mt-1 rounded-lg bg-green-50 border border-green-100 p-3">
+                            <p className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                              <MailIcon /> Email notifications sent
+                            </p>
+                            <div className="space-y-1">
+                              {hearing.emailNotifications.map((n: any, i: number) => (
+                                <div key={i} className="text-xs text-gray-600">
+                                  <span className="text-gray-400">{new Date(n.sentAt).toLocaleString()} · {n.sentBy} →</span>{' '}
+                                  <span className="font-medium text-gray-700">{n.recipients.join(', ')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -200,17 +278,18 @@ export default function HearingManagement() {
                           <EyeIcon />
                           View Case
                         </button>
+                        <button
+                          onClick={() => openEmailModal(hearing)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700"
+                        >
+                          <MailIcon />
+                          Send Email
+                        </button>
                         {canSchedule && (
-                          <>
-                            <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700">
-                              <MailIcon />
-                              Send Email
-                            </button>
-                            <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-                              <PhoneIcon />
-                              Send SMS
-                            </button>
-                          </>
+                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+                            <PhoneIcon />
+                            Send SMS
+                          </button>
                         )}
                       </div>
                     </div>
@@ -508,6 +587,94 @@ export default function HearingManagement() {
                 >
                   {closing ? 'Closing...' : 'Save & Close Hearing'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Send External Email Modal */}
+      {emailHearing && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !sendingEmail && setEmailHearing(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Notify by Email</h3>
+                <button onClick={() => !sendingEmail && setEmailHearing(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Email external people (not system users) about <span className="font-medium">{emailHearing.caseNumber}</span> — {emailHearing.date} at {emailHearing.time}.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Recipient emails *</label>
+                  <div className="space-y-2">
+                    {emailRecipients.map((r, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input
+                          type="email"
+                          value={r}
+                          onChange={e => setEmailRecipients(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
+                          placeholder="name@example.com"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {emailRecipients.length > 1 && (
+                          <button
+                            onClick={() => setEmailRecipients(prev => prev.filter((_, idx) => idx !== i))}
+                            className="px-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50"
+                            title="Remove"
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setEmailRecipients(prev => [...prev, ''])}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    + Add another email
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
+                  <textarea
+                    value={emailMessage}
+                    onChange={e => setEmailMessage(e.target.value)}
+                    rows={6}
+                    placeholder="Write the hearing details / instructions to send…"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <p className="text-xs text-gray-400">No SMTP is configured yet — sending is recorded as a demo and the recipients are logged below the hearing.</p>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button disabled={sendingEmail} onClick={() => setEmailHearing(null)}
+                    className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button disabled={sendingEmail} onClick={handleSendEmail}
+                    className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                    {sendingEmail ? 'Sending…' : 'Send Email'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
