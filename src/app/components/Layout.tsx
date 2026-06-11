@@ -142,9 +142,13 @@ export default function Layout() {
     { path: '/notifications', label: 'Notifications', icon: BellIcon, menuKey: 'notifications' },
     { path: '/reports', label: 'Reports', icon: ReportIcon, menuKey: 'reports' },
     { path: '/users', label: 'Users / Roles', icon: UsersIcon, menuKey: 'users' },
+    { path: '/students', label: 'Students', icon: UsersIcon, menuKey: 'students' },
   ];
 
   const menuItems = allMenuItems.filter(item => {
+    // Students directory is available to all staff (any non-student role); there is no
+    // dedicated permission row for it.
+    if (item.menuKey === 'students') return isSuperAdmin || (!!currentUser?.role && currentUser.role !== 'student');
     return isSuperAdmin || permissions[item.menuKey]?.canRead;
   });
 

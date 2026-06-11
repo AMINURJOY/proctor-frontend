@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { usersApi, ranksApi } from '../services/api';
-import { User, UserRole } from '../types';
+import { User, UserRole, Gender } from '../types';
+
+const genderBadge = (g?: string) => {
+  const v = (g || '').toLowerCase();
+  if (v === 'female') return 'bg-pink-100 text-pink-700';
+  if (v === 'male') return 'bg-blue-100 text-blue-700';
+  return 'bg-gray-100 text-gray-500';
+};
+const formatGender = (g?: string) => {
+  const v = (g || 'unspecified');
+  return v.charAt(0).toUpperCase() + v.slice(1);
+};
 
 const allRoles: UserRole[] = [
   'student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor',
@@ -16,7 +27,7 @@ export default function UsersManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<User | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '', gender: 'unspecified' as Gender });
   const [ranks, setRanks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -73,7 +84,7 @@ export default function UsersManagement() {
     } finally {
       setSaving(false);
       setShowCreateModal(false);
-      setFormData({ name: '', email: '', role: 'student', password: '' });
+      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
     }
   };
 
@@ -93,7 +104,7 @@ export default function UsersManagement() {
     } finally {
       setSaving(false);
       setShowEditModal(null);
-      setFormData({ name: '', email: '', role: 'student', password: '' });
+      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
     }
   };
 
@@ -110,7 +121,7 @@ export default function UsersManagement() {
   };
 
   const openEdit = (user: User) => {
-    setFormData({ name: user.name, email: user.email, role: user.role, password: '' });
+    setFormData({ name: user.name, email: user.email, role: user.role, password: '', rank: (user as any).rankName || '', gender: (user.gender as Gender) || 'unspecified' });
     setShowEditModal(user);
   };
 
@@ -140,7 +151,7 @@ export default function UsersManagement() {
         </div>
         <button
           onClick={() => {
-            setFormData({ name: '', email: '', role: 'student', password: '' });
+            setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
             setShowCreateModal(true);
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
@@ -166,6 +177,7 @@ export default function UsersManagement() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Gender</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -185,6 +197,11 @@ export default function UsersManagement() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2.5 py-1 text-xs rounded-full font-medium ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
                         {formatRole(user.role)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2.5 py-1 text-xs rounded-full font-medium ${genderBadge(user.gender)}`}>
+                        {formatGender(user.gender)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -273,6 +290,19 @@ export default function UsersManagement() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value as Gender }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="unspecified">Unspecified</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rank (পদবি)</label>
                   <select
                     value={formData.rank}
@@ -343,6 +373,19 @@ export default function UsersManagement() {
                     {allRoles.map(role => (
                       <option key={role} value={role}>{formatRole(role)}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value as Gender }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="unspecified">Unspecified</option>
                   </select>
                 </div>
                 <div className="flex gap-3 justify-end pt-2">

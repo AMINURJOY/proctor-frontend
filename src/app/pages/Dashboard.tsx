@@ -67,8 +67,10 @@ export default function Dashboard() {
     const isNewSubmission = (c: Case) => c.status === 'submitted' || c.status === 'resubmission-requested';
     return cases.filter(c => {
       if (c.type === 'confidential' && !confidentialAccess) return false;
-      if (role === 'coordinator' && c.type !== 'confidential' && isNewSubmission(c)) return true;
-      if (role === 'female-coordinator' && c.type === 'confidential' && isNewSubmission(c)) return true;
+      // Triage queue: only un-routed fresh submissions fall here. Gender-routed cases carry a
+      // forwardedToRole and reach the matching coordinator through the general check below.
+      if (role === 'coordinator' && c.type !== 'confidential' && isNewSubmission(c) && !c.forwardedToRole) return true;
+      if (role === 'female-coordinator' && c.type === 'confidential' && isNewSubmission(c) && !c.forwardedToRole) return true;
       return c.forwardedToRole === role || isMyAssignment(c);
     });
   })();
@@ -80,7 +82,7 @@ export default function Dashboard() {
       switch (role) {
         case 'student': return true; // any open case they submitted
         case 'coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type !== 'confidential';
-        case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type === 'confidential';
+        case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && (c.type === 'confidential' || c.forwardedToRole === 'female-coordinator');
         case 'vc': return false; // VC only monitors
         case 'super-admin': return true;
         // In their role queue OR directly assigned to them (e.g. assistant/deputy proctors

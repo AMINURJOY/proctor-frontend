@@ -146,6 +146,7 @@ export interface Case {
   hearings: Hearing[];
   timeline: TimelineEvent[];
   reports?: Report[];
+  additionalInfos?: AdditionalInfo[];
 
   // Category
   categoryId?: string;
@@ -201,6 +202,14 @@ export interface Note {
   id: string;
   content: string;
   author: string;
+  createdDate: string;
+}
+
+export interface AdditionalInfo {
+  id: string;
+  content: string;
+  author: string;
+  authorRole?: string;
   createdDate: string;
 }
 

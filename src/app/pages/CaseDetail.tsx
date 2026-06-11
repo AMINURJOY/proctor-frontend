@@ -63,6 +63,8 @@ export default function CaseDetail() {
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'timeline'>('overview');
   const [newNote, setNewNote] = useState('');
+  const [newInfo, setNewInfo] = useState('');
+  const [addingInfo, setAddingInfo] = useState(false);
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +138,22 @@ export default function CaseDetail() {
       setNewNote('');
     } finally {
       setAddingNote(false);
+    }
+  };
+
+  const handleAddInfo = async () => {
+    if (!newInfo.trim() || !caseItem) return;
+    setAddingInfo(true);
+    try {
+      await casesApi.addAdditionalInfo(caseItem.id, newInfo.trim());
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+      setNewInfo('');
+      toast.success('Additional information added');
+    } catch (err: any) {
+      toast.error('Could not add information', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setAddingInfo(false);
     }
   };
 
@@ -282,6 +300,15 @@ export default function CaseDetail() {
   );
   const isAssignedToMe = !!currentUser?.name && caseItem.assignedTo === currentUser.name;
   const isInMyRoleQueue = !!currentUser?.role && caseItem.forwardedToRole === currentUser.role;
+  const isActiveAssignee = (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
+  // Owner student OR any staff the case has been forwarded/assigned to may edit case info.
+  const canEditCase = (isOwnSubmission && currentUser?.role === 'student')
+    || isAssignedToMe || isInMyRoleQueue || isActiveAssignee
+    || currentUser?.role === 'super-admin';
+  // Associated staff (not the student/VC) may append additional information to the case.
+  const canAddInfo = !!currentUser?.role
+    && currentUser.role !== 'student' && currentUser.role !== 'vc'
+    && (isAssignedToMe || isInMyRoleQueue || isActiveAssignee || currentUser.role === 'super-admin');
   const hasConfidentialMenu = permissions['confidential']?.canRead === true;
   const canViewConfidential = isOwnSubmission
     || isAssignedToMe
@@ -394,7 +421,7 @@ export default function CaseDetail() {
               return upcoming ? <HearingCountdown date={upcoming.hearing.date} time={upcoming.hearing.time} /> : null;
             })()}
             <div className="flex flex-wrap gap-2 justify-end">
-              {isOwnSubmission && currentUser?.role === 'student' && (
+              {canEditCase && (
                 <button
                   onClick={() => navigate(`/cases/${caseItem.id}/edit`)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
@@ -657,7 +684,7 @@ export default function CaseDetail() {
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Submitter / Student Information</h3>
                   {(caseItem.studentName || caseItem.studentContact) && (
-                    <div className="flex flex-wrap items-center gap-3 mb-3 rounded-lg p-4 text-white" style={{ backgroundColor: '#0b2652' }}>
+                    <div className="space-y-2 mb-3 rounded-lg p-4 text-white" style={{ backgroundColor: '#0b2652' }}>
                       {caseItem.studentName && (
                         <div>
                           <p className="text-xs uppercase tracking-wide text-blue-200">Name</p>
@@ -665,7 +692,7 @@ export default function CaseDetail() {
                         </div>
                       )}
                       {caseItem.studentContact && (
-                        <div className="md:ml-auto">
+                        <div>
                           <p className="text-xs uppercase tracking-wide text-blue-200">Phone</p>
                           <a href={`tel:${caseItem.studentContact}`} className="text-lg font-semibold underline-offset-2 hover:underline">
                             {caseItem.studentContact}
@@ -692,13 +719,13 @@ export default function CaseDetail() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {caseItem.complainants!.map((c) => (
                       <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden text-sm">
-                        <div className="flex flex-wrap items-center gap-3 p-3 text-white" style={{ backgroundColor: '#0b2652' }}>
+                        <div className="p-3 text-white space-y-2" style={{ backgroundColor: '#0b2652' }}>
                           <div className="min-w-0">
                             <p className="text-[11px] uppercase tracking-wide text-blue-200">Name</p>
-                            <p className="text-base font-semibold truncate">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
+                            <p className="text-base font-semibold">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
                           </div>
                           {c.contact && (
-                            <div className="md:ml-auto">
+                            <div>
                               <p className="text-[11px] uppercase tracking-wide text-blue-200">Phone</p>
                               <a href={`tel:${c.contact}`} className="text-base font-semibold underline-offset-2 hover:underline">{c.contact}</a>
                             </div>
@@ -746,6 +773,54 @@ export default function CaseDetail() {
                 <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
                 <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
               </div>
+
+              {/* Additional Information — appended by associated staff after submission */}
+              {(canAddInfo || (caseItem.additionalInfos?.length || 0) > 0) && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Additional Information</h3>
+
+                  {canAddInfo && (
+                    <div className="border border-gray-200 rounded-lg p-4 mb-3">
+                      <textarea
+                        value={newInfo}
+                        onChange={(e) => setNewInfo(e.target.value)}
+                        placeholder="Add new information to this case…"
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                      />
+                      <button
+                        onClick={handleAddInfo}
+                        disabled={addingInfo || !newInfo.trim()}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
+                        style={{ backgroundColor: '#0b2652' }}
+                      >
+                        <SendIcon />
+                        {addingInfo ? 'Adding…' : 'Add Information'}
+                      </button>
+                    </div>
+                  )}
+
+                  {(caseItem.additionalInfos?.length || 0) === 0 ? (
+                    <p className="text-sm text-gray-400">No additional information added yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {caseItem.additionalInfos!.map((info) => (
+                        <div key={info.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                          <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="font-medium text-gray-800">
+                              {info.author}
+                              {info.authorRole && <span className="ml-2 text-xs text-gray-500 capitalize">{info.authorRole.split('-').join(' ')}</span>}
+                            </p>
+                            <p className="text-xs text-gray-500">{new Date(info.createdDate).toLocaleString()}</p>
+                          </div>
+                          <p className="text-gray-700 whitespace-pre-wrap">{info.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {caseItem.recommendation && (
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Registrar Recommendation</h3>
@@ -1181,8 +1256,10 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   // View-only enforcement: if case hasn't been forwarded to this role, show read-only message
   const roleForwardMap: Record<string, boolean> = {
-    'coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator' || caseItem.status === 'submitted' || caseItem.status === 'resubmission-requested',
-    'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator' || caseItem.status === 'submitted' || caseItem.status === 'resubmission-requested',
+    // Coordinators act on cases routed to their role (gender-based) or not-yet-routed (legacy).
+    // The specific assigned coordinator is additionally covered by isActiveAssignee below.
+    'coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator',
+    'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator',
     'proctor': caseItem.forwardedToRole === 'proctor',
     'assistant-proctor': caseItem.forwardedToRole === 'assistant-proctor',
     'deputy-proctor': caseItem.forwardedToRole === 'deputy-proctor',

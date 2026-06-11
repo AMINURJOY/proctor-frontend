@@ -90,10 +90,17 @@ export default function CaseEdit() {
   }
 
   const isOwner = caseItem.submittedByUserId === currentUser?.id || caseItem.studentId === currentUser?.id;
-  if (!isOwner) {
+  // Staff the case has been forwarded/assigned to may also edit case information.
+  const isStaffOnCase = !!currentUser?.role && currentUser.role !== 'student' && (
+    caseItem.forwardedToRole === currentUser.role ||
+    caseItem.assignedTo === currentUser?.name ||
+    (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name)) ||
+    currentUser.role === 'super-admin'
+  );
+  if (!isOwner && !isStaffOnCase) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl mb-4 text-red-600">You can only edit cases you submitted.</h2>
+        <h2 className="text-2xl mb-4 text-red-600">You don't have permission to edit this case.</h2>
         <button onClick={() => navigate(`/cases/${caseItem.id}`)} className="px-4 py-2 rounded-lg text-white" style={{ backgroundColor: '#0b2652' }}>
           Back to Case
         </button>

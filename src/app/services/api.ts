@@ -125,6 +125,7 @@ export const casesApi = {
   update: (id: string, data: any) => api.put(`/cases/${id}`, data),
   updateStatus: (id: string, data: any) => api.patch(`/cases/${id}/status`, data),
   addNote: (caseId: string, data: any) => api.post(`/cases/${caseId}/notes`, data),
+  addAdditionalInfo: (caseId: string, content: string) => api.post(`/cases/${caseId}/additional-info`, { content }),
   addDocument: (caseId: string, file: File, name?: string) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -147,6 +148,13 @@ export const casesApi = {
   acknowledge: (id: string, comment: string) => api.post(`/cases/${id}/acknowledge`, { comment }),
   assign: (id: string, userIds: string[], primaryUserId?: string) =>
     api.post(`/cases/${id}/assignments`, { userIds, primaryUserId }),
+};
+
+// Students (master directory; powers Type-2 autofill)
+export const studentsApi = {
+  getAll: () => api.get('/students'),
+  getByStudentId: (studentId: string) => api.get(`/students/by-student-id/${encodeURIComponent(studentId)}`),
+  create: (data: any) => api.post('/students', data),
 };
 
 // Case categories (admin-managed)

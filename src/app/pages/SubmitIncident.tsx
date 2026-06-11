@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../components/Icons';
-import { casesApi, settingsApi, caseCategoriesApi } from '../services/api';
+import { casesApi, settingsApi, caseCategoriesApi, studentsApi } from '../services/api';
 import { CaseCategory } from '../types';
 import { toast } from 'sonner';
 
@@ -48,6 +48,7 @@ export default function SubmitIncident() {
 
   // Type-2 form state
   const [t2Subject, setT2Subject] = useState('');
+  const [t2Gender, setT2Gender] = useState<'male' | 'female'>('male');
   const [t2Description, setT2Description] = useState('');
   const [t2CategoryId, setT2CategoryId] = useState('');
   const [t2Priority, setT2Priority] = useState('medium');
@@ -64,6 +65,50 @@ export default function SubmitIncident() {
   const emptyAccused = { name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '' };
   const [accusedPersons, setAccusedPersons] = useState([{ ...emptyAccused }]);
   const [showPreview, setShowPreview] = useState(false);
+
+  // Auto-fill a complainant/accused row from the Students directory when an ID is entered.
+  const autofillComplainant = async (index: number, studentId: string) => {
+    const id = studentId.trim();
+    if (!id) return;
+    try {
+      const res = await studentsApi.getByStudentId(id);
+      const s = res.data.data;
+      if (!s) return;
+      setComplainants(prev => prev.map((c, i) => i !== index ? c : {
+        ...c,
+        name: s.name || c.name,
+        department: s.department || c.department,
+        contact: s.contact || c.contact,
+        advisorName: s.advisorName || c.advisorName,
+        fatherName: s.fatherName || c.fatherName,
+        fatherContact: s.fatherContact || c.fatherContact,
+      }));
+      toast.success(`Loaded details for ${s.name}`);
+    } catch {
+      /* no matching student — leave fields as typed */
+    }
+  };
+
+  const autofillAccused = async (index: number, studentId: string) => {
+    const id = studentId.trim();
+    if (!id) return;
+    try {
+      const res = await studentsApi.getByStudentId(id);
+      const s = res.data.data;
+      if (!s) return;
+      setAccusedPersons(prev => prev.map((a, i) => i !== index ? a : {
+        ...a,
+        name: s.name || a.name,
+        department: s.department || a.department,
+        contact: s.contact || a.contact,
+        guardianContact: s.guardianContact || a.guardianContact,
+      }));
+      toast.success(`Loaded details for ${s.name}`);
+    } catch {
+      /* no matching student — leave fields as typed */
+    }
+  };
+
   // Legacy single-field aliases for backward compat in preview
   const t2StudentDepartment = complainants[0]?.department || '';
   const t2StudentContact = complainants[0]?.contact || '';
@@ -202,6 +247,7 @@ export default function SubmitIncident() {
       }
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
+        data.gender = t2Gender;
         data.categoryId = t2CategoryId || undefined;
         // Legacy single fields from first complainant/accused
         data.studentDepartment = t2StudentDepartment || undefined;
@@ -640,6 +686,25 @@ export default function SubmitIncident() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                    <div className="flex items-center gap-6 mt-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="t2Gender" value="male" checked={t2Gender === 'male'}
+                          onChange={() => setT2Gender('male')}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
+                        <span className="text-sm text-gray-700">Male</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="t2Gender" value="female" checked={t2Gender === 'female'}
+                          onChange={() => setT2Gender('female')}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
+                        <span className="text-sm text-gray-700">Female</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Female complainants are routed to the Female Coordinator; male to the Coordinator.</p>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Detailed Description *</label>
                     <textarea value={t2Description} onChange={e => setT2Description(e.target.value)}
                       placeholder="Provide a detailed description of the incident..."
@@ -668,7 +733,9 @@ export default function SubmitIncident() {
                         <div className="grid grid-cols-2 gap-2">
                           <input placeholder="Name (নাম)" value={c.name} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], name: e.target.value }; setComplainants(u); }}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                          <input placeholder="ID (আইডি)" value={c.studentId} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], studentId: e.target.value }; setComplainants(u); }}
+                          <input placeholder="ID (আইডি)" value={c.studentId}
+                            onChange={e => { const u = [...complainants]; u[i] = { ...u[i], studentId: e.target.value }; setComplainants(u); }}
+                            onBlur={e => autofillComplainant(i, e.target.value)}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
                           <input placeholder="Department" value={c.department} onChange={e => { const u = [...complainants]; u[i] = { ...u[i], department: e.target.value }; setComplainants(u); }}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
@@ -703,7 +770,9 @@ export default function SubmitIncident() {
                         <div className="grid grid-cols-2 gap-2">
                           <input placeholder="Name (নাম)" value={a.name} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], name: e.target.value }; setAccusedPersons(u); }}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                          <input placeholder="ID (আইডি)" value={a.accusedStudentId} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], accusedStudentId: e.target.value }; setAccusedPersons(u); }}
+                          <input placeholder="ID (আইডি)" value={a.accusedStudentId}
+                            onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], accusedStudentId: e.target.value }; setAccusedPersons(u); }}
+                            onBlur={e => autofillAccused(i, e.target.value)}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
                           <input placeholder="Department" value={a.department} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], department: e.target.value }; setAccusedPersons(u); }}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />

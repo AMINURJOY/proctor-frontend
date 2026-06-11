@@ -25,6 +25,12 @@ const menuLabelToKey: Record<string, string> = {
   'Settings': 'settings',
 };
 
+// Exact reverse of menuLabelToKey. Needed because some keys (e.g. 'hearings') are NOT a
+// substring of their normalized label ('hearing-management'), so substring matching loses them.
+const menuKeyToLabel: Record<string, string> = Object.fromEntries(
+  Object.entries(menuLabelToKey).map(([label, key]) => [key, label])
+);
+
 const roleLabels = [
   'student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor',
   'registrar', 'disciplinary-committee', 'female-coordinator',
@@ -117,7 +123,11 @@ export default function SettingsPage() {
               permMap[roleName] = {};
               for (const mp of role.menuPermissions) {
                 const menuKey = mp.menuKey || mp.menu;
-                const menuLabel = menuItems.find(m => m.toLowerCase().replace(/[^a-z0-9]/g, '-').includes(menuKey)) || menuKey;
+                // Prefer the exact reverse map; fall back to substring matching for any
+                // legacy keys not present in menuLabelToKey.
+                const menuLabel = menuKeyToLabel[menuKey]
+                  || menuItems.find(m => m.toLowerCase().replace(/[^a-z0-9]/g, '-').includes(menuKey))
+                  || menuKey;
                 permMap[roleName][menuLabel] = {
                   create: mp.canCreate ?? false,
                   read: mp.canRead ?? false,

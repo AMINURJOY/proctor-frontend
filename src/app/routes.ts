@@ -18,6 +18,7 @@ import MyCases from './pages/MyCases';
 import NotificationsPage from './pages/NotificationsPage';
 import CaseReport from './pages/CaseReport';
 import CaseEdit from './pages/CaseEdit';
+import StudentsList from './pages/StudentsList';
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
       { path: 'reports', Component: ReportsPage },
       { path: 'reports/:caseId/edit', Component: ReportEditorPage },
       { path: 'users', Component: UsersManagement },
+      { path: 'students', Component: StudentsList },
       { path: 'settings', element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },
       { path: 'settings/menu-access', Component: SettingsPage },
       { path: 'settings/permissions', Component: SettingsPage },
