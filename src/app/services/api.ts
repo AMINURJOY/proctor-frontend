@@ -234,6 +234,14 @@ export const ranksApi = {
   delete: (id: string) => api.delete(`/ranks/${id}`),
 };
 
+// Predefined Type-2 case subjects (admin-managed; suggested on the form)
+export const caseSubjectsApi = {
+  getAll: (includeInactive = false) => api.get('/case-subjects', { params: { includeInactive } }),
+  create: (data: { subject: string; order?: number }) => api.post('/case-subjects', data),
+  update: (id: string, data: any) => api.put(`/case-subjects/${id}`, data),
+  delete: (id: string) => api.delete(`/case-subjects/${id}`),
+};
+
 export const forwardingRulesApi = {
   getAll: () => api.get('/forwarding-rules'),
   getForRole: (role: string) => api.get(`/forwarding-rules/from/${role}`),

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../components/Icons';
-import { casesApi, settingsApi, caseCategoriesApi, studentsApi } from '../services/api';
+import { casesApi, settingsApi, caseCategoriesApi, studentsApi, caseSubjectsApi } from '../services/api';
 import { CaseCategory } from '../types';
 import { toast } from 'sonner';
 
@@ -48,6 +48,8 @@ export default function SubmitIncident() {
 
   // Type-2 form state
   const [t2Subject, setT2Subject] = useState('');
+  const [subjectOptions, setSubjectOptions] = useState<string[]>([]);
+  const [showSubjectSuggestions, setShowSubjectSuggestions] = useState(false);
   const [t2Gender, setT2Gender] = useState<'male' | 'female'>('male');
   const [t2Description, setT2Description] = useState('');
   const [t2CategoryId, setT2CategoryId] = useState('');
@@ -141,7 +143,23 @@ export default function SubmitIncident() {
       const items: CaseCategory[] = res.data?.data || [];
       setCategories(items);
     }).catch(() => {});
+
+    caseSubjectsApi.getAll().then(res => {
+      const items = (res.data?.data || []).map((s: any) => s.subject).filter(Boolean);
+      setSubjectOptions(items);
+    }).catch(() => {});
   }, []);
+
+  // Suggest predefined subjects that match what the user is typing (regex, case-insensitive).
+  const subjectSuggestions = (() => {
+    const q = t2Subject.trim();
+    if (!q) return subjectOptions.slice(0, 8);
+    let re: RegExp | null = null;
+    try { re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch { re = null; }
+    return subjectOptions
+      .filter(s => (re ? re.test(s) : s.toLowerCase().includes(q.toLowerCase())) && s.toLowerCase() !== q.toLowerCase())
+      .slice(0, 8);
+  })();
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -664,11 +682,29 @@ export default function SubmitIncident() {
 
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
+                    <div className="relative">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Case Subject *</label>
-                      <input type="text" value={t2Subject} onChange={e => setT2Subject(e.target.value)}
+                      <input type="text" value={t2Subject}
+                        onChange={e => { setT2Subject(e.target.value); setShowSubjectSuggestions(true); }}
+                        onFocus={() => setShowSubjectSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSubjectSuggestions(false), 150)}
                         placeholder="Brief subject line for the case"
+                        autoComplete="off"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                      {showSubjectSuggestions && subjectSuggestions.length > 0 && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                          {subjectSuggestions.map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); setT2Subject(s); setShowSubjectSuggestions(false); }}
+                              className="block w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>

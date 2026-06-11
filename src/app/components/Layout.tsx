@@ -161,6 +161,7 @@ export default function Layout() {
     { path: '/settings/case-viewing', label: 'Case Viewing', superAdminOnly: true },
     { path: '/settings/checklist', label: 'Verification Checklist', superAdminOnly: true },
     { path: '/settings/case-categories', label: 'Case Categories', superAdminOnly: true },
+    { path: '/settings/case-subjects', label: 'Case Subjects', superAdminOnly: true },
     { path: '/settings/ranks', label: 'Ranks (পদবি)', superAdminOnly: true },
     { path: '/settings/articles', label: 'Articles (অনুচ্ছেদ)', superAdminOnly: true },
     { path: '/settings/forwarding', label: 'Case Forwarding', superAdminOnly: true },

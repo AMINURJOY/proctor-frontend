@@ -52,6 +52,7 @@ export const router = createBrowserRouter([
       { path: 'settings/case-viewing', Component: SettingsPage },
       { path: 'settings/checklist', Component: SettingsPage },
       { path: 'settings/case-categories', Component: SettingsPage },
+      { path: 'settings/case-subjects', Component: SettingsPage },
       { path: 'settings/ranks', Component: SettingsPage },
       { path: 'settings/articles', Component: SettingsPage },
       { path: 'settings/forwarding', Component: SettingsPage },
