@@ -92,13 +92,6 @@ export default function VCMonitoring() {
     { month: 'Apr', submitted: 3, resolved: 1 },
   ];
 
-  const priorityDistribution = [
-    { name: 'Low', value: cases.filter(c => c.priority === 'low').length, color: '#64748b' },
-    { name: 'Medium', value: cases.filter(c => c.priority === 'medium').length, color: '#3b82f6' },
-    { name: 'High', value: cases.filter(c => c.priority === 'high').length, color: '#f97316' },
-    { name: 'Urgent', value: cases.filter(c => c.priority === 'urgent').length, color: '#dc2626' },
-  ];
-
   return (
     <div>
       <div className="mb-6">
@@ -187,28 +180,6 @@ export default function VCMonitoring() {
           </ResponsiveContainer>
         </div>
 
-        {/* Priority Distribution */}
-        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-          <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Priority Distribution</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={priorityDistribution}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={90}
-                label={({ name, value }) => `${name}: ${value}`}
-                dataKey="value"
-              >
-                {priorityDistribution.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
       </div>
 
       {/* All Cases Table (Read-only) */}
@@ -225,7 +196,6 @@ export default function VCMonitoring() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Student</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Priority</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Assigned To</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Action</th>
               </tr>
@@ -252,16 +222,6 @@ export default function VCMonitoring() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[c.status]}`}>
                       {c.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${
-                      c.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                      c.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                      c.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
-                      {c.priority.charAt(0).toUpperCase() + c.priority.slice(1)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{c.assignedTo || '—'}</td>

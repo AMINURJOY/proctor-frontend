@@ -35,6 +35,19 @@ const workflowSteps = [
   { key: 'closed', label: 'Closed' },
 ];
 
+// Type-1 (instant incident) has a much shorter flow: submit → acknowledge → close / suggest Type-2.
+const type1Steps = [
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'acknowledged', label: 'Acknowledged' },
+  { key: 'closed', label: 'Closed / Type-2 / Police' },
+];
+
+function getType1StepIndex(status: CaseStatus, acknowledged: boolean): number {
+  if (status === 'closed' || status === 'suggested-type-2' || status === 'resolved' || status === 'police-case') return 2;
+  if (acknowledged) return 1;
+  return 0;
+}
+
 function getStepIndex(status: CaseStatus): number {
   const map: Record<CaseStatus, number> = {
     'submitted': 0,
@@ -61,7 +74,8 @@ export default function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'timeline'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'message' | 'timeline'>('overview');
+  const [proctorMsgSeen, setProctorMsgSeen] = useState(true);
   const [newNote, setNewNote] = useState('');
   const [newInfo, setNewInfo] = useState('');
   const [addingInfo, setAddingInfo] = useState(false);
@@ -96,6 +110,22 @@ export default function CaseDetail() {
       .then(res => setCanAssign(!!res.data.data?.canAssign))
       .catch(() => setCanAssign(false));
   }, [currentUser?.role]);
+
+  // Student "Message from Proctor" unread badge: compare the latest acknowledgment timestamp
+  // against what the student has already seen (stored locally).
+  useEffect(() => {
+    if (currentUser?.role !== 'student' || !caseItem?.id) return;
+    const seen = localStorage.getItem(`proctorMsgSeen_${caseItem.id}`);
+    setProctorMsgSeen(!caseItem.isAcknowledged || seen === (caseItem.acknowledgedAt || ''));
+  }, [currentUser?.role, caseItem?.id, caseItem?.isAcknowledged, caseItem?.acknowledgedAt]);
+
+  // Mark the message as seen once the student opens the Message tab.
+  useEffect(() => {
+    if (activeTab === 'message' && currentUser?.role === 'student' && caseItem?.id) {
+      localStorage.setItem(`proctorMsgSeen_${caseItem.id}`, caseItem.acknowledgedAt || '');
+      setProctorMsgSeen(true);
+    }
+  }, [activeTab, currentUser?.role, caseItem?.id, caseItem?.acknowledgedAt]);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -309,6 +339,17 @@ export default function CaseDetail() {
   const canAddInfo = !!currentUser?.role
     && currentUser.role !== 'student' && currentUser.role !== 'vc'
     && (isAssignedToMe || isInMyRoleQueue || isActiveAssignee || currentUser.role === 'super-admin');
+  // Coordinator verify/forward actions live as header buttons (popups). Show them when the
+  // coordinator can act on this case (in their gender-routed queue, un-routed, or assigned).
+  const caseClosedish = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
+  const coordinatorCanAct = !caseClosedish && (
+    (currentUser?.role === 'coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator')) ||
+    (currentUser?.role === 'female-coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator')) ||
+    ((currentUser?.role === 'coordinator' || currentUser?.role === 'female-coordinator') && isActiveAssignee)
+  );
+  // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
+  const assistantProctorCanAct = !caseClosedish && currentUser?.role === 'assistant-proctor'
+    && (caseItem.forwardedToRole === 'assistant-proctor' || isActiveAssignee);
   const hasConfidentialMenu = permissions['confidential']?.canRead === true;
   const canViewConfidential = isOwnSubmission
     || isAssignedToMe
@@ -350,19 +391,28 @@ export default function CaseDetail() {
     'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
+  const isStudentView = currentUser?.role === 'student';
   const allTabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'documents', label: 'Documents' },
-    { id: 'hearing', label: 'Hearing' },
-    { id: 'notes', label: 'Notes' },
-    { id: 'timeline', label: 'Activity Timeline' }
-  ] as const;
+    { id: 'overview' as const, label: 'Overview' },
+    { id: 'documents' as const, label: 'Documents' },
+    { id: 'hearing' as const, label: 'Hearing' },
+    // Students never see internal Notes; they get "Message from Proctor" instead.
+    isStudentView
+      ? { id: 'message' as const, label: 'Message from Proctor' }
+      : { id: 'notes' as const, label: 'Notes' },
+    { id: 'timeline' as const, label: 'Activity Timeline' },
+  ];
   // Type-1 (instant incident) cases have no hearings, so hide that tab.
   const tabs = caseItem.type === 'type-1'
     ? allTabs.filter(t => t.id !== 'hearing')
     : allTabs;
+  const hasUnseenProctorMsg = isStudentView && !!caseItem.isAcknowledged && !proctorMsgSeen;
 
-  const currentStepIndex = getStepIndex(caseItem.status);
+  const isType1 = caseItem.type === 'type-1';
+  const progressSteps = isType1 ? type1Steps : workflowSteps;
+  const currentStepIndex = isType1
+    ? getType1StepIndex(caseItem.status, !!caseItem.isAcknowledged)
+    : getStepIndex(caseItem.status);
   const isRejected = caseItem.status === 'rejected';
   const isOnHold = caseItem.status === 'on-hold';
 
@@ -388,14 +438,6 @@ export default function CaseDetail() {
               <span className={`inline-flex px-3 py-1 text-sm rounded-full ${statusColors[caseItem.status]}`}>
                 {caseItem.status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
               </span>
-              <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${
-                caseItem.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                caseItem.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                caseItem.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                'bg-slate-100 text-slate-700'
-              }`}>
-                {caseItem.priority.charAt(0).toUpperCase() + caseItem.priority.slice(1)} Priority
-              </span>
               {caseItem.forwardedToRole && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
                   <ForwardIcon /> Forwarded to {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
@@ -410,17 +452,35 @@ export default function CaseDetail() {
           </div>
           <div className="flex flex-col gap-3 items-end">
             {(() => {
-              const upcoming = (caseItem.hearings || [])
+              const scheduled = (caseItem.hearings || [])
                 .filter(h => h.status === 'scheduled' && h.date)
                 .map(h => {
                   const dt = new Date(`${h.date}T${h.time && h.time.length === 5 ? h.time + ':00' : h.time || '00:00:00'}`);
                   return { hearing: h, dt };
                 })
-                .filter(x => !isNaN(x.dt.getTime()) && x.dt.getTime() > Date.now())
-                .sort((a, b) => a.dt.getTime() - b.dt.getTime())[0];
-              return upcoming ? <HearingCountdown date={upcoming.hearing.date} time={upcoming.hearing.time} /> : null;
+                .filter(x => !isNaN(x.dt.getTime()));
+              const now = Date.now();
+              // Prefer the soonest upcoming hearing; if all are in the past, show the most
+              // recent one (HearingCountdown renders "Hearing time has passed" for it).
+              const future = scheduled.filter(x => x.dt.getTime() > now).sort((a, b) => a.dt.getTime() - b.dt.getTime());
+              const past = scheduled.filter(x => x.dt.getTime() <= now).sort((a, b) => b.dt.getTime() - a.dt.getTime());
+              const next = future[0] || past[0];
+              return next ? <HearingCountdown date={next.hearing.date} time={next.hearing.time} /> : null;
             })()}
             <div className="flex flex-wrap gap-2 justify-end">
+              {coordinatorCanAct && (
+                <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} />
+              )}
+              {assistantProctorCanAct && (
+                <>
+                  <DraftReportButton caseItem={caseItem} onRefresh={refreshCase} />
+                  <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
+                </>
+              )}
+              <SetHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
+              {canAddInfo && (
+                <HearingPanelButton caseItem={caseItem} onRefresh={refreshCase} />
+              )}
               {canEditCase && (
                 <button
                   onClick={() => navigate(`/cases/${caseItem.id}/edit`)}
@@ -436,6 +496,28 @@ export default function CaseDetail() {
                 >
                   <CheckIcon /> Acknowledge
                 </button>
+              )}
+              {caseItem.type === 'type-1' && caseItem.status === 'submitted' && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
+                <>
+                  <button
+                    onClick={() => handleStatusChange('suggested-type-2')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-violet-300 bg-violet-50 text-violet-700 text-sm hover:bg-violet-100"
+                  >
+                    <ArrowRightIcon /> Suggest to Type-2
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange('police-case')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
+                  >
+                    <XIcon /> Mark as Police Case
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange('closed')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900"
+                  >
+                    <CheckIcon /> Close Case
+                  </button>
+                </>
               )}
               {canAssign && (
                 <button
@@ -476,14 +558,15 @@ export default function CaseDetail() {
             </div>
           )}
 
-          <div className="flex items-center justify-between overflow-x-auto pb-2">
-            {workflowSteps.map((step, index) => {
+          <div className={`flex items-center overflow-x-auto pb-2 ${isType1 ? 'max-w-2xl mx-auto' : 'justify-between'}`}>
+            {progressSteps.map((step, index) => {
               const isCompleted = currentStepIndex > index;
               const isCurrent = currentStepIndex === index;
               const isFuture = currentStepIndex < index;
+              const isLast = index === progressSteps.length - 1;
 
               return (
-                <div key={step.key} className="flex items-center flex-shrink-0">
+                <div key={step.key} className={`flex items-center ${isType1 && !isLast ? 'flex-1' : 'flex-shrink-0'}`}>
                   <div className="flex flex-col items-center">
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
@@ -509,8 +592,8 @@ export default function CaseDetail() {
                       {step.label}
                     </span>
                   </div>
-                  {index < workflowSteps.length - 1 && (
-                    <div className={`w-8 h-0.5 mx-1 mt-[-16px] ${
+                  {!isLast && (
+                    <div className={`h-0.5 mx-1 mt-[-16px] ${isType1 ? 'flex-1' : 'w-8'} ${
                       isCompleted ? 'bg-green-500' : 'bg-gray-200'
                     }`} />
                   )}
@@ -536,7 +619,12 @@ export default function CaseDetail() {
                   activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {tab.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {tab.label}
+                  {tab.id === 'message' && hasUnseenProctorMsg && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                  )}
+                </span>
                 {activeTab === tab.id && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: '#0b2652' }} />
                 )}
@@ -549,70 +637,14 @@ export default function CaseDetail() {
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Case Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Case Type</p>
-                    <p className="font-medium">
-                      {caseItem.type === 'type-1' ? 'Type-1 (Instant Incident)' : caseItem.type === 'type-2' ? 'Type-2 (Formal Case)' : 'Confidential'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Priority</p>
-                    <p className="font-medium capitalize">{caseItem.priority}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Primary Assignee</p>
-                    <p className="font-medium">{caseItem.assignedTo || 'Not assigned'}</p>
-                  </div>
-                  {caseItem.categoryName && (
-                    <div>
-                      <p className="text-sm text-gray-500">Category</p>
-                      <p className="font-medium">
-                        {caseItem.categoryName}
-                        {caseItem.categoryIsConfidential && (
-                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">
-                            <LockIcon /> Confidential
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm text-gray-500">Created Date</p>
-                    <p className="font-medium">{new Date(caseItem.createdDate).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Last Updated</p>
-                    <p className="font-medium">{new Date(caseItem.updatedDate).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Documents</p>
-                    <p className="font-medium">{caseItem.documents.length} file(s)</p>
-                  </div>
-                  {caseItem.incidentDate && (
-                    <div>
-                      <p className="text-sm text-gray-500">Incident Date &amp; Time</p>
-                      <p className="font-medium">{new Date(caseItem.incidentDate).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {caseItem.videoLink && (
-                    <div className="md:col-span-2">
-                      <p className="text-sm text-gray-500">Video Evidence Link</p>
-                      <a href={caseItem.videoLink} target="_blank" rel="noreferrer" className="font-medium text-blue-600 break-all hover:underline">
-                        {caseItem.videoLink}
-                      </a>
-                    </div>
-                  )}
-                  {caseItem.forwardedToRole && (
-                    <div>
-                      <p className="text-sm text-gray-500">Currently With</p>
-                      <p className="font-medium capitalize">{caseItem.forwardedToRole.split('-').join(' ')}</p>
-                    </div>
-                  )}
+              {caseItem.videoLink && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Video Evidence</h3>
+                  <a href={caseItem.videoLink} target="_blank" rel="noreferrer" className="font-medium text-blue-600 break-all hover:underline">
+                    {caseItem.videoLink}
+                  </a>
                 </div>
-              </div>
+              )}
 
               {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
                 <div>
@@ -648,126 +680,105 @@ export default function CaseDetail() {
                 </div>
               )}
 
-              {caseItem.isAcknowledged && (
+              {/* Students see this only in the "Message from Proctor" tab, not in the overview. */}
+              {caseItem.isAcknowledged && currentUser?.role !== 'student' && (
                 <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Acknowledgment</h3>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-1">
-                    <p className="text-sm text-gray-500">
-                      <span className="font-medium text-emerald-700">Received — taking action shortly.</span>
-                      {caseItem.acknowledgedByName && <> Acknowledged by <strong>{caseItem.acknowledgedByName}</strong></>}
-                      {caseItem.acknowledgedAt && <> on {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
-                    </p>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Proctor</h3>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-emerald-700">
+                      <CheckIcon />
+                      <span className="text-sm font-semibold">Acknowledged — taking action shortly.</span>
+                    </div>
                     {caseItem.acknowledgmentComment && (
-                      <p className="text-gray-700">{caseItem.acknowledgmentComment}</p>
+                      <div className="bg-white border border-emerald-100 rounded-lg p-3">
+                        <p className="text-gray-800 whitespace-pre-wrap">{caseItem.acknowledgmentComment}</p>
+                      </div>
                     )}
+                    <p className="text-xs text-gray-500">
+                      {caseItem.acknowledgedByName && <>— <strong>{caseItem.acknowledgedByName}</strong> (Proctor)</>}
+                      {caseItem.acknowledgedAt && <> · {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
+                    </p>
                   </div>
                 </div>
               )}
 
-              {caseItem.assignments && caseItem.assignments.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Assigned Officers ({caseItem.assignments.length})</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {caseItem.assignments.map(a => (
-                      <span key={a.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${a.isPrimary ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                        {a.userName}
-                        <span className="text-xs text-gray-500">({a.userRole.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')})</span>
-                        {a.isPrimary && <span className="text-xs font-semibold">★ Primary</span>}
-                      </span>
-                    ))}
-                  </div>
+              {/* Short Bangla summary — Type-2 only, staff only, not shown to students */}
+              {caseItem.type !== 'type-1' && currentUser?.role !== 'student' && (caseItem.studentName || (caseItem.complainants?.length || 0) > 0) && (
+                <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-gray-800 leading-relaxed">
+                  <span className="text-gray-500">অভিযোগকারী </span>
+                  <span className="font-semibold text-blue-700">{caseItem.studentName || (caseItem.complainants?.[0]?.name) || 'একজন শিক্ষার্থী'}</span>
+                  <span className="text-gray-500">, অভিযুক্ত </span>
+                  <span className="font-semibold text-red-600">{(caseItem.accusedPersons && caseItem.accusedPersons.length > 0) ? caseItem.accusedPersons.map(a => a.name).join(', ') : (caseItem.accusedName || 'অভিযুক্ত')}</span>
+                  <span> এর বিরুদ্ধে “</span>
+                  <span className="font-semibold">{caseItem.subject || caseItem.categoryName || 'একটি বিষয়'}</span>
+                  <span>” বিষয়ে একটি অভিযোগ জমা দিয়েছেন।</span>
                 </div>
               )}
 
-              {/* Submitter / student info (works for both Type-1 and Type-2) */}
-              {(caseItem.studentName || caseItem.studentId || caseItem.studentDepartment || caseItem.studentContact || caseItem.studentAdvisorName || caseItem.studentFatherName) && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Submitter / Student Information</h3>
-                  {(caseItem.studentName || caseItem.studentContact) && (
-                    <div className="space-y-2 mb-3 rounded-lg p-4 text-white" style={{ backgroundColor: '#0b2652' }}>
-                      {caseItem.studentName && (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-blue-200">Name</p>
-                          <p className="text-lg font-semibold">{caseItem.studentName}</p>
-                        </div>
-                      )}
-                      {caseItem.studentContact && (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-blue-200">Phone</p>
-                          <a href={`tel:${caseItem.studentContact}`} className="text-lg font-semibold underline-offset-2 hover:underline">
-                            {caseItem.studentContact}
-                          </a>
-                        </div>
-                      )}
+              {/* Complainant/Submitter (left) and Accused (right) — submitter and complainant are the same person */}
+              {((caseItem.complainants?.length || 0) > 0 || caseItem.studentName || (caseItem.accusedPersons?.length || 0) > 0 || caseItem.accusedName) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  {/* Left: Complainant (= submitter) */}
+                  {(caseItem.complainants?.length || 0) > 0 && (
+                    <div>
+                      <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Complainants ({caseItem.complainants!.length})</h3>
+                      <div className="space-y-3">
+                        {caseItem.complainants!.map((c) => (
+                          <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden text-sm">
+                            <div className="p-3 text-white space-y-2" style={{ backgroundColor: '#0b2652' }}>
+                              <div className="min-w-0">
+                                <p className="text-[11px] uppercase tracking-wide text-blue-200">Name</p>
+                                <p className="text-base font-semibold">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
+                              </div>
+                              {c.contact && (
+                                <div>
+                                  <p className="text-[11px] uppercase tracking-wide text-blue-200">Phone</p>
+                                  <a href={`tel:${c.contact}`} className="text-base font-semibold underline-offset-2 hover:underline">{c.contact}</a>
+                                </div>
+                              )}
+                            </div>
+                            {(c.department || c.advisorName || c.fatherName) && (
+                              <div className="p-3 space-y-0.5">
+                                {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
+                                {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
+                                {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4 text-sm">
-                    {caseItem.studentName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.studentName}</span></div>}
-                    {caseItem.studentId && <div><span className="text-gray-500">Student ID: </span><span className="font-medium">{caseItem.studentId}</span></div>}
-                    {caseItem.studentDepartment && <div><span className="text-gray-500">Department: </span><span className="font-medium">{caseItem.studentDepartment}</span></div>}
-                    {caseItem.studentContact && <div><span className="text-gray-500">Contact: </span><span className="font-medium">{caseItem.studentContact}</span></div>}
-                    {caseItem.studentAdvisorName && <div><span className="text-gray-500">Advisor: </span><span className="font-medium">{caseItem.studentAdvisorName}</span></div>}
-                    {caseItem.studentFatherName && <div><span className="text-gray-500">Father's Name: </span><span className="font-medium">{caseItem.studentFatherName}</span></div>}
-                    {caseItem.studentFatherContact && <div><span className="text-gray-500">Father's Contact: </span><span className="font-medium">{caseItem.studentFatherContact}</span></div>}
-                  </div>
-                </div>
-              )}
 
-              {(caseItem.complainants?.length || 0) > 0 && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Complainants ({caseItem.complainants!.length})</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {caseItem.complainants!.map((c) => (
-                      <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden text-sm">
-                        <div className="p-3 text-white space-y-2" style={{ backgroundColor: '#0b2652' }}>
-                          <div className="min-w-0">
-                            <p className="text-[11px] uppercase tracking-wide text-blue-200">Name</p>
-                            <p className="text-base font-semibold">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
+                  {/* Right: Accused Persons */}
+                  {(caseItem.accusedPersons?.length || 0) > 0 ? (
+                    <div>
+                      <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused {caseItem.accusedPersons!.length > 1 ? `Persons (${caseItem.accusedPersons!.length})` : 'Person'}</h3>
+                      <div className="space-y-3">
+                        {caseItem.accusedPersons!.map((a) => (
+                          <div key={a.id} className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm space-y-0.5">
+                            <p className="font-medium">{a.name} {a.accusedStudentId && <span className="text-gray-400 text-xs">({a.accusedStudentId})</span>}</p>
+                            {a.department && <p className="text-gray-600">Dept: {a.department}</p>}
+                            {a.contact && <p className="text-gray-600">Contact: {a.contact}</p>}
+                            {a.guardianContact && <p className="text-gray-600">Guardian: {a.guardianContact}</p>}
                           </div>
-                          {c.contact && (
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wide text-blue-200">Phone</p>
-                              <a href={`tel:${c.contact}`} className="text-base font-semibold underline-offset-2 hover:underline">{c.contact}</a>
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-3 space-y-0.5">
-                          {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
-                          {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
-                          {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (caseItem.accusedName || caseItem.accusedId || caseItem.accusedDepartment || caseItem.accusedContact || caseItem.accusedGuardianContact) ? (
+                    <div>
+                      <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused Person</h3>
+                      <div className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm space-y-1">
+                        {caseItem.accusedName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.accusedName}</span></div>}
+                        {caseItem.accusedId && <div><span className="text-gray-500">ID: </span><span className="font-medium">{caseItem.accusedId}</span></div>}
+                        {caseItem.accusedDepartment && <div><span className="text-gray-500">Dept: </span><span className="font-medium">{caseItem.accusedDepartment}</span></div>}
+                        {caseItem.accusedContact && <div><span className="text-gray-500">Contact: </span><span className="font-medium">{caseItem.accusedContact}</span></div>}
+                        {caseItem.accusedGuardianContact && <div><span className="text-gray-500">Guardian Contact: </span><span className="font-medium">{caseItem.accusedGuardianContact}</span></div>}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
-
-              {(caseItem.accusedPersons?.length || 0) > 0 ? (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused Persons ({caseItem.accusedPersons!.length})</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {caseItem.accusedPersons!.map((a) => (
-                      <div key={a.id} className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm space-y-0.5">
-                        <p className="font-medium">{a.name} {a.accusedStudentId && <span className="text-gray-400 text-xs">({a.accusedStudentId})</span>}</p>
-                        {a.department && <p className="text-gray-600">Dept: {a.department}</p>}
-                        {a.contact && <p className="text-gray-600">Contact: {a.contact}</p>}
-                        {a.guardianContact && <p className="text-gray-600">Guardian: {a.guardianContact}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (caseItem.accusedName || caseItem.accusedId || caseItem.accusedDepartment || caseItem.accusedContact || caseItem.accusedGuardianContact) ? (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Accused Person</h3>
-                  <div className="border border-orange-200 bg-orange-50/50 rounded-lg p-3 text-sm grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {caseItem.accusedName && <div><span className="text-gray-500">Name: </span><span className="font-medium">{caseItem.accusedName}</span></div>}
-                    {caseItem.accusedId && <div><span className="text-gray-500">ID: </span><span className="font-medium">{caseItem.accusedId}</span></div>}
-                    {caseItem.accusedDepartment && <div><span className="text-gray-500">Dept: </span><span className="font-medium">{caseItem.accusedDepartment}</span></div>}
-                    {caseItem.accusedContact && <div><span className="text-gray-500">Contact: </span><span className="font-medium">{caseItem.accusedContact}</span></div>}
-                    {caseItem.accusedGuardianContact && <div className="md:col-span-2"><span className="text-gray-500">Guardian Contact: </span><span className="font-medium">{caseItem.accusedGuardianContact}</span></div>}
-                  </div>
-                </div>
-              ) : null}
 
               <div>
                 <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
@@ -775,7 +786,7 @@ export default function CaseDetail() {
               </div>
 
               {/* Additional Information — appended by associated staff after submission */}
-              {(canAddInfo || (caseItem.additionalInfos?.length || 0) > 0) && (
+              {currentUser?.role !== 'student' && (canAddInfo || (caseItem.additionalInfos?.length || 0) > 0) && (
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Additional Information</h3>
 
@@ -958,6 +969,32 @@ export default function CaseDetail() {
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Message from Proctor Tab (students) */}
+          {activeTab === 'message' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Proctor</h3>
+              {caseItem.isAcknowledged ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <CheckIcon />
+                    <span className="text-sm font-semibold">Acknowledged — taking action shortly.</span>
+                  </div>
+                  {caseItem.acknowledgmentComment && (
+                    <div className="bg-white border border-emerald-100 rounded-lg p-3">
+                      <p className="text-gray-800 whitespace-pre-wrap">{caseItem.acknowledgmentComment}</p>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    {caseItem.acknowledgedByName && <>— <strong>{caseItem.acknowledgedByName}</strong> (Proctor)</>}
+                    {caseItem.acknowledgedAt && <> · {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">No messages from the proctor yet.</p>
               )}
             </div>
           )}
@@ -1219,20 +1256,8 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   const [recommendation, setRecommendation] = useState('');
   const [verdict, setVerdict] = useState('');
   const [investigationNotes, setInvestigationNotes] = useState('');
-  const [reportContent, setReportContent] = useState('');
-  const [hearingDate, setHearingDate] = useState('');
-  const [hearingTime, setHearingTime] = useState('');
-  const [hearingLocation, setHearingLocation] = useState('');
   const verdictFileInputRef = useRef<HTMLInputElement>(null);
   const [verdictUploading, setVerdictUploading] = useState(false);
-  const [canHearing, setCanHearing] = useState(false);
-
-  useEffect(() => {
-    if (!role) return;
-    forwardingRulesApi.getSpecial(role).then(res => {
-      setCanHearing(!!res.data.data?.canHearing);
-    }).catch(() => {});
-  }, [role]);
 
   const isClosed = caseItem.status === 'closed' || caseItem.status === 'resolved' || caseItem.status === 'rejected' || caseItem.status === 'police-case';
 
@@ -1287,100 +1312,31 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     );
   }
 
-  // Coordinator panel
+  // Coordinator actions are rendered as header buttons (Verify Case / Accept & Forward),
+  // so there is no inline body panel for coordinators.
   if (role === 'coordinator' || role === 'female-coordinator') {
-    return (
-      <>
-        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
-        <CoordinatorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} isConfidential={isConfidential} />
-      </>
-    );
+    return null;
   }
 
   // Proctor panel
   if (role === 'proctor') {
     return (
       <>
-        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
         <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} />
       </>
     );
   }
 
-  // Assistant Proctor panel
+  // Assistant proctor actions are rendered as header buttons (Draft Report / Forward),
+  // so there is no inline body panel.
   if (role === 'assistant-proctor') {
-    const handleScheduleHearing = async () => {
-      if (!hearingDate || !hearingTime || !hearingLocation) return;
-      await hearingsApi.create({ caseId: caseItem.id, date: hearingDate, time: hearingTime, location: hearingLocation, participants: [caseItem.studentName] });
-      if (caseItem.status !== 'hearing-scheduled') {
-        await onStatusChange('hearing-scheduled');
-      }
-      await onRefresh();
-      toast.success('Hearing scheduled successfully');
-      setHearingDate(''); setHearingTime(''); setHearingLocation('');
-    };
-    const handleCreateReport = async () => {
-      if (!reportContent.trim()) return;
-      await casesApi.createReport(caseItem.id, { content: reportContent, isDraft: true });
-      await onRefresh();
-      toast.success('Draft report created');
-      setReportContent('');
-    };
-    return (
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-semibold" style={{ color: '#0b2652' }}>Assistant Proctor: Hearing & Report</h3>
-            <p className="text-xs text-gray-500">Schedule hearings, gather evidence, and create reports</p>
-          </div>
-        </div>
-
-        <div className={`grid grid-cols-1 ${canHearing ? 'sm:grid-cols-2' : ''} gap-4 mb-4`}>
-          {canHearing && (
-            <div className="bg-indigo-50 rounded-lg p-4">
-              <p className="text-sm font-medium text-indigo-700 mb-2">Schedule Hearing</p>
-              <div className="space-y-2">
-                <input type="date" value={hearingDate} onChange={e => setHearingDate(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                <input type="time" value={hearingTime} onChange={e => setHearingTime(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                <input type="text" value={hearingLocation} onChange={e => setHearingLocation(e.target.value)} placeholder="Location" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                <button disabled={actionLoading || !hearingDate || !hearingTime || !hearingLocation} onClick={() => withLoading(handleScheduleHearing)}
-                  className="w-full px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">Schedule</button>
-              </div>
-            </div>
-          )}
-          <div className="bg-purple-50 rounded-lg p-4">
-            <p className="text-sm font-medium text-purple-700 mb-2">Draft Report</p>
-            <div className="space-y-2">
-              <textarea value={reportContent} onChange={e => setReportContent(e.target.value)} placeholder="Write your investigation report..."
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500" rows={3} />
-              <button disabled={actionLoading || !reportContent.trim()} onClick={() => withLoading(handleCreateReport)}
-                className="w-full px-3 py-1.5 text-sm rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">Create Draft Report</button>
-            </div>
-          </div>
-        </div>
-
-        <UnifiedForwardSection
-          fromRole="assistant-proctor"
-          actionLoading={actionLoading}
-          withLoading={withLoading}
-          onForward={onForward}
-        />
-      </div>
-    );
+    return null;
   }
 
   // Deputy Proctor panel
   if (role === 'deputy-proctor') {
     return (
       <>
-      <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
       <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -1424,7 +1380,6 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   if (role === 'registrar') {
     return (
       <>
-        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
         <RegistrarPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} recommendation={recommendation} setRecommendation={setRecommendation} />
       </>
     );
@@ -1434,7 +1389,6 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
   if (role === 'disciplinary-committee') {
     return (
       <>
-        <HearingScheduleSection caseItem={caseItem} canHearing={canHearing} onRefresh={onRefresh} />
         <DisciplinaryCommitteePanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} onRefresh={onRefresh} verdict={verdict} setVerdict={setVerdict} verdictFileInputRef={verdictFileInputRef} verdictUploading={verdictUploading} setVerdictUploading={setVerdictUploading} />
       </>
     );
@@ -1750,15 +1704,297 @@ function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward,
   );
 }
 
-// Coordinator panel with dynamic checklist
-function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem, isConfidential }: {
-  actionLoading: boolean;
-  withLoading: (fn: () => Promise<void>) => Promise<void>;
+// Reusable "Draft Report" header button + popup.
+function DraftReportButton({ caseItem, onRefresh }: { caseItem: Case; onRefresh: () => Promise<void>; }) {
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState('');
+  const [busy, setBusy] = useState(false);
+  const handleCreate = async () => {
+    if (!content.trim()) return;
+    setBusy(true);
+    try {
+      await casesApi.createReport(caseItem.id, { content, isDraft: true });
+      await onRefresh();
+      toast.success('Draft report created');
+      setContent(''); setOpen(false);
+    } catch (err: any) {
+      toast.error('Failed to create report', { description: err?.response?.data?.message || '' });
+    } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-sm hover:bg-purple-100">
+        <FileIcon /> Draft Report
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold mb-3" style={{ color: '#0b2652' }}>Draft Report — {caseItem.caseNumber}</h3>
+              <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Write your investigation report..." rows={6}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3" />
+              <div className="flex justify-end gap-2">
+                <button disabled={busy} onClick={() => setOpen(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                <button disabled={busy || !content.trim()} onClick={handleCreate} className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">{busy ? 'Creating…' : 'Create Draft Report'}</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// Reusable "Forward" header button + popup. Only renders when the role actually has
+// somewhere to forward to (driven by the forwarding rules in Settings).
+function ForwardButton({ fromRole, caseItem, onForward, beforeForward, label = 'Forward' }: {
+  fromRole: string;
+  caseItem: Case;
+  onForward: (targetRole: string, extra?: any) => Promise<void>;
+  beforeForward?: () => Promise<void>;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [hasForwardable, setHasForwardable] = useState(false);
+  const withLoading = async (fn: () => Promise<void>) => {
+    setActionLoading(true);
+    try { await fn(); } finally { setActionLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!fromRole) return;
+    usersApi.getForwardable(fromRole).then(res => setHasForwardable((res.data.data || []).length > 0)).catch(() => setHasForwardable(false));
+  }, [fromRole]);
+
+  if (!hasForwardable) return null;
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        <ForwardIcon /> {label}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !actionLoading && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-24">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>{label}</h3>
+                <button onClick={() => setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <UnifiedForwardSection fromRole={fromRole} actionLoading={actionLoading} withLoading={withLoading}
+                title="Forward to:" beforeForward={beforeForward} onForward={onForward} />
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// Hearing panel — manage the people (internal users + external emailed people) for a case's hearing.
+function HearingPanelButton({ caseItem, onRefresh }: { caseItem: Case; onRefresh: () => Promise<void>; }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'internal' | 'external'>('list');
+  const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [emails, setEmails] = useState<string[]>(['']);
+  const [extName, setExtName] = useState('');
+  const [extSubject, setExtSubject] = useState('');
+  const [extMessage, setExtMessage] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    usersApi.getAll().then(res => setUsers(res.data.data || [])).catch(() => {});
+  }, [open]);
+
+  const persons = caseItem.hearingPersons || [];
+  const roleLabel = (r?: string) => (r || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  const addInternal = async (userId: string) => {
+    setBusy(true);
+    try {
+      await casesApi.addInternalHearingPerson(caseItem.id, userId);
+      await onRefresh();
+      toast.success('Person added to hearing panel');
+      setView('list'); setSearch('');
+    } catch (err: any) {
+      toast.error('Failed to add', { description: err?.response?.data?.message || '' });
+    } finally { setBusy(false); }
+  };
+
+  const addExternal = async () => {
+    const list = emails.map(e => e.trim()).filter(Boolean);
+    if (list.length === 0) { toast.error('Add at least one email'); return; }
+    if (!extMessage.trim()) { toast.error('Write a message'); return; }
+    setBusy(true);
+    try {
+      await casesApi.addExternalHearingPerson(caseItem.id, { emails: list, name: extName.trim() || undefined, subject: extSubject.trim() || undefined, message: extMessage.trim() });
+      await onRefresh();
+      toast.success(`Added & emailed ${list.length} external person(s)`);
+      setEmails(['']); setExtName(''); setExtSubject(''); setExtMessage(''); setView('list');
+    } catch (err: any) {
+      toast.error('Failed to add', { description: err?.response?.data?.message || '' });
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    try { await casesApi.removeHearingPerson(caseItem.id, id); await onRefresh(); } catch { /* ignore */ } finally { setBusy(false); }
+  };
+
+  const existingInternal = new Set(persons.filter(p => p.type === 'internal').map(p => p.userId));
+  const filteredUsers = users.filter(u => !existingInternal.has(u.id) && (
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()) ||
+    roleLabel(u.role).toLowerCase().includes(search.toLowerCase())
+  ));
+
+  return (
+    <>
+      <button onClick={() => { setOpen(true); setView('list'); }}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-teal-300 bg-teal-50 text-teal-700 text-sm hover:bg-teal-100">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Hearing Panel{persons.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-200 text-teal-800 text-[11px]">{persons.length}</span>}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-20">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto">
+              {/* LIST */}
+              {view === 'list' && (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Hearing Panel</h3>
+                    <button onClick={() => setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+
+                  {persons.length === 0 ? (
+                    <p className="text-sm text-gray-400 mb-4">No one added yet.</p>
+                  ) : (
+                    <div className="space-y-2 mb-4">
+                      {persons.map(p => (
+                        <div key={p.id} className="flex items-center gap-3 border border-gray-200 rounded-lg p-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}
+                              <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${p.type === 'internal' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{p.type}</span>
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">{p.type === 'internal' ? `${roleLabel(p.role)} · ${p.email}` : p.email}</p>
+                          </div>
+                          <button disabled={busy} onClick={() => remove(p.id)} className="text-red-500 hover:text-red-700 text-sm disabled:opacity-50">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button onClick={() => setView('internal')} className="flex-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">+ Internal Person</button>
+                    <button onClick={() => setView('external')} className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700">+ External Person</button>
+                  </div>
+                </>
+              )}
+
+              {/* INTERNAL */}
+              {view === 'internal' && (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button onClick={() => setView('list')} className="text-blue-600 text-sm hover:underline">&larr; Back</button>
+                    <h3 className="text-lg font-semibold ml-auto" style={{ color: '#0b2652' }}>Add Internal Person</h3>
+                  </div>
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email or role…"
+                    className="w-full px-3 py-2 mb-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <div className="space-y-1 max-h-72 overflow-auto">
+                    {filteredUsers.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-4">No users found</p>
+                    ) : filteredUsers.map(u => (
+                      <button key={u.id} disabled={busy} onClick={() => addInternal(u.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                        <span className="font-medium">{u.name}</span>
+                        <span className="text-gray-400 text-xs flex-1 truncate">{u.email}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{roleLabel(u.role)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* EXTERNAL */}
+              {view === 'external' && (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button onClick={() => setView('list')} className="text-blue-600 text-sm hover:underline">&larr; Back</button>
+                    <h3 className="text-lg font-semibold ml-auto" style={{ color: '#0b2652' }}>Add External Person</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email(s) *</label>
+                      <div className="space-y-2">
+                        {emails.map((em, i) => (
+                          <div key={i} className="flex gap-2">
+                            <input type="email" value={em} onChange={e => setEmails(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
+                              placeholder="name@example.com" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                            {emails.length > 1 && <button onClick={() => setEmails(prev => prev.filter((_, idx) => idx !== i))} className="px-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">&times;</button>}
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setEmails(prev => [...prev, ''])} className="mt-2 text-sm text-blue-600 hover:text-blue-800">+ Add another email</button>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name (optional)</label>
+                      <input value={extName} onChange={e => setExtName(e.target.value)} placeholder="Person/Org name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                      <input value={extSubject} onChange={e => setExtSubject(e.target.value)} placeholder={`Hearing notification — ${caseItem.caseNumber}`}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
+                      <textarea value={extMessage} onChange={e => setExtMessage(e.target.value)} rows={4} placeholder="Write the hearing details to send…"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    </div>
+                    <p className="text-xs text-gray-400">No SMTP configured yet — sending is recorded as a demo.</p>
+                    <div className="flex justify-end gap-2">
+                      <button disabled={busy} onClick={() => setView('list')} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                      <button disabled={busy} onClick={addExternal} className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">{busy ? 'Sending…' : 'Add & Send Email'}</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// Coordinator actions — compact header buttons that open the verify / forward popups.
+function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential }: {
   onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
   isConfidential: boolean;
 }) {
+  const [actionLoading, setActionLoading] = useState(false);
+  const withLoading = async (fn: () => Promise<void>) => {
+    setActionLoading(true);
+    try { await fn(); } finally { setActionLoading(false); }
+  };
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [forwardOpen, setForwardOpen] = useState(false);
   const [checklistItems, setChecklistItems] = useState<{ id: string; label: string }[]>([]);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [comment, setComment] = useState('');
@@ -1814,79 +2050,100 @@ function CoordinatorPanel({ actionLoading, withLoading, onStatusChange, onForwar
   const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2">
-            <polyline points="9 11 12 14 22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-          </svg>
-        </div>
-        <div>
-          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Coordinator: Verify Case</h3>
-          <p className="text-xs text-gray-500">Review documents and verify case details</p>
-        </div>
-      </div>
+    <>
+      {/* Header buttons */}
+      <button onClick={() => setVerifyOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-700 text-sm hover:bg-cyan-100">
+        <CheckIcon /> Verify Case
+      </button>
+      <button onClick={() => setForwardOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        <ForwardIcon /> Accept & Forward
+      </button>
 
-      {/* Dynamic Verification Checklist */}
-      <div className="bg-gray-50 rounded-lg p-4 mb-4">
-        <p className="text-sm font-medium text-gray-700 mb-3">Verification Checklist:</p>
-        <div className="space-y-2">
-          {checklistItems.map((item) => (
-            <label key={item.id} className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox"
-                checked={!!checkedItems[item.id]}
-                onChange={e => setCheckedItems(prev => ({ ...prev, [item.id]: e.target.checked }))}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-              <span className="text-sm text-gray-700">{item.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      {/* Verify popup */}
+      {verifyOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !actionLoading && setVerifyOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>Coordinator: Verify Case</h3>
+              <p className="text-xs text-gray-500 mb-4">Review documents and verify case details</p>
 
-      {/* Comment textbox */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Comment (for resubmission)</label>
-        <textarea value={comment} onChange={e => setComment(e.target.value)}
-          placeholder="Add comments for the student..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          rows={2}
-        />
-      </div>
+              <div className="bg-gray-50 rounded-lg p-4 mb-3">
+                <p className="text-sm font-medium text-gray-700 mb-3">Verification Checklist:</p>
+                <div className="space-y-2">
+                  {checklistItems.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox"
+                        checked={!!checkedItems[item.id]}
+                        onChange={e => setCheckedItems(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                      <span className="text-sm text-gray-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
-      {/* Accept & Forward - one unified people dropdown across every role the
-          coordinator is permitted to forward to (driven by forwarding rules). */}
-      <UnifiedForwardSection
-        fromRole={coordRole}
-        actionLoading={actionLoading}
-        withLoading={withLoading}
-        title="Accept & Forward to:"
-        beforeForward={async () => {
-          // Verify only once, and only if the case is still awaiting verification —
-          // otherwise forwarding to a second/third person would retry submitted→verified
-          // on an already-assigned case and be rejected by the workflow.
-          if (['submitted', 'resubmission-requested', 'on-hold'].includes(caseItem.status)) {
-            await onStatusChange('verified');
-          }
-        }}
-        onForward={onForward}
-      />
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Comment (for resubmission)</label>
+                <textarea value={comment} onChange={e => setComment(e.target.value)}
+                  placeholder="Add comments for the student..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  rows={2}
+                />
+              </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('rejected'))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
-          <XIcon /> Reject
-        </button>
-        <button disabled={actionLoading} onClick={() => withLoading(() => onStatusChange('on-hold'))}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:opacity-50">
-          <ClockIcon /> Hold
-        </button>
-        <button disabled={actionLoading} onClick={() => withLoading(handleResubmission)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
-          <RefreshIcon /> Request Resubmission
-        </button>
-      </div>
-    </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button disabled={actionLoading} onClick={() => setVerifyOpen(false)}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50">Close</button>
+                <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('rejected'); setVerifyOpen(false); })}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50">
+                  <XIcon /> Reject
+                </button>
+                <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('on-hold'); setVerifyOpen(false); })}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:opacity-50">
+                  <ClockIcon /> Hold
+                </button>
+                <button disabled={actionLoading} onClick={() => withLoading(async () => { await handleResubmission(); setVerifyOpen(false); })}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
+                  <RefreshIcon /> Resubmission
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Accept & Forward popup */}
+      {forwardOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !actionLoading && setForwardOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-24">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Accept &amp; Forward</h3>
+                <button onClick={() => setForwardOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <UnifiedForwardSection
+                fromRole={coordRole}
+                actionLoading={actionLoading}
+                withLoading={withLoading}
+                title="Accept & Forward to:"
+                beforeForward={async () => {
+                  if (['submitted', 'resubmission-requested', 'on-hold'].includes(caseItem.status)) {
+                    await onStatusChange('verified');
+                  }
+                }}
+                onForward={onForward}
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -2136,7 +2393,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
         </div>
 
         {showDropdown && (
-          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-auto">
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-auto">
             <div className="p-2 border-b border-gray-100">
               <input
                 type="text"
@@ -2181,30 +2438,36 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
 
 // Reusable hearing schedule form. Renders only when the current role has __hearing__ permission.
 // Used inside any role panel (proctor, deputy proctor, disciplinary committee, etc.) on the case detail.
-function HearingScheduleSection({ caseItem, canHearing, onRefresh }: {
+// Compact "Set Hearing" header button + modal. Loads its own hearing permission so it can
+// live in the page header instead of taking a full-width inline panel.
+function SetHearingButton({ caseItem, role, onRefresh }: {
   caseItem: Case;
-  canHearing: boolean;
+  role: string;
   onRefresh: () => Promise<void>;
 }) {
+  const [canHearing, setCanHearing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [location, setLocation] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (!canHearing) return null;
+  useEffect(() => {
+    if (!role) return;
+    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role]);
+
+  const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
+  if (!canHearing || caseItem.type === 'type-1' || isClosed) return null;
 
   const handleSchedule = async () => {
     if (!date || !time || !location) return;
     setBusy(true);
     try {
-      await hearingsApi.create({
-        caseId: caseItem.id,
-        date, time, location,
-        participants: [caseItem.studentName],
-      });
+      await hearingsApi.create({ caseId: caseItem.id, date, time, location, participants: [caseItem.studentName] });
       await onRefresh();
       toast.success('Hearing scheduled');
-      setDate(''); setTime(''); setLocation('');
+      setDate(''); setTime(''); setLocation(''); setOpen(false);
     } catch (err: any) {
       toast.error('Schedule failed', { description: err?.response?.data?.message || 'Unable to schedule' });
     } finally {
@@ -2213,20 +2476,44 @@ function HearingScheduleSection({ caseItem, canHearing, onRefresh }: {
   };
 
   return (
-    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
-      <p className="text-sm font-semibold text-indigo-700 mb-2">Schedule Hearing</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-        <input type="time" value={time} onChange={e => setTime(e.target.value)}
-          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-        <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Location"
-          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-      </div>
-      <button disabled={busy || !date || !time || !location} onClick={handleSchedule}
-        className="mt-3 px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-        {busy ? 'Scheduling...' : 'Schedule Hearing'}
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm hover:bg-indigo-100">
+        <ClockIcon /> Set Hearing
       </button>
-    </div>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Schedule Hearing — {caseItem.caseNumber}</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+                  <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Proctor Office, Room 201"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button disabled={busy} onClick={() => setOpen(false)}
+                    className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                  <button disabled={busy || !date || !time || !location} onClick={handleSchedule}
+                    className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{busy ? 'Scheduling…' : 'Schedule'}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }

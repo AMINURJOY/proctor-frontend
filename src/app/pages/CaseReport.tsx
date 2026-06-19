@@ -135,10 +135,6 @@ export default function CaseReport() {
               <p className="text-sm font-medium capitalize">{caseItem.type.replace('-', ' ')}</p>
             </div>
             <div>
-              <span className="text-xs text-gray-500">Priority</span>
-              <p className="text-sm font-medium capitalize">{caseItem.priority}</p>
-            </div>
-            <div>
               <span className="text-xs text-gray-500">Status</span>
               <p className="text-sm font-medium capitalize">{caseItem.status.split('-').join(' ')}</p>
             </div>

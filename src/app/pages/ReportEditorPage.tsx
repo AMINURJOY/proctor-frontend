@@ -533,7 +533,6 @@ export default function ReportEditorPage() {
                 <InfoRow label="Case #" value={caseItem.caseNumber} k="caseNumber" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 <InfoRow label="Type" value={caseItem.type} k="type" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 <InfoRow label="Status" value={caseItem.status} k="status" copiedKey={copiedKey} onCopy={copyToClipboard} />
-                <InfoRow label="Priority" value={caseItem.priority} k="priority" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 <InfoRow label="Filed" value={caseItem.createdDate ? new Date(caseItem.createdDate).toLocaleDateString() : ''} k="createdDate" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 {caseItem.incidentDate && <InfoRow label="Incident" value={new Date(caseItem.incidentDate).toLocaleDateString()} k="incidentDate" copiedKey={copiedKey} onCopy={copyToClipboard} />}
                 {caseItem.assignedTo && <InfoRow label="Assigned" value={caseItem.assignedTo} k="assignedTo" copiedKey={copiedKey} onCopy={copyToClipboard} />}

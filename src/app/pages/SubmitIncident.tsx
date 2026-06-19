@@ -62,7 +62,7 @@ export default function SubmitIncident() {
   const [categories, setCategories] = useState<CaseCategory[]>([]);
   // Multiple complainants (student details)
   const emptyComplainant = { name: '', studentId: '', department: '', contact: '', advisorName: '', fatherName: '', fatherContact: '' };
-  const [complainants, setComplainants] = useState([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
+  const [complainants, setComplainants] = useState([{ ...emptyComplainant, name: currentUser?.name || '' }]);
   // Multiple accused
   const emptyAccused = { name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '' };
   const [accusedPersons, setAccusedPersons] = useState([{ ...emptyAccused }]);
@@ -250,7 +250,8 @@ export default function SubmitIncident() {
     try {
       const data: any = {
         studentName: currentUser?.name || '',
-        studentId: currentUser?.id || '',
+        // Student ID is the numeric roll the student enters — never the internal account GUID.
+        studentId: '',
         type: selectedType,
         description: selectedType === 'type-1' ? t1Description : t2Description,
         priority: selectedType === 'type-1' ? t1Priority : t2Priority,
@@ -266,6 +267,8 @@ export default function SubmitIncident() {
       if (selectedType === 'type-2') {
         data.subject = t2Subject;
         data.gender = t2Gender;
+        // Use the first complainant's typed (numeric) ID as the case student ID.
+        data.studentId = complainants[0]?.studentId?.trim() || '';
         data.categoryId = t2CategoryId || undefined;
         // Legacy single fields from first complainant/accused
         data.studentDepartment = t2StudentDepartment || undefined;
@@ -366,7 +369,7 @@ export default function SubmitIncident() {
                 setT2Files([]);
                 setT2IncidentDate('');
                 setT2VideoLink('');
-                setComplainants([{ ...emptyComplainant, name: currentUser?.name || '', studentId: currentUser?.id || '' }]);
+                setComplainants([{ ...emptyComplainant, name: currentUser?.name || '' }]);
                 setAccusedPersons([{ ...emptyAccused }]);
                 setCaseNumber('');
               }}

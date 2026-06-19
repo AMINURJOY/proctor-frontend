@@ -115,6 +115,7 @@ export interface Case {
   studentName: string;
   studentId: string;
   type: CaseType;
+  subject?: string;
   status: CaseStatus;
   priority: Priority;
   assignedTo?: string;
@@ -147,6 +148,7 @@ export interface Case {
   timeline: TimelineEvent[];
   reports?: Report[];
   additionalInfos?: AdditionalInfo[];
+  hearingPersons?: HearingPerson[];
 
   // Category
   categoryId?: string;
@@ -211,6 +213,16 @@ export interface AdditionalInfo {
   author: string;
   authorRole?: string;
   createdDate: string;
+}
+
+export interface HearingPerson {
+  id: string;
+  type: 'internal' | 'external';
+  name: string;
+  email?: string;
+  userId?: string;
+  role?: string;
+  addedAt: string;
 }
 
 export interface Hearing {

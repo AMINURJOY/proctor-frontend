@@ -112,9 +112,6 @@ export default function IncidentsList() {
                     <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[incident.status]}`}>
                       {incident.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                     </span>
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${priorityColors[incident.priority]}`}>
-                      {incident.priority.charAt(0).toUpperCase() + incident.priority.slice(1)}
-                    </span>
                     {incident.categoryName && (
                       <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
                         {incident.categoryName}

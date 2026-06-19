@@ -126,6 +126,10 @@ export const casesApi = {
   updateStatus: (id: string, data: any) => api.patch(`/cases/${id}/status`, data),
   addNote: (caseId: string, data: any) => api.post(`/cases/${caseId}/notes`, data),
   addAdditionalInfo: (caseId: string, content: string) => api.post(`/cases/${caseId}/additional-info`, { content }),
+  addInternalHearingPerson: (caseId: string, userId: string) => api.post(`/cases/${caseId}/hearing-persons/internal`, { userId }),
+  addExternalHearingPerson: (caseId: string, data: { emails: string[]; name?: string; subject?: string; message: string }) =>
+    api.post(`/cases/${caseId}/hearing-persons/external`, data),
+  removeHearingPerson: (caseId: string, personId: string) => api.delete(`/cases/${caseId}/hearing-persons/${personId}`),
   addDocument: (caseId: string, file: File, name?: string) => {
     const formData = new FormData();
     formData.append('file', file);

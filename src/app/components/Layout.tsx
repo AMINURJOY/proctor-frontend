@@ -372,7 +372,7 @@ export default function Layout() {
                 {showNotifications && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowNotifications(false)} />
-                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-20 max-h-[70vh] flex flex-col">
+                    <div className="fixed left-3 right-3 top-16 z-20 max-h-[70vh] flex flex-col bg-white rounded-lg shadow-xl border border-gray-200 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96">
                       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h3 className="font-semibold text-gray-900">Notifications</h3>
                         {unreadCount > 0 && (

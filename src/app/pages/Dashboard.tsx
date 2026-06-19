@@ -3,7 +3,7 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { useAuth } from '../context/AuthContext';
 import { CasesIcon, ClockIcon, CheckIcon, EyeIcon } from '../components/Icons';
 import { useNavigate } from 'react-router';
-import { Case, Priority } from '../types';
+import { Case } from '../types';
 import { dashboardApi, casesApi } from '../services/api';
 
 export default function Dashboard() {
@@ -121,13 +121,6 @@ export default function Dashboard() {
     'resubmission-requested': 'bg-orange-100 text-orange-700',
   };
 
-  const priorityColors: Record<Priority, string> = {
-    'low': 'bg-slate-100 text-slate-700',
-    'medium': 'bg-blue-100 text-blue-700',
-    'high': 'bg-orange-100 text-orange-700',
-    'urgent': 'bg-red-100 text-red-700'
-  };
-
   // For VC/super-admin stat cards we still surface the global totals from the backend.
   // For all other roles, derive stats from visibleCases (their personal subset).
   const isGlobalView = role === 'super-admin' || role === 'vc';
@@ -136,11 +129,17 @@ export default function Dashboard() {
 
   const isStudent = role === 'student';
   const baseStatsCards = [
-    { label: totalLabel, value: totalCount, icon: CasesIcon, color: '#0b2652', bgColor: '#e0e7ff' },
-    { label: 'My Tasks', value: myTasks.length, icon: ClockIcon, color: '#f59e0b', bgColor: '#fef3c7' },
-    { label: 'Pending', value: pendingCases.length, icon: EyeIcon, color: '#1e3a8a', bgColor: '#dbeafe' },
-    { label: 'Resolved', value: completedCases.length, icon: CheckIcon, color: '#16a34a', bgColor: '#dcfce7' }
+    { label: totalLabel, value: totalCount, icon: CasesIcon, color: '#0b2652', bgColor: '#e0e7ff', tab: 'overview' as const },
+    { label: 'My Tasks', value: myTasks.length, icon: ClockIcon, color: '#f59e0b', bgColor: '#fef3c7', tab: 'my-tasks' as const },
+    { label: 'Pending', value: pendingCases.length, icon: EyeIcon, color: '#1e3a8a', bgColor: '#dbeafe', tab: 'pending' as const },
+    { label: 'Resolved', value: completedCases.length, icon: CheckIcon, color: '#16a34a', bgColor: '#dcfce7', tab: 'completed' as const }
   ];
+
+  // Clicking a card jumps to that section. Students have no tabs, so it opens their case list.
+  const onCardClick = (tab: 'overview' | 'my-tasks' | 'pending' | 'completed') => {
+    if (isStudent) navigate('/my-cases');
+    else setActiveTab(tab);
+  };
   // Students don't have a "tasks" workload — drop the My Tasks card.
   const statsCards = isStudent ? baseStatsCards.filter(s => s.label !== 'My Tasks') : baseStatsCards;
 
@@ -193,9 +192,6 @@ export default function Dashboard() {
           <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[c.status]}`}>
             {c.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
           </span>
-          <span className={`px-2 py-0.5 text-xs rounded-full ${priorityColors[c.priority]}`}>
-            {c.priority.charAt(0).toUpperCase() + c.priority.slice(1)}
-          </span>
         </div>
         <p className="text-sm text-gray-600 truncate">{c.studentName} - {c.description}</p>
       </div>
@@ -241,7 +237,8 @@ export default function Dashboard() {
         {statsCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200 border border-gray-100">
+            <div key={stat.label} onClick={() => onCardClick(stat.tab)}
+              className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200 border border-gray-100 cursor-pointer">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: stat.bgColor }}>
                   <span style={{ color: stat.color }}><Icon /></span>
@@ -254,7 +251,8 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — students only see the cards above */}
+      {!isStudent && (
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
         <div className="border-b border-gray-200 overflow-x-auto">
           <div className="flex min-w-max">
@@ -376,6 +374,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

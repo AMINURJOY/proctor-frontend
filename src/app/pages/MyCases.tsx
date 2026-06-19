@@ -95,7 +95,6 @@ export default function MyCases() {
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Accused</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Type / Category</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Priority</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Forwarded / Updated</th>
                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                   </tr>
@@ -153,16 +152,6 @@ export default function MyCases() {
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[c.status] || 'bg-gray-100 text-gray-700'}`}>
                           {c.status.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          c.priority === 'urgent' ? 'bg-red-100 text-red-700' :
-                          c.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                          c.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {c.priority.charAt(0).toUpperCase() + c.priority.slice(1)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
