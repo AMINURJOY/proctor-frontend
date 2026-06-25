@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { notificationsApi } from '../services/api';
+import { notificationsApi, casesApi } from '../services/api';
 import { AppNotification } from '../types';
 
 export default function NotificationsPage() {
@@ -10,18 +10,36 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   useEffect(() => {
-    const fetchNotifications = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        const response = await notificationsApi.getAll();
-        setNotifications(response.data.data || response.data || []);
+        const [notifRes, casesRes] = await Promise.allSettled([
+          notificationsApi.getAll(),
+          casesApi.getAll({ pageSize: 1000 }),
+        ]);
+
+        const notifs: AppNotification[] =
+          notifRes.status === 'fulfilled'
+            ? (notifRes.value.data.data || notifRes.value.data || [])
+            : [];
+
+        // Build a set of valid case IDs so we can drop notifications that reference deleted cases.
+        const validCaseIds = new Set<string>();
+        if (casesRes.status === 'fulfilled') {
+          const items = casesRes.value.data.data?.items || casesRes.value.data.data || [];
+          for (const c of items) if (c?.id) validCaseIds.add(c.id);
+        }
+
+        setNotifications(
+          notifs.filter(n => !n.caseId || validCaseIds.has(n.caseId))
+        );
       } catch {
         setNotifications([]);
       } finally {
         setLoading(false);
       }
     };
-    fetchNotifications();
+    fetchData();
   }, []);
 
   const filtered = filter === 'unread' ? notifications.filter(n => !n.isRead) : notifications;

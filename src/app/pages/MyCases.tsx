@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { casesApi } from '../services/api';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ const statusColors: Record<string, string> = {
 
 export default function MyCases() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
   const [cases, setCases] = useState<any[]>([]);
@@ -31,6 +32,22 @@ export default function MyCases() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const pageSize = 10;
+
+  // Filter chip coming from the dashboard stat card (?filter=my-tasks|pending|completed)
+  // — purely a client-side narrowing on top of the server-side "my cases" set.
+  const filterFromUrl = searchParams.get('filter');
+  const activeFilter: 'all' | 'my-tasks' | 'pending' | 'completed' =
+    filterFromUrl === 'my-tasks' || filterFromUrl === 'pending' || filterFromUrl === 'completed'
+      ? filterFromUrl
+      : 'all';
+
+  const setFilter = (next: 'all' | 'my-tasks' | 'pending' | 'completed') => {
+    if (next === 'all') setSearchParams({});
+    else setSearchParams({ filter: next });
+  };
+
+  const isClosedLike = (status: string) =>
+    status === 'closed' || status === 'resolved' || status === 'rejected';
 
   const fetchMyCases = useCallback(async () => {
     setLoading(true);
@@ -68,11 +85,46 @@ export default function MyCases() {
   const totalPages = Math.ceil(totalCount / pageSize);
   const deletingCase = cases.find(c => c.id === deleteId);
 
+  // Client-side filter on top of the backend "my cases" result set. Mirrors the
+  // dashboard stat cards so clicking a card lands you on a matching list.
+  const filteredCases = (() => {
+    if (activeFilter === 'all') return cases;
+    if (activeFilter === 'completed') return cases.filter(c => isClosedLike(c.status));
+    if (activeFilter === 'pending') return cases.filter(c => !isClosedLike(c.status));
+    // my-tasks: every still-open case the user can act on (their queue).
+    return cases.filter(c => !isClosedLike(c.status));
+  })();
+
+  const filterChips: { id: 'all' | 'my-tasks' | 'pending' | 'completed'; label: string }[] = [
+    { id: 'all', label: `All (${cases.length})` },
+    { id: 'my-tasks', label: `My Tasks (${cases.filter(c => !isClosedLike(c.status)).length})` },
+    { id: 'pending', label: `Pending (${cases.filter(c => !isClosedLike(c.status)).length})` },
+    { id: 'completed', label: `Completed (${cases.filter(c => isClosedLike(c.status)).length})` },
+  ];
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>My Cases</h1>
-        <p className="text-gray-600">Cases assigned to you or forwarded to your role</p>
+        <p className="text-gray-600">Your cases</p>
+      </div>
+
+      {/* Filter chips — drives ?filter= so the URL stays shareable */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {filterChips.map(chip => (
+          <button
+            key={chip.id}
+            onClick={() => setFilter(chip.id)}
+            className={`px-4 py-1.5 text-sm rounded-full border transition-colors ${
+              activeFilter === chip.id
+                ? 'border-transparent text-white'
+                : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+            }`}
+            style={activeFilter === chip.id ? { backgroundColor: '#0b2652' } : {}}
+          >
+            {chip.label}
+          </button>
+        ))}
       </div>
 
       {loading ? (
@@ -82,6 +134,10 @@ export default function MyCases() {
       ) : cases.length === 0 ? (
         <div className="bg-white rounded-xl shadow-md p-12 border border-gray-100 text-center">
           <p className="text-gray-500 text-lg">No cases assigned to you</p>
+        </div>
+      ) : filteredCases.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-md p-12 border border-gray-100 text-center">
+          <p className="text-gray-500 text-lg">No cases match this filter</p>
         </div>
       ) : (
         <>
@@ -100,7 +156,7 @@ export default function MyCases() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cases.map((c: any) => {
+                  {filteredCases.map((c: any) => {
                     const accusedList = c.accusedPersons && c.accusedPersons.length > 0
                       ? c.accusedPersons
                       : (c.accusedName ? [{ id: 'legacy', name: c.accusedName, accusedStudentId: c.accusedId || '', department: c.accusedDepartment }] : []);

@@ -54,7 +54,11 @@ export default function Dashboard() {
 
     // Students see only their own submissions
     if (role === 'student') {
-      return cases.filter(c => c.studentId === currentUser?.id || (c as any).submittedByUserId === currentUser?.id);
+      return cases.filter(c =>
+        c.studentId === currentUser?.id ||
+        (c as any).submittedByUserId === currentUser?.id ||
+        c.studentName === currentUser?.name
+      );
     }
 
     // All other staff: cases assigned to them OR forwarded to their role
@@ -135,10 +139,15 @@ export default function Dashboard() {
     { label: 'Resolved', value: completedCases.length, icon: CheckIcon, color: '#16a34a', bgColor: '#dcfce7', tab: 'completed' as const }
   ];
 
-  // Clicking a card jumps to that section. Students have no tabs, so it opens their case list.
+  // Clicking My Cases / Pending / My Tasks jumps to the dedicated /my-cases page
+  // with the matching filter applied. Resolved (Completed) stays as an in-page tab.
   const onCardClick = (tab: 'overview' | 'my-tasks' | 'pending' | 'completed') => {
-    if (isStudent) navigate('/my-cases');
-    else setActiveTab(tab);
+    if (tab === 'overview' || tab === 'my-tasks' || tab === 'pending') {
+      navigate(tab === 'overview' ? '/my-cases' : `/my-cases?filter=${tab}`);
+    } else {
+      // Completed: keep in-page tab behavior.
+      setActiveTab(tab);
+    }
   };
   // Students don't have a "tasks" workload — drop the My Tasks card.
   const statsCards = isStudent ? baseStatsCards.filter(s => s.label !== 'My Tasks') : baseStatsCards;

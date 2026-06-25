@@ -13,14 +13,16 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const landingPathFor = (role?: string) => (role === 'student' ? '/submit' : '/dashboard');
+
   const handleFormLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const success = await login(email, password);
-      if (success) {
-        navigate('/dashboard');
+      const user = await login(email, password);
+      if (user) {
+        navigate(landingPathFor(user.role));
       } else {
         setError('Invalid email or password. Please try again.');
       }
@@ -34,9 +36,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const pwd = user.role === 'super-admin' ? 'Admin@123!' : 'Password123!';
-      const success = await login(user.email, pwd);
-      if (success) {
-        navigate('/dashboard');
+      const loggedIn = await login(user.email, pwd);
+      if (loggedIn) {
+        navigate(landingPathFor(user.role));
       } else {
         setError('Quick login failed. Please try again.');
       }

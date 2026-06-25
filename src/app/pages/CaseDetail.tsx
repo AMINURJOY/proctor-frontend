@@ -100,6 +100,9 @@ export default function CaseDetail() {
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [primaryAssigneeId, setPrimaryAssigneeId] = useState<string>('');
   const [assignSubmitting, setAssignSubmitting] = useState(false);
+
+  // Police-case confirmation dialog
+  const [showPoliceConfirm, setShowPoliceConfirm] = useState(false);
   // Dynamic case-assignment permission (Settings → Forwarding → Case Assignment Permission)
   const [canAssign, setCanAssign] = useState(false);
 
@@ -445,9 +448,7 @@ export default function CaseDetail() {
               )}
             </div>
             <p className="text-gray-600">
-              {caseItem.studentName} &middot; {caseItem.studentId}
-              {caseItem.type === 'type-1' && ' &middot; Type-1 (Instant Incident)'}
-              {caseItem.type === 'type-2' && ' &middot; Type-2 (Formal Case)'}
+              {caseItem.studentName} · {caseItem.studentId} · Submitted {new Date(caseItem.createdDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
           <div className="flex flex-col gap-3 items-end">
@@ -506,7 +507,7 @@ export default function CaseDetail() {
                     <ArrowRightIcon /> Suggest to Type-2
                   </button>
                   <button
-                    onClick={() => handleStatusChange('police-case')}
+                    onClick={() => setShowPoliceConfirm(true)}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
                   >
                     <XIcon /> Mark as Police Case
@@ -646,38 +647,89 @@ export default function CaseDetail() {
                 </div>
               )}
 
-              {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                    {caseItem.incidentLocationDescription && (
-                      <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
-                    )}
-                    {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
-                      <>
-                        <div className="flex items-center gap-3 text-sm">
-                          <span className="text-gray-500">
-                            {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
-                          </span>
-                          <a
-                            href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
-                            target="_blank" rel="noreferrer"
-                            className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
-                          >
-                            Open in Google Maps
-                          </a>
+              {caseItem.type === 'type-1' ? (
+                /* Type-1: Incident Location + Description side-by-side in one section */
+                ((caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) || caseItem.description) && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    {/* Left: Incident Location */}
+                    {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
+                      <div>
+                        <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
+                        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                          {caseItem.incidentLocationDescription && (
+                            <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
+                          )}
+                          {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
+                            <>
+                              <div className="flex items-center gap-3 text-sm">
+                                <span className="text-gray-500">
+                                  {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
+                                </span>
+                                <a
+                                  href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
+                                  target="_blank" rel="noreferrer"
+                                  className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                >
+                                  Open in Google Maps
+                                </a>
+                              </div>
+                              <iframe
+                                title="Incident location map"
+                                className="w-full h-64 rounded-lg border border-gray-200"
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                                src={`https://maps.google.com/maps?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}&z=16&output=embed`}
+                              />
+                            </>
+                          )}
                         </div>
-                        <iframe
-                          title="Incident location map"
-                          className="w-full h-64 rounded-lg border border-gray-200"
-                          loading="lazy"
-                          referrerPolicy="no-referrer-when-downgrade"
-                          src={`https://maps.google.com/maps?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}&z=16&output=embed`}
-                        />
-                      </>
+                      </div>
+                    )}
+
+                    {/* Right: Description */}
+                    {caseItem.description && (
+                      <div>
+                        <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
+                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
+                      </div>
                     )}
                   </div>
-                </div>
+                )
+              ) : (
+                /* Type-2 and other types: keep the existing stacked Incident Location block unchanged */
+                (caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
+                  <div>
+                    <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                      {caseItem.incidentLocationDescription && (
+                        <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
+                      )}
+                      {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
+                        <>
+                          <div className="flex items-center gap-3 text-sm">
+                            <span className="text-gray-500">
+                              {caseItem.incidentLatitude.toFixed(6)}, {caseItem.incidentLongitude.toFixed(6)}
+                            </span>
+                            <a
+                              href={`https://maps.google.com/?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}`}
+                              target="_blank" rel="noreferrer"
+                              className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            >
+                              Open in Google Maps
+                            </a>
+                          </div>
+                          <iframe
+                            title="Incident location map"
+                            className="w-full h-64 rounded-lg border border-gray-200"
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                            src={`https://maps.google.com/maps?q=${caseItem.incidentLatitude},${caseItem.incidentLongitude}&z=16&output=embed`}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Students see this only in the "Message from Proctor" tab, not in the overview. */}
@@ -724,26 +776,12 @@ export default function CaseDetail() {
                       <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Complainants ({caseItem.complainants!.length})</h3>
                       <div className="space-y-3">
                         {caseItem.complainants!.map((c) => (
-                          <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden text-sm">
-                            <div className="p-3 text-white space-y-2" style={{ backgroundColor: '#0b2652' }}>
-                              <div className="min-w-0">
-                                <p className="text-[11px] uppercase tracking-wide text-blue-200">Name</p>
-                                <p className="text-base font-semibold">{c.name} {c.studentId && <span className="text-blue-200 text-xs font-normal">({c.studentId})</span>}</p>
-                              </div>
-                              {c.contact && (
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-wide text-blue-200">Phone</p>
-                                  <a href={`tel:${c.contact}`} className="text-base font-semibold underline-offset-2 hover:underline">{c.contact}</a>
-                                </div>
-                              )}
-                            </div>
-                            {(c.department || c.advisorName || c.fatherName) && (
-                              <div className="p-3 space-y-0.5">
-                                {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
-                                {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
-                                {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
-                              </div>
-                            )}
+                          <div key={c.id} className="border border-blue-200 bg-blue-50/50 rounded-lg p-3 text-sm space-y-0.5">
+                            <p className="font-medium">{c.name} {c.studentId && <span className="text-gray-400 text-xs">({c.studentId})</span>}</p>
+                            {c.department && <p className="text-gray-600">Dept: {c.department}</p>}
+                            {c.contact && <p className="text-gray-600">Contact: {c.contact}</p>}
+                            {c.advisorName && <p className="text-gray-600">Advisor: {c.advisorName}</p>}
+                            {c.fatherName && <p className="text-gray-600">Father: {c.fatherName} {c.fatherContact && `(${c.fatherContact})`}</p>}
                           </div>
                         ))}
                       </div>
@@ -780,10 +818,12 @@ export default function CaseDetail() {
                 </div>
               )}
 
-              <div>
-                <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
-                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
-              </div>
+              {caseItem.type !== 'type-1' && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
+                </div>
+              )}
 
               {/* Additional Information — appended by associated staff after submission */}
               {currentUser?.role !== 'student' && (canAddInfo || (caseItem.additionalInfos?.length || 0) > 0) && (
@@ -1193,6 +1233,40 @@ export default function CaseDetail() {
                   style={{ backgroundColor: '#0b2652' }}
                 >
                   {assignSubmitting ? 'Saving…' : 'Save Assignments'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Mark as Police Case Confirmation Modal */}
+      {showPoliceConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowPoliceConfirm(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2 text-red-700">Mark as Police Case</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to mark case <strong>{caseItem.caseNumber}</strong> as a police case?
+                This will escalate the incident to law enforcement and the case will be marked as <strong>police-case</strong>.
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowPoliceConfirm(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowPoliceConfirm(false);
+                    await handleStatusChange('police-case');
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-700 text-white hover:bg-red-800"
+                >
+                  Mark as Police Case
                 </button>
               </div>
             </div>

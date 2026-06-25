@@ -280,7 +280,7 @@ export default function CasesList() {
                       {caseItem.forwardedToRole && (
                         <div className="mt-1">
                           <span className="inline-flex px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-600">
-                            \u2192 {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                           </span>
                         </div>
                       )}

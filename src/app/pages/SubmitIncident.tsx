@@ -91,6 +91,47 @@ export default function SubmitIncident() {
     }
   };
 
+  // When a student is logged in, pre-fill the first Complainant row with their own directory
+  // info so they don't have to re-type it. Falls back to just the name if the student record
+  // isn't in the directory. Runs only when the user changes (or on first load) so manual edits
+  // are preserved.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'student') return;
+
+    let cancelled = false;
+    studentsApi
+      .getByStudentId(currentUser.id)
+      .then((res) => {
+        if (cancelled) return;
+        const s = res?.data?.data;
+        if (s) {
+          setComplainants([
+            {
+              name: s.name || currentUser.name || '',
+              studentId: s.studentId || currentUser.id || '',
+              department: s.department || '',
+              contact: s.contact || '',
+              advisorName: s.advisorName || '',
+              fatherName: s.fatherName || '',
+              fatherContact: s.fatherContact || '',
+            },
+          ]);
+        } else {
+          setComplainants([{ ...emptyComplainant, name: currentUser.name || '' }]);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Student not in directory — keep the name-only default so the student can type the rest.
+        setComplainants([{ ...emptyComplainant, name: currentUser.name || '' }]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   const autofillAccused = async (index: number, studentId: string) => {
     const id = studentId.trim();
     if (!id) return;
@@ -566,7 +607,9 @@ export default function SubmitIncident() {
                   placeholder="https://drive.google.com/file/d/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">Optional — paste a Google Drive link for video evidence</p>
+                <p className="text-xs mt-1 text-amber-700">
+                  <span className="font-semibold">Caution:</span> Please make the Google Drive folder publicly accessible so that we can view your evidence.
+                </p>
               </div>
 
               <div>
@@ -678,7 +721,7 @@ export default function SubmitIncident() {
                   </div>
                 </div>
 
-                <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700">
+                <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700" style={{ display: 'none' }}>
                   <ArrowRightIcon />
                   <span>Sent to: Coordinator for verification. Confidential cases are determined by the selected category.</span>
                 </div>
@@ -740,7 +783,7 @@ export default function SubmitIncident() {
                         <span className="text-sm text-gray-700">Female</span>
                       </label>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Female complainants are routed to the Female Coordinator; male to the Coordinator.</p>
+                    <p className="text-xs text-gray-400 mt-1" style={{ display: 'none' }}>Female complainants are routed to the Female Coordinator; male to the Coordinator.</p>
                   </div>
 
                   <div>
@@ -839,7 +882,9 @@ export default function SubmitIncident() {
                 <input type="url" value={t2VideoLink} onChange={e => setT2VideoLink(e.target.value)}
                   placeholder="https://drive.google.com/file/d/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-                <p className="text-xs text-gray-400 mt-1">Paste a Google Drive link</p>
+                <p className="text-xs mt-1 text-amber-700">
+                  <span className="font-semibold">Caution:</span> Please make the Google Drive folder publicly accessible so that we can view your evidence.
+                </p>
               </div>
 
               <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100 space-y-3">

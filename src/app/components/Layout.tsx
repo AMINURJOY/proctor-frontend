@@ -8,7 +8,6 @@ import {
   ReportIcon,
   UsersIcon,
   SettingsIcon,
-  SearchIcon,
   BellIcon,
   UserIcon,
   ChevronDownIcon,
@@ -31,6 +30,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [validCaseIds, setValidCaseIds] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
   const [myCasesCount, setMyCasesCount] = useState(0);
   const [type1Count, setType1Count] = useState(0);
@@ -80,8 +80,30 @@ export default function Layout() {
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getAll();
-      setNotifications(res.data.data || []);
+      const all: AppNotification[] = res.data.data || [];
+      // Drop notifications whose caseId no longer exists, then keep the unread
+      // badge in sync with what the dropdown actually shows.
+      const filtered = all.filter(n => !n.caseId || validCaseIds.has(n.caseId));
+      setNotifications(filtered);
+      setUnreadCount(filtered.filter(n => !n.isRead).length);
     } catch { /* silent */ }
+  }, [validCaseIds]);
+
+  // Pull the list of valid case IDs once on mount. Used to hide notifications
+  // that reference a case that has since been deleted.
+  useEffect(() => {
+    let cancelled = false;
+    casesApi
+      .getAll({ pageSize: 1000 })
+      .then((res) => {
+        if (cancelled) return;
+        const items = res.data.data?.items || res.data.data || [];
+        const ids = new Set<string>();
+        for (const c of items) if (c?.id) ids.add(c.id);
+        setValidCaseIds(ids);
+      })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -321,10 +343,10 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
         {/* Top Navbar */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <header className="sticky top-0 z-30 bg-white shadow-sm border-b border-gray-200">
+          <div className="flex flex-row items-center justify-between gap-4 px-4 py-4 lg:px-6">
             <div className="flex items-center gap-3">
               {/* Hamburger - mobile only */}
               <button
@@ -337,20 +359,6 @@ export default function Layout() {
                   <line x1="3" y1="18" x2="21" y2="18" />
                 </svg>
               </button>
-
-              {/* Search Bar */}
-              <div className="w-full min-w-0 lg:max-w-md">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <SearchIcon />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Search cases, students, or documents..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
             </div>
 
             {/* Right Section */}

@@ -15,12 +15,13 @@ export const users: User[] = [
 ];
 
 export const mockCases: Case[] = [
-  // Case 1: Type-1 (Instant Incident) - Under Review by Assistant Proctor
+  // Case 1: Type-1 (Instant Incident) - Under Review by Assistant Proctor — submitted by John Student
   {
     id: '1',
     caseNumber: 'CASE-2026-001',
-    studentName: 'Alex Johnson',
-    studentId: 'STU-2023-001',
+    studentName: 'John Student',
+    studentId: '1',
+    submittedByUserId: '1',
     type: 'type-1',
     status: 'hearing-scheduled',
     priority: 'high',
@@ -67,12 +68,12 @@ export const mockCases: Case[] = [
         date: '2026-04-10',
         time: '10:00 AM',
         location: 'Proctor Office, Room 201',
-        participants: ['Alex Johnson', 'Dr. Michael Proctor', 'Prof. Emily Assistant'],
+        participants: ['John Student', 'Dr. Michael Proctor', 'Prof. Emily Assistant'],
         status: 'scheduled',
       }
     ],
     timeline: [
-      { id: 't1', action: 'Case Submitted', description: 'Instant incident submitted by student with photo evidence', user: 'Alex Johnson', timestamp: '2026-03-15T10:30:00Z' },
+      { id: 't1', action: 'Case Submitted', description: 'Instant incident submitted by student with photo evidence', user: 'John Student', timestamp: '2026-03-15T10:30:00Z' },
       { id: 't2', action: 'Documents Verified', description: 'All documents verified by coordinator', user: 'Sarah Coordinator', timestamp: '2026-03-16T09:00:00Z' },
       { id: 't3', action: 'Case Accepted', description: 'Case accepted and moved to priority queue', user: 'Sarah Coordinator', timestamp: '2026-03-17T10:00:00Z' },
       { id: 't4', action: 'Case Assigned', description: 'Assigned to Assistant Proctor for hearing', user: 'Dr. Michael Proctor', timestamp: '2026-03-20T11:00:00Z' },
@@ -80,12 +81,13 @@ export const mockCases: Case[] = [
     ]
   },
 
-  // Case 2: Type-2 (Formal) - Pending Coordinator Review
+  // Case 2: Type-2 (Formal) - Pending Coordinator Review — submitted by John Student
   {
     id: '2',
     caseNumber: 'CASE-2026-002',
-    studentName: 'Maria Garcia',
-    studentId: 'STU-2023-045',
+    studentName: 'John Student',
+    studentId: '1',
+    submittedByUserId: '1',
     type: 'type-2',
     status: 'submitted',
     priority: 'medium',
@@ -99,7 +101,7 @@ export const mockCases: Case[] = [
         name: 'original-paper.pdf',
         type: 'pdf',
         url: '#',
-        uploadedBy: 'Maria Garcia',
+        uploadedBy: 'John Student',
         uploadedDate: '2026-03-28T09:20:00Z'
       },
       {
@@ -107,14 +109,14 @@ export const mockCases: Case[] = [
         name: 'turnitin-report.pdf',
         type: 'pdf',
         url: '#',
-        uploadedBy: 'Maria Garcia',
+        uploadedBy: 'John Student',
         uploadedDate: '2026-03-28T09:22:00Z'
       }
     ],
     notes: [],
     hearings: [],
     timeline: [
-      { id: 't6', action: 'Case Submitted', description: 'Formal case filed for plagiarism', user: 'Maria Garcia', timestamp: '2026-03-28T09:15:00Z' }
+      { id: 't6', action: 'Case Submitted', description: 'Formal case filed for plagiarism', user: 'John Student', timestamp: '2026-03-28T09:15:00Z' }
     ]
   },
 
@@ -156,12 +158,13 @@ export const mockCases: Case[] = [
     ]
   },
 
-  // Case 4: Type-1 - Resolved
+  // Case 4: Type-1 - Resolved — submitted by John Student
   {
     id: '4',
     caseNumber: 'CASE-2026-004',
-    studentName: 'David Lee',
-    studentId: 'STU-2024-112',
+    studentName: 'John Student',
+    studentId: '1',
+    submittedByUserId: '1',
     type: 'type-1',
     status: 'closed',
     priority: 'low',
@@ -175,7 +178,7 @@ export const mockCases: Case[] = [
         name: 'incident-screenshot.jpg',
         type: 'image',
         url: 'https://images.unsplash.com/photo-1501504905252-473c47e087f8?w=400',
-        uploadedBy: 'Faculty Member',
+        uploadedBy: 'John Student',
         uploadedDate: '2026-02-10T11:05:00Z'
       }
     ],
@@ -189,7 +192,7 @@ export const mockCases: Case[] = [
     ],
     hearings: [],
     timeline: [
-      { id: 't9', action: 'Case Submitted', description: 'Instant incident reported', user: 'Faculty Member', timestamp: '2026-02-10T11:00:00Z' },
+      { id: 't9', action: 'Case Submitted', description: 'Instant incident reported', user: 'John Student', timestamp: '2026-02-10T11:00:00Z' },
       { id: 't10', action: 'Forwarded to Proctor', description: 'Type-1 incident sent to proctor', user: 'System', timestamp: '2026-02-10T11:05:00Z' },
       { id: 't11', action: 'Case Resolved', description: 'Resolved with official warning', user: 'Dr. Michael Proctor', timestamp: '2026-03-15T16:45:00Z' },
       { id: 't12', action: 'Case Closed', description: 'Case closed after resolution', user: 'Dr. Michael Proctor', timestamp: '2026-03-15T17:00:00Z' }

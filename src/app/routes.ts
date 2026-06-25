@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
+import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +21,22 @@ import CaseReport from './pages/CaseReport';
 import CaseEdit from './pages/CaseEdit';
 import StudentsList from './pages/StudentsList';
 
+// Students land on /submit instead of /dashboard.
+function StudentDashboardGuard() {
+  const { currentUser } = useAuth();
+  if (currentUser?.role === 'student') {
+    return React.createElement(Navigate, { to: '/submit', replace: true });
+  }
+  return React.createElement(Dashboard);
+}
+
+// Catch-all redirect: students go to /submit, everyone else to /dashboard.
+function StudentCatchAllRedirect() {
+  const { currentUser } = useAuth();
+  const target = currentUser?.role === 'student' ? '/submit' : '/dashboard';
+  return React.createElement(Navigate, { to: target, replace: true });
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -29,7 +46,7 @@ export const router = createBrowserRouter([
     path: '/',
     Component: Layout,
     children: [
-      { path: 'dashboard', Component: Dashboard },
+      { path: 'dashboard', Component: StudentDashboardGuard },
       { path: 'submit', Component: SubmitIncident },
       { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
@@ -57,7 +74,7 @@ export const router = createBrowserRouter([
       { path: 'settings/articles', Component: SettingsPage },
       { path: 'settings/forwarding', Component: SettingsPage },
       { path: 'settings/profile', Component: SettingsPage },
-      { path: '*', element: React.createElement(Navigate, { to: '/dashboard', replace: true }) },
+      { path: '*', Component: StudentCatchAllRedirect },
     ],
   },
 ]);
