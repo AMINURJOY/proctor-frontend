@@ -1007,19 +1007,19 @@ function ForwardingManager() {
         </div>
       </div>
 
-      {/* Case Assignment Permission */}
+      {/* Draft Report Permission */}
       <div className="mt-4 border border-gray-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Case Assignment Permission</h4>
-        <p className="text-xs text-gray-500 mb-3">Which roles can assign cases to team members (an <span className="font-medium">Assign</span> button appears on the case for these roles)</p>
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Draft Report Permission</h4>
+        <p className="text-xs text-gray-500 mb-3">Which roles can create draft reports for cases (a <span className="font-medium">Draft Report</span> button appears on the case for these roles)</p>
         <div className="flex flex-wrap gap-3">
           {allRoles.map(role => {
-            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__assign__' && r.isActive);
+            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__draft_report__' && r.isActive);
             return (
               <label key={role} className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={hasRule} onChange={async () => {
-                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__assign__');
+                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__draft_report__');
                   if (existing) { await forwardingRulesApi.delete(existing.id); }
-                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__assign__', resultStatus: 'assigned' }); }
+                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__draft_report__', resultStatus: 'draft-report' }); }
                   fetchRules();
                 }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
                 <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
@@ -1028,6 +1028,7 @@ function ForwardingManager() {
           })}
         </div>
       </div>
+
     </div>
   );
 }

@@ -13,6 +13,7 @@ import ConfidentialCases from './pages/ConfidentialCases';
 import VCMonitoring from './pages/VCMonitoring';
 import ReportsPage from './pages/ReportsPage';
 import ReportEditorPage from './pages/ReportEditorPage';
+import DraftReportsPage from './pages/DraftReportsPage';
 import UsersManagement from './pages/UsersManagement';
 import SettingsPage from './pages/SettingsPage';
 import MyCases from './pages/MyCases';
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
       { path: 'monitoring', Component: VCMonitoring },
       { path: 'reports', Component: ReportsPage },
       { path: 'reports/:caseId/edit', Component: ReportEditorPage },
+      { path: 'draft-reports', Component: DraftReportsPage },
       { path: 'users', Component: UsersManagement },
       { path: 'students', Component: StudentsList },
       { path: 'settings', element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },

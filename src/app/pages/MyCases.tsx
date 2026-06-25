@@ -211,13 +211,31 @@ export default function MyCases() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
-                        {c.forwardedToRole && (
-                          <div>→ {c.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
-                        )}
-                        <div>{new Date(c.updatedDate).toLocaleDateString()}</div>
-                        {c.incidentLocationDescription && (
-                          <div className="mt-1 max-w-[18ch] truncate" title={c.incidentLocationDescription}>📍 {c.incidentLocationDescription}</div>
-                        )}
+                        {(() => {
+                          // Only surface the "who's working on this" info once a
+                          // proctorial member has actually touched the case.
+                          // The auto-routed `forwardedToRole` from initial submission
+                          // doesn't count — it just reflects the routing rule, not
+                          // a real action by a real person.
+                          const hasStaffActivity =
+                            !!c.assignedTo ||
+                            !!c.isAcknowledged ||
+                            (c.status !== 'submitted' && c.status !== 'resubmission-requested');
+                          if (!hasStaffActivity) {
+                            return <span className="text-gray-400">—</span>;
+                          }
+                          return (
+                            <>
+                              {c.forwardedToRole && (
+                                <div>→ {c.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
+                              )}
+                              <div>{new Date(c.updatedDate).toLocaleDateString()}</div>
+                              {c.incidentLocationDescription && (
+                                <div className="mt-1 max-w-[18ch] truncate" title={c.incidentLocationDescription}>📍 {c.incidentLocationDescription}</div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">

@@ -139,6 +139,15 @@ export default function Dashboard() {
     { label: 'Resolved', value: completedCases.length, icon: CheckIcon, color: '#16a34a', bgColor: '#dcfce7', tab: 'completed' as const }
   ];
 
+  // Pending cases broken down by case type. Confidential is intentionally folded
+  // into Type-2's count visually since confidential cases share the type-2 workflow.
+  const pendingType1 = pendingCases.filter(c => c.type === 'type-1').length;
+  const pendingType2 = pendingCases.filter(c => c.type === 'type-2' || c.type === 'confidential').length;
+  const typeBreakdownCards = [
+    { label: 'Type-1 Pending', value: pendingType1, icon: ClockIcon, color: '#0ea5e9', bgColor: '#e0f2fe' },
+    { label: 'Type-2 Pending', value: pendingType2, icon: ClockIcon, color: '#a855f7', bgColor: '#f3e8ff' },
+  ];
+
   // Clicking My Cases / Pending / My Tasks jumps to the dedicated /my-cases page
   // with the matching filter applied. Resolved (Completed) stays as an in-page tab.
   const onCardClick = (tab: 'overview' | 'my-tasks' | 'pending' | 'completed') => {
@@ -259,6 +268,32 @@ export default function Dashboard() {
           );
         })}
       </div>
+
+      {/* Type breakdown — a second row showing how the "Pending" count splits
+          between Type-1 (instant incidents) and Type-2 (formal cases, incl. confidential).
+          Hidden for students since they don't triage. */}
+      {!isStudent && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {typeBreakdownCards.map(card => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.label}
+                onClick={() => navigate('/my-cases?filter=pending')}
+                className="bg-white rounded-xl shadow-md p-5 hover:shadow-lg transition-shadow duration-200 border border-gray-100 cursor-pointer flex items-center gap-4"
+              >
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: card.bgColor }}>
+                  <span style={{ color: card.color }}><Icon /></span>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-2xl font-bold leading-tight" style={{ color: card.color }}>{card.value}</h3>
+                  <p className="text-gray-600 text-sm">{card.label}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Tabs — students only see the cards above */}
       {!isStudent && (

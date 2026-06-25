@@ -94,25 +94,12 @@ export default function CaseDetail() {
   const [ackComment, setAckComment] = useState('');
   const [ackSubmitting, setAckSubmitting] = useState(false);
 
-  // Multi-assignment dialog
-  const [showAssignDialog, setShowAssignDialog] = useState(false);
-  const [assignableUsers, setAssignableUsers] = useState<User[]>([]);
-  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
-  const [primaryAssigneeId, setPrimaryAssigneeId] = useState<string>('');
-  const [assignSubmitting, setAssignSubmitting] = useState(false);
-
   // Police-case confirmation dialog
   const [showPoliceConfirm, setShowPoliceConfirm] = useState(false);
-  // Dynamic case-assignment permission (Settings → Forwarding → Case Assignment Permission)
-  const [canAssign, setCanAssign] = useState(false);
 
-  useEffect(() => {
-    const r = currentUser?.role;
-    if (!r) { setCanAssign(false); return; }
-    forwardingRulesApi.getSpecial(r)
-      .then(res => setCanAssign(!!res.data.data?.canAssign))
-      .catch(() => setCanAssign(false));
-  }, [currentUser?.role]);
+  // Deputy Proctor review remarks (lifted to top-level so the header "Accept & Forward"
+  // button and the inline remarks textarea share the same state).
+  const [deputyRemarks, setDeputyRemarks] = useState('');
 
   // Student "Message from Proctor" unread badge: compare the latest acknowledgment timestamp
   // against what the student has already seen (stored locally).
@@ -267,46 +254,7 @@ export default function CaseDetail() {
     }
   };
 
-  const openAssignDialog = async () => {
-    if (!caseItem) return;
-    try {
-      const [aRes, dRes] = await Promise.all([
-        usersApi.getByRole('assistant-proctor'),
-        usersApi.getByRole('deputy-proctor'),
-      ]);
-      const combined: User[] = [
-        ...(aRes.data?.data || []),
-        ...(dRes.data?.data || []),
-      ];
-      setAssignableUsers(combined);
-      const existing = (caseItem.assignments || []).filter(a => a.isActive);
-      setSelectedAssigneeIds(existing.map(a => a.userId));
-      setPrimaryAssigneeId(existing.find(a => a.isPrimary)?.userId || '');
-      setShowAssignDialog(true);
-    } catch (err: any) {
-      toast.error('Failed to load users', { description: err?.response?.data?.message || '' });
-    }
-  };
-
-  const handleAssign = async () => {
-    if (!caseItem) return;
-    if (selectedAssigneeIds.length === 0) {
-      toast.error('Select at least one user');
-      return;
-    }
-    setAssignSubmitting(true);
-    try {
-      await casesApi.assign(caseItem.id, selectedAssigneeIds, primaryAssigneeId || undefined);
-      toast.success('Assignments updated');
-      setShowAssignDialog(false);
-      await refreshCase();
-    } catch (err: any) {
-      toast.error('Assignment failed', { description: err?.response?.data?.message || 'Could not assign' });
-    } finally {
-      setAssignSubmitting(false);
-    }
-  };
-
+  
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -406,9 +354,12 @@ export default function CaseDetail() {
     { id: 'timeline' as const, label: 'Activity Timeline' },
   ];
   // Type-1 (instant incident) cases have no hearings, so hide that tab.
-  const tabs = caseItem.type === 'type-1'
-    ? allTabs.filter(t => t.id !== 'hearing')
-    : allTabs;
+  // Students never see the internal Activity Timeline either — it's staff-only audit log.
+  const tabs = allTabs.filter(t => {
+    if (caseItem.type === 'type-1' && t.id === 'hearing') return false;
+    if (isStudentView && t.id === 'timeline') return false;
+    return true;
+  });
   const hasUnseenProctorMsg = isStudentView && !!caseItem.isAcknowledged && !proctorMsgSeen;
 
   const isType1 = caseItem.type === 'type-1';
@@ -420,6 +371,17 @@ export default function CaseDetail() {
   const isOnHold = caseItem.status === 'on-hold';
 
   const role = currentUser?.role || '';
+
+  // Dynamic permission for showing the Draft Report header link.
+  // Mirrors the gating on POST /api/cases/{id}/reports in the backend, so the
+  // button only appears for roles that are configured in Settings → Draft Report Permission.
+  const [canDraftReport, setCanDraftReport] = useState(false);
+  useEffect(() => {
+    if (!role) { setCanDraftReport(false); return; }
+    forwardingRulesApi.getSpecial(role)
+      .then(res => setCanDraftReport(!!res.data?.data?.canDraftReport))
+      .catch(() => setCanDraftReport(false));
+  }, [role]);
 
   return (
     <div>
@@ -472,11 +434,19 @@ export default function CaseDetail() {
               {coordinatorCanAct && (
                 <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} />
               )}
+              {canDraftReport && (
+                <button
+                  onClick={() => navigate(`/draft-reports?caseId=${caseItem.id}`)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-sm hover:bg-purple-100"
+                >
+                  <FileIcon /> Draft Report
+                </button>
+              )}
               {assistantProctorCanAct && (
-                <>
-                  <DraftReportButton caseItem={caseItem} onRefresh={refreshCase} />
-                  <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
-                </>
+                <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
+              )}
+              {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
+                <DeputyProctorPanel caseItem={caseItem} remarks={deputyRemarks} onForward={handleForward} />
               )}
               <SetHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               {canAddInfo && (
@@ -519,14 +489,6 @@ export default function CaseDetail() {
                     <CheckIcon /> Close Case
                   </button>
                 </>
-              )}
-              {canAssign && (
-                <button
-                  onClick={openAssignDialog}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100"
-                >
-                  Manage Assignments
-                </button>
               )}
               {canDelete && (
                 <button
@@ -606,7 +568,7 @@ export default function CaseDetail() {
       )}
 
       {/* Role-Based Action Panel */}
-      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} />
+      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} deputyRemarks={deputyRemarks} setDeputyRemarks={setDeputyRemarks} />
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
@@ -1028,10 +990,6 @@ export default function CaseDetail() {
                       <p className="text-gray-800 whitespace-pre-wrap">{caseItem.acknowledgmentComment}</p>
                     </div>
                   )}
-                  <p className="text-xs text-gray-500">
-                    {caseItem.acknowledgedByName && <>— <strong>{caseItem.acknowledgedByName}</strong> (Proctor)</>}
-                    {caseItem.acknowledgedAt && <> · {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
-                  </p>
                 </div>
               ) : (
                 <p className="text-gray-500 text-center py-8">No messages from the proctor yet.</p>
@@ -1182,64 +1140,6 @@ export default function CaseDetail() {
         </>
       )}
 
-      {/* Assignment dialog */}
-      {showAssignDialog && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowAssignDialog(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[80vh] overflow-auto">
-              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Manage Assignments</h3>
-              <p className="text-sm text-gray-600 mb-4">Assign one or more Assistant or Deputy Proctors. Mark one as primary.</p>
-              <div className="space-y-2 mb-4">
-                {assignableUsers.length === 0 ? (
-                  <p className="text-sm text-gray-500">No assignable users found.</p>
-                ) : assignableUsers.map(u => {
-                  const checked = selectedAssigneeIds.includes(u.id);
-                  return (
-                    <label key={u.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          setSelectedAssigneeIds(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
-                          if (!e.target.checked && primaryAssigneeId === u.id) setPrimaryAssigneeId('');
-                        }}
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{u.name}</p>
-                        <p className="text-xs text-gray-500">{u.role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</p>
-                      </div>
-                      {checked && (
-                        <label className="flex items-center gap-1 text-xs cursor-pointer">
-                          <input
-                            type="radio"
-                            name="primary"
-                            checked={primaryAssigneeId === u.id}
-                            onChange={() => setPrimaryAssigneeId(u.id)}
-                          />
-                          Primary
-                        </label>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button onClick={() => setShowAssignDialog(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
-                <button
-                  onClick={handleAssign}
-                  disabled={assignSubmitting || selectedAssigneeIds.length === 0}
-                  className="px-4 py-2 text-sm rounded-lg text-white hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: '#0b2652' }}
-                >
-                  {assignSubmitting ? 'Saving…' : 'Save Assignments'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Mark as Police Case Confirmation Modal */}
       {showPoliceConfirm && (
         <>
@@ -1316,17 +1216,20 @@ export default function CaseDetail() {
 }
 
 // Role-based action panel component
-function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onForward, onRefresh }: {
+function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onForward, onRefresh, deputyRemarks, setDeputyRemarks }: {
   role: string;
   caseItem: Case;
   isConfidential: boolean;
   onStatusChange: (status: string, extra?: { verdict?: string; recommendation?: string; note?: string }) => Promise<void>;
   onForward: (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => Promise<void>;
   onRefresh: () => Promise<void>;
+  deputyRemarks: string;
+  setDeputyRemarks: (s: string) => void;
 }) {
   const { currentUser } = useAuth();
   const [actionLoading, setActionLoading] = useState(false);
-  const [remarks, setRemarks] = useState('');
+  const remarks = deputyRemarks;
+  const setRemarks = setDeputyRemarks;
   const [recommendation, setRecommendation] = useState('');
   const [verdict, setVerdict] = useState('');
   const [investigationNotes, setInvestigationNotes] = useState('');
@@ -1438,13 +1341,15 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Add Remarks</label>
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
-            placeholder="Add your review remarks..."
+            placeholder="Add your review remarks (will be attached to the forward action)..."
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             rows={2}
           />
         </div>
 
-        <UnifiedForwardSection fromRole="deputy-proctor" actionLoading={actionLoading} withLoading={withLoading} onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })} />
+        <p className="text-xs text-gray-500 italic">
+          Use the <span className="font-medium text-blue-700">Accept &amp; Forward</span> button in the header to forward this case.
+        </p>
       </div>
       </>
     );
@@ -2183,6 +2088,10 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
                   className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-300 text-orange-700 text-sm hover:bg-orange-50 disabled:opacity-50">
                   <RefreshIcon /> Resubmission
                 </button>
+                <button disabled={actionLoading} onClick={() => withLoading(async () => { await onStatusChange('verified'); setVerifyOpen(false); })}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
+                  <CheckIcon /> Accept
+                </button>
               </div>
             </div>
           </div>
@@ -2212,6 +2121,60 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
                   }
                 }}
                 onForward={onForward}
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// Deputy Proctor header actions: "Accept & Forward" button + popup modal wrapping the
+// unified forward section. Mirrors the Coordinator pattern so Deputy Proctor's forward
+// UI lives in the header (not as an inline body block).
+function DeputyProctorPanel({ caseItem, remarks, onForward }: {
+  caseItem: Case;
+  remarks: string;
+  onForward: (targetRole: string, extra?: any) => Promise<void>;
+}) {
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const withLoading = async (fn: () => Promise<void>) => {
+    setActionLoading(true);
+    try { await fn(); } finally { setActionLoading(false); }
+  };
+
+  // Skip rendering if there's nothing to forward to (mirrors ForwardButton's behavior).
+  // We fetch forwardable targets lazily so we don't block the page render.
+  // The button is always shown for the deputy-proctor role on non-closed cases; if the
+  // user opens it and there are no targets, UnifiedForwardSection renders its own empty state.
+  const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
+  if (isClosed) return null;
+
+  return (
+    <>
+      <button onClick={() => setForwardOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        <ForwardIcon /> Accept &amp; Forward
+      </button>
+      {forwardOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !actionLoading && setForwardOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-24">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Accept &amp; Forward</h3>
+                <button onClick={() => setForwardOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <UnifiedForwardSection
+                fromRole="deputy-proctor"
+                actionLoading={actionLoading}
+                withLoading={withLoading}
+                title="Accept & Forward to:"
+                onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })}
               />
             </div>
           </div>
