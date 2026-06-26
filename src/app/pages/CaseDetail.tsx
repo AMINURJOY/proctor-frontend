@@ -101,6 +101,13 @@ export default function CaseDetail() {
   // button and the inline remarks textarea share the same state).
   const [deputyRemarks, setDeputyRemarks] = useState('');
 
+  // Dynamic permission for showing the Draft Report header link.
+  // Mirrors the gating on POST /api/cases/{id}/reports in the backend, so the
+  // button only appears for roles that are configured in Settings → Draft Report Permission.
+  // NOTE: this state must be declared BEFORE any early `return` so the hook count
+  // stays stable across renders (otherwise React throws "Rendered more hooks").
+  const [canDraftReport, setCanDraftReport] = useState(false);
+
   // Student "Message from Proctor" unread badge: compare the latest acknowledgment timestamp
   // against what the student has already seen (stored locally).
   useEffect(() => {
@@ -372,10 +379,10 @@ export default function CaseDetail() {
 
   const role = currentUser?.role || '';
 
-  // Dynamic permission for showing the Draft Report header link.
-  // Mirrors the gating on POST /api/cases/{id}/reports in the backend, so the
-  // button only appears for roles that are configured in Settings → Draft Report Permission.
-  const [canDraftReport, setCanDraftReport] = useState(false);
+  // Fetch the draft-report permission for the current role once the role is known.
+  // The state itself is declared near the top of the component (alongside other useState
+  // calls) so this effect can be placed after the role declaration without violating
+  // the rules of hooks.
   useEffect(() => {
     if (!role) { setCanDraftReport(false); return; }
     forwardingRulesApi.getSpecial(role)
