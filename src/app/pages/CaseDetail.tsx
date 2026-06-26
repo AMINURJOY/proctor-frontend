@@ -101,12 +101,23 @@ export default function CaseDetail() {
   // button and the inline remarks textarea share the same state).
   const [deputyRemarks, setDeputyRemarks] = useState('');
 
+  // The current user's role is needed for the draft-report permission effect AND
+  // the header action row, so it's lifted to the top alongside other state.
+  const role = currentUser?.role || '';
+
   // Dynamic permission for showing the Draft Report header link.
   // Mirrors the gating on POST /api/cases/{id}/reports in the backend, so the
   // button only appears for roles that are configured in Settings → Draft Report Permission.
-  // NOTE: this state must be declared BEFORE any early `return` so the hook count
-  // stays stable across renders (otherwise React throws "Rendered more hooks").
+  // NOTE: this state and its effect MUST be declared BEFORE any early `return`
+  // so the hook count stays stable across renders (otherwise React throws
+  // "Rendered more hooks than during the previous render").
   const [canDraftReport, setCanDraftReport] = useState(false);
+  useEffect(() => {
+    if (!role) { setCanDraftReport(false); return; }
+    forwardingRulesApi.getSpecial(role)
+      .then(res => setCanDraftReport(!!res.data?.data?.canDraftReport))
+      .catch(() => setCanDraftReport(false));
+  }, [role]);
 
   // Student "Message from Proctor" unread badge: compare the latest acknowledgment timestamp
   // against what the student has already seen (stored locally).
@@ -376,19 +387,6 @@ export default function CaseDetail() {
     : getStepIndex(caseItem.status);
   const isRejected = caseItem.status === 'rejected';
   const isOnHold = caseItem.status === 'on-hold';
-
-  const role = currentUser?.role || '';
-
-  // Fetch the draft-report permission for the current role once the role is known.
-  // The state itself is declared near the top of the component (alongside other useState
-  // calls) so this effect can be placed after the role declaration without violating
-  // the rules of hooks.
-  useEffect(() => {
-    if (!role) { setCanDraftReport(false); return; }
-    forwardingRulesApi.getSpecial(role)
-      .then(res => setCanDraftReport(!!res.data?.data?.canDraftReport))
-      .catch(() => setCanDraftReport(false));
-  }, [role]);
 
   return (
     <div>
