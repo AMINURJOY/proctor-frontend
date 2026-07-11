@@ -149,6 +149,7 @@ export const casesApi = {
   updateReport: (caseId: string, reportId: string, data: any) => api.put(`/cases/${caseId}/reports/${reportId}`, data),
   getMyCases: (params?: any) => api.get('/cases/my-cases', { params }),
   getMyCasesCount: () => api.get('/cases/my-cases/count'),
+  getNextNumber: () => api.get('/cases/next-number'),
   acknowledge: (id: string, comment: string) => api.post(`/cases/${id}/acknowledge`, { comment }),
   assign: (id: string, userIds: string[], primaryUserId?: string) =>
     api.post(`/cases/${id}/assignments`, { userIds, primaryUserId }),
@@ -165,7 +166,7 @@ export const studentsApi = {
 export const caseCategoriesApi = {
   getAll: (includeInactive = false) => api.get('/case-categories', { params: { includeInactive } }),
   getById: (id: string) => api.get(`/case-categories/${id}`),
-  create: (data: { name: string; description?: string; isConfidential?: boolean; isActive?: boolean; appliesToType?: string; sortOrder?: number }) =>
+  create: (data: { name: string; description?: string; isConfidential?: boolean; isActive?: boolean; appliesToType?: string; sortOrder?: number; subjectId?: string | null }) =>
     api.post('/case-categories', data),
   update: (id: string, data: any) => api.put(`/case-categories/${id}`, data),
   delete: (id: string) => api.delete(`/case-categories/${id}`),
@@ -204,6 +205,7 @@ export const notificationsApi = {
   markAllAsRead: () => api.patch('/notifications/read-all'),
   getUnreadCount: () => api.get('/notifications/unread-count'),
   getCategoryCounts: () => api.get('/notifications/category-counts'),
+  getByCase: (caseId: string) => api.get(`/notifications/case/${caseId}`),
 };
 
 // System Settings

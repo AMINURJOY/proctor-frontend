@@ -5,6 +5,7 @@ import { CasesIcon, ClockIcon, CheckIcon, EyeIcon } from '../components/Icons';
 import { useNavigate } from 'react-router';
 import { Case } from '../types';
 import { dashboardApi, casesApi } from '../services/api';
+import { statusLabel } from '../utils/status';
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
@@ -110,11 +111,11 @@ export default function Dashboard() {
     'submitted': 'bg-blue-100 text-blue-700',
     'pending': 'bg-yellow-100 text-yellow-700',
     'under-review': 'bg-indigo-100 text-indigo-700',
-    'verified': 'bg-cyan-100 text-cyan-700',
+    'verified': 'bg-green-100 text-green-700',
     'assigned': 'bg-purple-100 text-purple-700',
     'hearing-scheduled': 'bg-orange-100 text-orange-700',
     'hearing-completed': 'bg-teal-100 text-teal-700',
-    'resolved': 'bg-green-100 text-green-700',
+    'resolved': 'bg-emerald-100 text-emerald-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
     'on-hold': 'bg-amber-100 text-amber-700',
@@ -208,7 +209,7 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-center gap-2 mb-1">
           <span className="font-medium text-sm">{c.caseNumber}</span>
           <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[c.status]}`}>
-            {c.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            {statusLabel(c.status)}
           </span>
         </div>
         <p className="text-sm text-gray-600 truncate">{c.studentName} - {c.description}</p>

@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { casesApi } from '../services/api';
+import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
-  verified: 'bg-cyan-100 text-cyan-700',
+  verified: 'bg-green-100 text-green-700',
   assigned: 'bg-indigo-100 text-indigo-700',
   'hearing-scheduled': 'bg-purple-100 text-purple-700',
   'hearing-completed': 'bg-violet-100 text-violet-700',
-  resolved: 'bg-green-100 text-green-700',
+  resolved: 'bg-emerald-100 text-emerald-700',
   closed: 'bg-gray-100 text-gray-700',
   rejected: 'bg-red-100 text-red-700',
   'on-hold': 'bg-amber-100 text-amber-700',
@@ -207,7 +208,7 @@ export default function MyCases() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[c.status] || 'bg-gray-100 text-gray-700'}`}>
-                          {c.status.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          {statusLabel(c.status)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { EyeIcon, ImageIcon, VideoIcon, ArrowRightIcon, XIcon } from '../components/Icons';
 import { Case, CaseStatus, Priority } from '../types';
 import { casesApi, settingsApi } from '../services/api';
+import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
 
 export default function IncidentsList() {
@@ -57,11 +58,11 @@ export default function IncidentsList() {
     'submitted': 'bg-blue-100 text-blue-700',
     'pending': 'bg-yellow-100 text-yellow-700',
     'under-review': 'bg-indigo-100 text-indigo-700',
-    'verified': 'bg-cyan-100 text-cyan-700',
+    'verified': 'bg-green-100 text-green-700',
     'assigned': 'bg-purple-100 text-purple-700',
     'hearing-scheduled': 'bg-orange-100 text-orange-700',
     'hearing-completed': 'bg-teal-100 text-teal-700',
-    'resolved': 'bg-green-100 text-green-700',
+    'resolved': 'bg-emerald-100 text-emerald-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
     'on-hold': 'bg-amber-100 text-amber-700',
@@ -110,7 +111,7 @@ export default function IncidentsList() {
                       {incident.caseNumber}
                     </h3>
                     <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[incident.status]}`}>
-                      {incident.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      {statusLabel(incident.status)}
                     </span>
                     {incident.categoryName && (
                       <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">

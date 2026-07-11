@@ -1111,19 +1111,24 @@ function ChecklistManager() {
 // Case Categories manager
 function CaseCategoriesManager() {
   const [items, setItems] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
     name: '', description: '', isConfidential: false, isActive: true,
-    appliesToType: 'both', sortOrder: 0
+    appliesToType: 'both', sortOrder: 0, subjectId: ''
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await caseCategoriesApi.getAll(true);
-      setItems(res.data?.data || []);
+      const [catRes, subRes] = await Promise.all([
+        caseCategoriesApi.getAll(true),
+        caseSubjectsApi.getAll(true),
+      ]);
+      setItems(catRes.data?.data || []);
+      setSubjects(subRes.data?.data || []);
     } catch (err: any) {
       toast.error('Failed to load categories', { description: err?.response?.data?.message || '' });
     } finally {
@@ -1133,8 +1138,10 @@ function CaseCategoriesManager() {
 
   useEffect(() => { load(); }, []);
 
+  const subjectName = (id?: string) => subjects.find(s => String(s.id) === String(id))?.subject;
+
   const resetForm = () => {
-    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0 });
+    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0, subjectId: '' });
     setEditingId(null);
     setShowNew(false);
   };
@@ -1166,7 +1173,8 @@ function CaseCategoriesManager() {
       isConfidential: !!item.isConfidential,
       isActive: !!item.isActive,
       appliesToType: item.appliesToType || 'both',
-      sortOrder: item.sortOrder || 0
+      sortOrder: item.sortOrder || 0,
+      subjectId: item.subjectId || ''
     });
     setEditingId(item.id);
     setShowNew(true);
@@ -1216,6 +1224,15 @@ function CaseCategoriesManager() {
                 <option value="type-1">Type-1 only</option>
                 <option value="type-2">Type-2 only</option>
               </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Subject</label>
+              <select value={form.subjectId} onChange={e => setForm({ ...form, subjectId: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+                <option value="">— No subject (won't appear under any subject on the Type-2 form) —</option>
+                {subjects.map((s: any) => (<option key={s.id} value={s.id}>{s.subject}</option>))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Maps this category under a subject. On the Type-2 form the student picks the subject first, then only its mapped categories appear.</p>
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Description</label>
@@ -1278,6 +1295,7 @@ function CaseCategoriesManager() {
                 {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
                 <p className="text-xs text-gray-400">
                   Applies to: {item.appliesToType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} · Order {item.sortOrder}
+                  {subjectName(item.subjectId) ? ` · Subject: ${subjectName(item.subjectId)}` : ' · No subject'}
                 </p>
               </div>
               <div className="flex gap-2">

@@ -56,74 +56,73 @@ export default function CaseReport() {
       </div>
 
       <div className="bg-white rounded-xl shadow-md border border-gray-100 print:shadow-none print:border-none">
-        {/* Header - following case_type2.md format */}
+        {/* Header */}
         <div className="text-center py-6 px-8 border-b-2 border-gray-300">
-          <h2 className="text-lg font-bold" style={{ color: '#0b2652' }}>Proctor Office Incident Report Form</h2>
-          <p className="text-sm text-gray-500">প্রক্টর অফিস ইনসিডেন্ট রিপোর্ট ফর্ম</p>
-          <p className="text-sm text-gray-500 mt-1">Daffodil International University, Daffodil Smart City</p>
+          <h2 className="text-lg font-bold" style={{ color: '#0b2652' }}>প্রক্টর অফিস ইনসিডেন্ট রিপোর্ট ফর্ম</h2>
+          <p className="text-sm text-gray-500 mt-1">ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি, ড্যাফোডিল স্মার্ট সিটি</p>
         </div>
 
         <div className="p-8">
           {/* Case Meta - Date and Case Number */}
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
             <div className="text-sm">
-              <span className="text-gray-500">Date (তারিখ): </span>
+              <span className="text-gray-500">তারিখ: </span>
               <span className="font-medium">{new Date(caseItem.createdDate).toLocaleDateString()}</span>
             </div>
             <div className="text-sm">
-              <span className="text-gray-500">Case Number (কেস নাম্বার): </span>
+              <span className="text-gray-500">কেস নম্বর: </span>
               <span className="font-mono font-bold" style={{ color: '#0b2652' }}>{caseItem.caseNumber}</span>
             </div>
           </div>
 
           {/* To / Subject */}
           <div className="mb-6">
-            <p className="text-sm text-gray-500">To (বরাবর), <strong>The Proctor (প্রক্টর)</strong></p>
-            <p className="text-sm text-gray-600 mb-3">Daffodil International University, Daffodil Smart City.</p>
+            <p className="text-sm text-gray-500">বরাবর, <strong>প্রক্টর</strong></p>
+            <p className="text-sm text-gray-600 mb-3">ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি, ড্যাফোডিল স্মার্ট সিটি।</p>
             <div className="mb-2">
-              <span className="text-sm text-gray-500">Subject (বিষয়): </span>
+              <span className="text-sm text-gray-500">বিষয়: </span>
               <span className="text-sm font-medium">{caseItem.description}</span>
             </div>
           </div>
 
           {/* Description body */}
           <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-sm text-gray-500 mb-1">Sir (জনাব),</p>
+            <p className="text-sm text-gray-500 mb-1">জনাব,</p>
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
           </div>
 
-          <p className="text-sm text-gray-500 mb-4">Sincerely (বিনীত),</p>
+          <p className="text-sm text-gray-500 mb-4">বিনীত,</p>
 
-          {/* Student Details & Accused Details - Side by Side */}
+          {/* Complainant Details & Accused Details - Side by Side */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Student Details */}
+            {/* Complainant Details */}
             <div className="border border-gray-200 rounded-lg p-4">
               <h4 className="text-sm font-bold mb-3 pb-2 border-b border-gray-200" style={{ color: '#0b2652' }}>
-                Student Details (শিক্ষার্থীর তথ্য)
+                অভিযোগকারীর তথ্য
               </h4>
               <div className="space-y-1">
-                <Field label="Name (নাম)" value={caseItem.studentName} />
-                <Field label="ID (আইডি)" value={caseItem.studentId} />
-                <Field label="Department (ডিপার্টমেন্ট)" value={caseItem.studentDepartment} />
-                <Field label="Contact No (কন্টাক্ট নাম্বার)" value={caseItem.studentContact} />
-                <Field label="Advisor Name (এডভাইজারের নাম)" value={caseItem.studentAdvisorName} />
-                <Field label="Father's Name (বাবার নাম)" value={caseItem.studentFatherName} />
-                <Field label="Father's Contact No (কন্টাক্ট নাম্বার)" value={caseItem.studentFatherContact} />
+                <Field label="নাম" value={caseItem.studentName} />
+                <Field label="আইডি" value={caseItem.studentId} />
+                <Field label="ডিপার্টমেন্ট" value={caseItem.studentDepartment} />
+                <Field label="কন্টাক্ট নাম্বার" value={caseItem.studentContact} />
+                <Field label="এডভাইজারের নাম" value={caseItem.studentAdvisorName} />
+                <Field label="বাবার নাম" value={caseItem.studentFatherName} />
+                <Field label="বাবার কন্টাক্ট নাম্বার" value={caseItem.studentFatherContact} />
               </div>
             </div>
 
             {/* Accused Details */}
             <div className="border border-orange-200 rounded-lg p-4 bg-orange-50/30">
               <h4 className="text-sm font-bold mb-3 pb-2 border-b border-orange-200" style={{ color: '#0b2652' }}>
-                Accused Details (অভিযুক্তের তথ্য)
+                অভিযুক্তের তথ্য
               </h4>
               <p className="text-xs text-gray-400 mb-2">যা যা তথ্য জানা আছে তা দিয়ে সাহায্য করুন</p>
               <div className="space-y-1">
-                <Field label="Name (নাম)" value={caseItem.accusedName} />
-                <Field label="ID (আইডি)" value={caseItem.accusedId} />
-                <Field label="Department (ডিপার্টমেন্ট)" value={caseItem.accusedDepartment} />
-                <Field label="Contact No (কন্টাক্ট নাম্বার)" value={caseItem.accusedContact} />
-                <Field label="Guardian Contact No (অভিভাবকের নাম্বার)" value={caseItem.accusedGuardianContact} />
+                <Field label="নাম" value={caseItem.accusedName} />
+                <Field label="আইডি" value={caseItem.accusedId} />
+                <Field label="ডিপার্টমেন্ট" value={caseItem.accusedDepartment} />
+                <Field label="কন্টাক্ট নাম্বার" value={caseItem.accusedContact} />
+                <Field label="অভিভাবকের নাম্বার" value={caseItem.accusedGuardianContact} />
               </div>
             </div>
           </div>
@@ -131,15 +130,15 @@ export default function CaseReport() {
           {/* Case Info Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <div>
-              <span className="text-xs text-gray-500">Type</span>
+              <span className="text-xs text-gray-500">ধরন</span>
               <p className="text-sm font-medium capitalize">{caseItem.type.replace('-', ' ')}</p>
             </div>
             <div>
-              <span className="text-xs text-gray-500">Status</span>
+              <span className="text-xs text-gray-500">অবস্থা</span>
               <p className="text-sm font-medium capitalize">{caseItem.status.split('-').join(' ')}</p>
             </div>
             <div>
-              <span className="text-xs text-gray-500">Incident Date</span>
+              <span className="text-xs text-gray-500">ঘটনার তারিখ</span>
               <p className="text-sm font-medium">{caseItem.incidentDate ? new Date(caseItem.incidentDate).toLocaleDateString() : '—'}</p>
             </div>
           </div>

@@ -294,8 +294,9 @@ export default function HearingManagement() {
                       </div>
                     </div>
 
-                    {/* Hearing Remarks */}
-                    {canSchedule && (
+                    {/* Close hearing — only the person who set it may close it (legacy hearings
+                        without a recorded creator remain closable by any hearing-capable user). */}
+                    {canSchedule && (!hearing.createdById || hearing.createdById === currentUser?.id) && (
                       <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
                         <button
                           onClick={() => { setClosingHearing(hearing); setCloseRemarks(hearing.remarks || ''); }}
@@ -303,6 +304,11 @@ export default function HearingManagement() {
                         >
                           <CheckIcon /> Close Hearing
                         </button>
+                      </div>
+                    )}
+                    {canSchedule && hearing.createdById && hearing.createdById !== currentUser?.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                        <span className="text-xs text-gray-400">Only {hearing.createdByName || 'the person who set this hearing'} can close it.</span>
                       </div>
                     )}
                   </div>

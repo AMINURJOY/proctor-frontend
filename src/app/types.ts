@@ -53,6 +53,7 @@ export interface CaseCategory {
   isActive: boolean;
   appliesToType: 'type-1' | 'type-2' | 'both';
   sortOrder: number;
+  subjectId?: string;
 }
 
 export interface CaseAssignment {
@@ -237,6 +238,8 @@ export interface Hearing {
   status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
   remarks?: string;
+  createdById?: string;
+  createdByName?: string;
 }
 
 export interface TimelineEvent {

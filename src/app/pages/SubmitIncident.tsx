@@ -48,8 +48,8 @@ export default function SubmitIncident() {
 
   // Type-2 form state
   const [t2Subject, setT2Subject] = useState('');
-  const [subjectOptions, setSubjectOptions] = useState<string[]>([]);
-  const [showSubjectSuggestions, setShowSubjectSuggestions] = useState(false);
+  const [t2SubjectId, setT2SubjectId] = useState('');
+  const [subjects, setSubjects] = useState<{ id: string; subject: string }[]>([]);
   const [t2Gender, setT2Gender] = useState<'male' | 'female'>('male');
   const [t2Description, setT2Description] = useState('');
   const [t2CategoryId, setT2CategoryId] = useState('');
@@ -67,6 +67,19 @@ export default function SubmitIncident() {
   const emptyAccused = { name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '' };
   const [accusedPersons, setAccusedPersons] = useState([{ ...emptyAccused }]);
   const [showPreview, setShowPreview] = useState(false);
+  // When true the preview modal acts as the confirm-before-submit step (shows "Confirm Submit").
+  const [confirmMode, setConfirmMode] = useState(false);
+  const [nextCaseNumber, setNextCaseNumber] = useState<string>('');
+
+  // Open the Bangla report as a confirm-before-submit step, peeking the next case number.
+  const openConfirmSubmit = async () => {
+    try {
+      const res = await casesApi.getNextNumber();
+      setNextCaseNumber(res.data?.data || '');
+    } catch { setNextCaseNumber(''); }
+    setConfirmMode(true);
+    setShowPreview(true);
+  };
 
   // Auto-fill a complainant/accused row from the Students directory when an ID is entered.
   const autofillComplainant = async (index: number, studentId: string) => {
@@ -186,21 +199,18 @@ export default function SubmitIncident() {
     }).catch(() => {});
 
     caseSubjectsApi.getAll().then(res => {
-      const items = (res.data?.data || []).map((s: any) => s.subject).filter(Boolean);
-      setSubjectOptions(items);
+      const items = (res.data?.data || [])
+        .filter((s: any) => s?.id && s?.subject)
+        .map((s: any) => ({ id: String(s.id), subject: String(s.subject) }));
+      setSubjects(items);
     }).catch(() => {});
   }, []);
 
-  // Suggest predefined subjects that match what the user is typing (regex, case-insensitive).
-  const subjectSuggestions = (() => {
-    const q = t2Subject.trim();
-    if (!q) return subjectOptions.slice(0, 8);
-    let re: RegExp | null = null;
-    try { re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch { re = null; }
-    return subjectOptions
-      .filter(s => (re ? re.test(s) : s.toLowerCase().includes(q.toLowerCase())) && s.toLowerCase() !== q.toLowerCase())
-      .slice(0, 8);
-  })();
+  // Categories mapped to the chosen subject (superadmin maps each category to a subject).
+  const subjectCategories = categories.filter(c =>
+    c.isActive
+    && (c.appliesToType === 'type-2' || c.appliesToType === 'both')
+    && (t2SubjectId ? c.subjectId === t2SubjectId : false));
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -696,7 +706,7 @@ export default function SubmitIncident() {
             <button
               type="button"
               disabled={!t2Description.trim() || !t2Subject.trim()}
-              onClick={() => setShowPreview(true)}
+              onClick={() => { setConfirmMode(false); setShowPreview(true); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -728,41 +738,33 @@ export default function SubmitIncident() {
 
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="relative">
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Case Subject *</label>
-                      <input type="text" value={t2Subject}
-                        onChange={e => { setT2Subject(e.target.value); setShowSubjectSuggestions(true); }}
-                        onFocus={() => setShowSubjectSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowSubjectSuggestions(false), 150)}
-                        placeholder="Brief subject line for the case"
-                        autoComplete="off"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-                      {showSubjectSuggestions && subjectSuggestions.length > 0 && (
-                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
-                          {subjectSuggestions.map(s => (
-                            <button
-                              key={s}
-                              type="button"
-                              onMouseDown={(e) => { e.preventDefault(); setT2Subject(s); setShowSubjectSuggestions(false); }}
-                              className="block w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
+                      <select value={t2SubjectId}
+                        onChange={e => {
+                          const sid = e.target.value;
+                          setT2SubjectId(sid);
+                          setT2Subject(subjects.find(s => s.id === sid)?.subject || '');
+                          setT2CategoryId(''); // reset category when subject changes
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                        <option value="">Select subject...</option>
+                        {subjects.map(s => (<option key={s.id} value={s.id}>{s.subject}</option>))}
+                      </select>
+                      {subjects.length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">No subjects configured yet. Ask an admin to add some in Settings → Case Subjects.</p>
                       )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
                       <select value={t2CategoryId} onChange={e => setT2CategoryId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                        <option value="">Select category...</option>
-                        {categories
-                          .filter(c => c.isActive && (c.appliesToType === 'type-2' || c.appliesToType === 'both'))
-                          .map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                        disabled={!t2SubjectId}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-400">
+                        <option value="">{t2SubjectId ? 'Select category...' : 'Select a subject first'}</option>
+                        {subjectCategories.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                       </select>
-                      {categories.length === 0 && (
-                        <p className="text-xs text-gray-400 mt-1">No categories configured yet. Ask an admin to add some in Settings → Case Categories.</p>
+                      {t2SubjectId && subjectCategories.length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">No categories mapped to this subject. Ask an admin to map some in Settings → Case Categories.</p>
                       )}
                     </div>
                   </div>
@@ -895,7 +897,7 @@ export default function SubmitIncident() {
                 </div>
               </div>
 
-              <button onClick={handleSubmit} disabled={submitting || !t2Description.trim() || !t2Subject.trim()}
+              <button onClick={openConfirmSubmit} disabled={submitting || !t2Description.trim() || !t2Subject.trim() || !t2CategoryId}
                 className="w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60"
                 style={{ backgroundColor: '#0b2652' }}>
                 {submitting ? 'Submitting...' : 'Submit Formal Case'}
@@ -912,11 +914,11 @@ export default function SubmitIncident() {
           <div className="fixed inset-4 z-50 flex items-start justify-center overflow-auto py-8">
             <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full p-10 relative">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold" style={{ color: '#0b2652' }}>Case Preview</h3>
+                <h3 className="text-lg font-bold" style={{ color: '#0b2652' }}>রিপোর্ট প্রিভিউ</h3>
                 <div className="flex gap-2">
-                  <button onClick={() => { window.print(); }} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm" style={{ backgroundColor: '#0b2652' }}>
+                  <button onClick={() => { window.print(); }} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                    Print / Save PDF
+                    প্রিন্ট / PDF সেভ করুন
                   </button>
                   <button onClick={() => setShowPreview(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -924,42 +926,41 @@ export default function SubmitIncident() {
                 </div>
               </div>
 
-              {/* Report Header - following case_type2.md */}
+              {/* Report Header */}
               <div className="text-center pb-4 mb-4 border-b-2 border-gray-300">
-                <h2 className="text-xl font-bold" style={{ color: '#0b2652' }}>Proctor Office Incident Report Form</h2>
-                <p className="text-sm text-gray-500">প্রক্টর অফিস ইনসিডেন্ট রিপোর্ট ফর্ম</p>
-                <p className="text-sm text-gray-500">Daffodil International University, Daffodil Smart City</p>
+                <h2 className="text-xl font-bold" style={{ color: '#0b2652' }}>প্রক্টর অফিস ইনসিডেন্ট রিপোর্ট ফর্ম</h2>
+                <p className="text-sm text-gray-500">ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি, ড্যাফোডিল স্মার্ট সিটি</p>
               </div>
 
               <div className="flex justify-between text-sm text-gray-500 mb-4">
-                <span>Date: {new Date().toLocaleDateString()}</span>
-                <span>Case Number: PODIU ————————</span>
+                <span>তারিখ: {new Date().toLocaleDateString()}</span>
+                <span>কেস নম্বর: {nextCaseNumber || '—'}</span>
               </div>
 
               <div className="text-sm mb-3">
-                <p><span className="text-gray-500">To,</span> <strong>The Proctor</strong> Daffodil International University</p>
-                <p className="mt-1"><span className="text-gray-500">Subject: </span><strong>{t2Subject || '—'}</strong></p>
+                <p><span className="text-gray-500">বরাবর,</span> <strong>প্রক্টর</strong>, ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি</p>
+                <p className="mt-1"><span className="text-gray-500">বিষয়: </span><strong>{t2Subject || '—'}</strong></p>
               </div>
 
               <div className="bg-gray-50 rounded p-4 mb-4 text-sm">
-                <p className="text-gray-500 mb-1">Sir (জনাব),</p>
+                <p className="text-gray-500 mb-1">জনাব,</p>
                 <p className="text-gray-700 whitespace-pre-wrap">{t2Description || '—'}</p>
               </div>
 
-              <p className="text-sm text-gray-500 mb-3">Sincerely (বিনীত),</p>
+              <p className="text-sm text-gray-500 mb-3">বিনীত,</p>
 
-              {/* Student & Accused side by side */}
+              {/* Complainant & Accused side by side */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="border rounded p-4">
-                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>Student Details (শিক্ষার্থীর তথ্য)</p>
+                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>অভিযোগকারীর তথ্য</p>
                   {[
-                    ['Name (নাম)', currentUser?.name],
-                    ['ID (আইডি)', currentUser?.id],
-                    ['Department (ডিপার্টমেন্ট)', t2StudentDepartment],
-                    ['Contact No (কন্টাক্ট নাম্বার)', t2StudentContact],
-                    ['Advisor Name (এডভাইজারের নাম)', t2AdvisorName],
-                    ['Father\'s Name (বাবার নাম)', t2FatherName],
-                    ['Father\'s Contact (কন্টাক্ট নাম্বার)', t2FatherContact],
+                    ['নাম', complainants[0]?.name || currentUser?.name],
+                    ['আইডি', complainants[0]?.studentId],
+                    ['ডিপার্টমেন্ট', t2StudentDepartment],
+                    ['কন্টাক্ট নাম্বার', t2StudentContact],
+                    ['এডভাইজারের নাম', t2AdvisorName],
+                    ['বাবার নাম', t2FatherName],
+                    ['বাবার কন্টাক্ট নাম্বার', t2FatherContact],
                   ].map(([label, val]) => (
                     <div key={label as string} className="flex justify-between py-0.5 border-b border-gray-100 text-sm">
                       <span className="text-gray-500">{label}:</span>
@@ -968,13 +969,13 @@ export default function SubmitIncident() {
                   ))}
                 </div>
                 <div className="border border-orange-200 rounded p-4 bg-orange-50/30">
-                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>Accused Details (অভিযুক্তের তথ্য)</p>
+                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>অভিযুক্তের তথ্য</p>
                   {[
-                    ['Name (নাম)', t2AccusedName],
-                    ['ID (আইডি)', t2AccusedId],
-                    ['Department (ডিপার্টমেন্ট)', t2AccusedDepartment],
-                    ['Contact No (কন্টাক্ট নাম্বার)', t2AccusedContact],
-                    ['Guardian Contact (অভিভাবকের নাম্বার)', t2GuardianContact],
+                    ['নাম', t2AccusedName],
+                    ['আইডি', t2AccusedId],
+                    ['ডিপার্টমেন্ট', t2AccusedDepartment],
+                    ['কন্টাক্ট নাম্বার', t2AccusedContact],
+                    ['অভিভাবকের নাম্বার', t2GuardianContact],
                   ].map(([label, val]) => (
                     <div key={label as string} className="flex justify-between py-0.5 border-b border-orange-100 text-sm">
                       <span className="text-gray-500">{label}:</span>
@@ -986,27 +987,44 @@ export default function SubmitIncident() {
 
               {/* Extra info */}
               <div className="grid grid-cols-2 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">
-                <div><span className="text-gray-500">Category: </span><span className="font-medium">{categories.find(c => c.id === t2CategoryId)?.name || '—'}</span></div>
-                <div><span className="text-gray-500">Incident Date: </span><span className="font-medium">{t2IncidentDate ? new Date(t2IncidentDate).toLocaleString() : '—'}</span></div>
+                <div><span className="text-gray-500">ক্যাটাগরি: </span><span className="font-medium">{categories.find(c => c.id === t2CategoryId)?.name || '—'}</span></div>
+                <div><span className="text-gray-500">ঘটনার তারিখ: </span><span className="font-medium">{t2IncidentDate ? new Date(t2IncidentDate).toLocaleString() : '—'}</span></div>
               </div>
 
               {t2VideoLink && (
                 <div className="text-sm mb-4 p-3 bg-blue-50 rounded">
-                  <span className="text-gray-500">Video Evidence: </span>
+                  <span className="text-gray-500">ভিডিও প্রমাণ: </span>
                   <span className="text-blue-600 break-all">{t2VideoLink}</span>
                 </div>
               )}
 
               {t2Files.length > 0 && (
                 <div className="text-sm mb-4">
-                  <p className="text-gray-500 mb-1">Attached Files ({t2Files.length}):</p>
+                  <p className="text-gray-500 mb-1">সংযুক্ত ফাইল ({t2Files.length}):</p>
                   {t2Files.map((f, i) => <p key={i} className="text-gray-700">{f.file.name}</p>)}
                 </div>
               )}
 
-              <div className="text-center pt-4 border-t text-xs text-gray-400">
-                This is a preview. Use "Print / Save PDF" to save.
-              </div>
+              {confirmMode ? (
+                <div className="pt-4 border-t">
+                  <p className="text-center text-xs text-gray-500 mb-3">জমা দেওয়ার আগে অনুগ্রহ করে রিপোর্টটি ভালোভাবে যাচাই করুন। নিশ্চিত হলে নিচের বাটনে ক্লিক করুন।</p>
+                  <div className="flex justify-center gap-3">
+                    <button onClick={() => setShowPreview(false)}
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
+                      সম্পাদনা করুন
+                    </button>
+                    <button onClick={handleSubmit} disabled={submitting}
+                      className="px-6 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                      style={{ backgroundColor: '#0b2652' }}>
+                      {submitting ? 'জমা হচ্ছে...' : 'নিশ্চিত করে জমা দিন'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center pt-4 border-t text-xs text-gray-400">
+                  এটি একটি প্রিভিউ। সংরক্ষণ করতে "প্রিন্ট / PDF সেভ করুন" ব্যবহার করুন।
+                </div>
+              )}
             </div>
           </div>
         </>

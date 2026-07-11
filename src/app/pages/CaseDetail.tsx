@@ -17,7 +17,8 @@ import {
   RefreshIcon
 } from '../components/Icons';
 import { Case, CaseStatus, User } from '../types';
-import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, API_BASE_URL } from '../services/api';
+import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, API_BASE_URL } from '../services/api';
+import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import HearingCountdown from '../components/HearingCountdown';
@@ -76,11 +77,14 @@ export default function CaseDetail() {
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'hearing' | 'notes' | 'message' | 'timeline'>('overview');
   const [proctorMsgSeen, setProctorMsgSeen] = useState(true);
+  const [hearingSeen, setHearingSeen] = useState(true);
   const [newNote, setNewNote] = useState('');
   const [newInfo, setNewInfo] = useState('');
   const [addingInfo, setAddingInfo] = useState(false);
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
+  // Per-case notifications shown to the student in the "Message from Proctor Office" tab.
+  const [caseNotifications, setCaseNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingNote, setAddingNote] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -127,13 +131,37 @@ export default function CaseDetail() {
     setProctorMsgSeen(!caseItem.isAcknowledged || seen === (caseItem.acknowledgedAt || ''));
   }, [currentUser?.role, caseItem?.id, caseItem?.isAcknowledged, caseItem?.acknowledgedAt]);
 
-  // Mark the message as seen once the student opens the Message tab.
+  // Mark the message as seen once the student opens the Message tab, and clear the
+  // unread notifications badge by marking this case's notifications as read.
   useEffect(() => {
     if (activeTab === 'message' && currentUser?.role === 'student' && caseItem?.id) {
       localStorage.setItem(`proctorMsgSeen_${caseItem.id}`, caseItem.acknowledgedAt || '');
       setProctorMsgSeen(true);
+      const unread = caseNotifications.filter(n => !n.isRead);
+      if (unread.length > 0) {
+        Promise.all(unread.map(n => notificationsApi.markAsRead(n.id).catch(() => {})))
+          .then(() => setCaseNotifications(prev => prev.map(n => ({ ...n, isRead: true }))));
+      }
     }
-  }, [activeTab, currentUser?.role, caseItem?.id, caseItem?.acknowledgedAt]);
+  }, [activeTab, currentUser?.role, caseItem?.id, caseItem?.acknowledgedAt, caseNotifications]);
+
+  // Hearing tab "new update" badge: red dot until the user opens the Hearing tab, keyed
+  // on the latest hearing update so a reschedule/new hearing re-triggers the badge.
+  const hearingSig = (caseItem?.hearings || [])
+    .map(h => `${h.id}:${(h as any).updatedAt || h.date || ''}`).join('|');
+  useEffect(() => {
+    if (!caseItem?.id) return;
+    if (!hearingSig) { setHearingSeen(true); return; }
+    const seen = localStorage.getItem(`hearingSeen_${caseItem.id}`);
+    setHearingSeen(seen === hearingSig);
+  }, [caseItem?.id, hearingSig]);
+
+  useEffect(() => {
+    if (activeTab === 'hearing' && caseItem?.id && hearingSig) {
+      localStorage.setItem(`hearingSeen_${caseItem.id}`, hearingSig);
+      setHearingSeen(true);
+    }
+  }, [activeTab, caseItem?.id, hearingSig]);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -146,6 +174,11 @@ export default function CaseDetail() {
           const vRes = await checklistApi.getVerifications(id!);
           setVerifications(vRes.data.data || []);
         } catch { setVerifications([]); }
+        // Per-case notifications feed the student's "Message from Proctor Office" tab.
+        try {
+          const nRes = await notificationsApi.getByCase(id!);
+          setCaseNotifications(nRes.data.data || []);
+        } catch { setCaseNotifications([]); }
       } catch {
         setCaseItem(null);
       } finally {
@@ -345,11 +378,11 @@ export default function CaseDetail() {
     'submitted': 'bg-blue-100 text-blue-700',
     'pending': 'bg-yellow-100 text-yellow-700',
     'under-review': 'bg-indigo-100 text-indigo-700',
-    'verified': 'bg-cyan-100 text-cyan-700',
+    'verified': 'bg-green-100 text-green-700',
     'assigned': 'bg-purple-100 text-purple-700',
     'hearing-scheduled': 'bg-orange-100 text-orange-700',
     'hearing-completed': 'bg-teal-100 text-teal-700',
-    'resolved': 'bg-green-100 text-green-700',
+    'resolved': 'bg-emerald-100 text-emerald-700',
     'closed': 'bg-gray-100 text-gray-700',
     'rejected': 'bg-red-100 text-red-700',
     'on-hold': 'bg-amber-100 text-amber-700',
@@ -365,9 +398,9 @@ export default function CaseDetail() {
     { id: 'overview' as const, label: 'Overview' },
     { id: 'documents' as const, label: 'Documents' },
     { id: 'hearing' as const, label: 'Hearing' },
-    // Students never see internal Notes; they get "Message from Proctor" instead.
+    // Students never see internal Notes; they get "Message from Proctor Office" instead.
     isStudentView
-      ? { id: 'message' as const, label: 'Message from Proctor' }
+      ? { id: 'message' as const, label: 'Message from Proctor Office' }
       : { id: 'notes' as const, label: 'Notes' },
     { id: 'timeline' as const, label: 'Activity Timeline' },
   ];
@@ -378,7 +411,11 @@ export default function CaseDetail() {
     if (isStudentView && t.id === 'timeline') return false;
     return true;
   });
-  const hasUnseenProctorMsg = isStudentView && !!caseItem.isAcknowledged && !proctorMsgSeen;
+  // Tab badges.
+  const unreadMsgCount = caseNotifications.filter(n => !n.isRead).length;
+  const hasUnseenProctorMsg = isStudentView && ((!!caseItem.isAcknowledged && !proctorMsgSeen) || unreadMsgCount > 0);
+  const docsCount = caseItem.documents?.length || 0;
+  const hasNewHearing = (caseItem.hearings?.length || 0) > 0 && !hearingSeen;
 
   const isType1 = caseItem.type === 'type-1';
   const progressSteps = isType1 ? type1Steps : workflowSteps;
@@ -406,7 +443,7 @@ export default function CaseDetail() {
                 </div>
               )}
               <span className={`inline-flex px-3 py-1 text-sm rounded-full ${statusColors[caseItem.status]}`}>
-                {caseItem.status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                {statusLabel(caseItem.status)}
               </span>
               {caseItem.forwardedToRole && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
@@ -453,10 +490,7 @@ export default function CaseDetail() {
               {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
                 <DeputyProctorPanel caseItem={caseItem} remarks={deputyRemarks} onForward={handleForward} />
               )}
-              <SetHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
-              {canAddInfo && (
-                <HearingPanelButton caseItem={caseItem} onRefresh={refreshCase} />
-              )}
+              <HearingModuleButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               {canEditCase && (
                 <button
                   onClick={() => navigate(`/cases/${caseItem.id}/edit`)}
@@ -590,6 +624,16 @@ export default function CaseDetail() {
                 <span className="inline-flex items-center gap-1.5">
                   {tab.label}
                   {tab.id === 'message' && hasUnseenProctorMsg && (
+                    unreadMsgCount > 0 ? (
+                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold inline-flex items-center justify-center">{unreadMsgCount}</span>
+                    ) : (
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                    )
+                  )}
+                  {tab.id === 'documents' && docsCount > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-gray-200 text-gray-600 text-[11px] font-semibold inline-flex items-center justify-center">{docsCount}</span>
+                  )}
+                  {tab.id === 'hearing' && hasNewHearing && (
                     <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
                   )}
                 </span>
@@ -699,10 +743,10 @@ export default function CaseDetail() {
                 )
               )}
 
-              {/* Students see this only in the "Message from Proctor" tab, not in the overview. */}
+              {/* Students see this only in the "Message from Proctor Office" tab, not in the overview. */}
               {caseItem.isAcknowledged && currentUser?.role !== 'student' && (
                 <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Proctor</h3>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
                     <div className="flex items-center gap-2 text-emerald-700">
                       <CheckIcon />
@@ -983,8 +1027,9 @@ export default function CaseDetail() {
           {/* Message from Proctor Tab (students) */}
           {activeTab === 'message' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Proctor</h3>
-              {caseItem.isAcknowledged ? (
+              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
+
+              {caseItem.isAcknowledged && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
                   <div className="flex items-center gap-2 text-emerald-700">
                     <CheckIcon />
@@ -996,8 +1041,27 @@ export default function CaseDetail() {
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* All case updates (verified, hearing scheduled, closed, etc.) surface here. */}
+              {caseNotifications.length > 0 ? (
+                <div className="space-y-2">
+                  {caseNotifications.map(n => (
+                    <div key={n.id} className={`border rounded-lg p-4 ${n.isRead ? 'bg-white border-gray-200' : 'bg-blue-50 border-blue-200'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold" style={{ color: '#0b2652' }}>{n.title}</p>
+                        {n.createdAt && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">{new Date(n.createdAt).toLocaleString()}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{n.message}</p>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">No messages from the proctor yet.</p>
+                !caseItem.isAcknowledged && (
+                  <p className="text-gray-500 text-center py-8">No messages from the proctor office yet.</p>
+                )
               )}
             </div>
           )}
@@ -1782,189 +1846,6 @@ function ForwardButton({ fromRole, caseItem, onForward, beforeForward, label = '
   );
 }
 
-// Hearing panel — manage the people (internal users + external emailed people) for a case's hearing.
-function HearingPanelButton({ caseItem, onRefresh }: { caseItem: Case; onRefresh: () => Promise<void>; }) {
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState<'list' | 'internal' | 'external'>('list');
-  const [users, setUsers] = useState<User[]>([]);
-  const [search, setSearch] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [emails, setEmails] = useState<string[]>(['']);
-  const [extName, setExtName] = useState('');
-  const [extSubject, setExtSubject] = useState('');
-  const [extMessage, setExtMessage] = useState('');
-
-  useEffect(() => {
-    if (!open) return;
-    usersApi.getAll().then(res => setUsers(res.data.data || [])).catch(() => {});
-  }, [open]);
-
-  const persons = caseItem.hearingPersons || [];
-  const roleLabel = (r?: string) => (r || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-  const addInternal = async (userId: string) => {
-    setBusy(true);
-    try {
-      await casesApi.addInternalHearingPerson(caseItem.id, userId);
-      await onRefresh();
-      toast.success('Person added to hearing panel');
-      setView('list'); setSearch('');
-    } catch (err: any) {
-      toast.error('Failed to add', { description: err?.response?.data?.message || '' });
-    } finally { setBusy(false); }
-  };
-
-  const addExternal = async () => {
-    const list = emails.map(e => e.trim()).filter(Boolean);
-    if (list.length === 0) { toast.error('Add at least one email'); return; }
-    if (!extMessage.trim()) { toast.error('Write a message'); return; }
-    setBusy(true);
-    try {
-      await casesApi.addExternalHearingPerson(caseItem.id, { emails: list, name: extName.trim() || undefined, subject: extSubject.trim() || undefined, message: extMessage.trim() });
-      await onRefresh();
-      toast.success(`Added & emailed ${list.length} external person(s)`);
-      setEmails(['']); setExtName(''); setExtSubject(''); setExtMessage(''); setView('list');
-    } catch (err: any) {
-      toast.error('Failed to add', { description: err?.response?.data?.message || '' });
-    } finally { setBusy(false); }
-  };
-
-  const remove = async (id: string) => {
-    setBusy(true);
-    try { await casesApi.removeHearingPerson(caseItem.id, id); await onRefresh(); } catch { /* ignore */ } finally { setBusy(false); }
-  };
-
-  const existingInternal = new Set(persons.filter(p => p.type === 'internal').map(p => p.userId));
-  const filteredUsers = users.filter(u => !existingInternal.has(u.id) && (
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    roleLabel(u.role).toLowerCase().includes(search.toLowerCase())
-  ));
-
-  return (
-    <>
-      <button onClick={() => { setOpen(true); setView('list'); }}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-teal-300 bg-teal-50 text-teal-700 text-sm hover:bg-teal-100">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Hearing Panel{persons.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-200 text-teal-800 text-[11px]">{persons.length}</span>}
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-20">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto">
-              {/* LIST */}
-              {view === 'list' && (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Hearing Panel</h3>
-                    <button onClick={() => setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  </div>
-
-                  {persons.length === 0 ? (
-                    <p className="text-sm text-gray-400 mb-4">No one added yet.</p>
-                  ) : (
-                    <div className="space-y-2 mb-4">
-                      {persons.map(p => (
-                        <div key={p.id} className="flex items-center gap-3 border border-gray-200 rounded-lg p-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}
-                              <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${p.type === 'internal' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{p.type}</span>
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">{p.type === 'internal' ? `${roleLabel(p.role)} · ${p.email}` : p.email}</p>
-                          </div>
-                          <button disabled={busy} onClick={() => remove(p.id)} className="text-red-500 hover:text-red-700 text-sm disabled:opacity-50">Remove</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <button onClick={() => setView('internal')} className="flex-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">+ Internal Person</button>
-                    <button onClick={() => setView('external')} className="flex-1 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700">+ External Person</button>
-                  </div>
-                </>
-              )}
-
-              {/* INTERNAL */}
-              {view === 'internal' && (
-                <>
-                  <div className="flex items-center gap-2 mb-3">
-                    <button onClick={() => setView('list')} className="text-blue-600 text-sm hover:underline">&larr; Back</button>
-                    <h3 className="text-lg font-semibold ml-auto" style={{ color: '#0b2652' }}>Add Internal Person</h3>
-                  </div>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email or role…"
-                    className="w-full px-3 py-2 mb-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <div className="space-y-1 max-h-72 overflow-auto">
-                    {filteredUsers.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-4">No users found</p>
-                    ) : filteredUsers.map(u => (
-                      <button key={u.id} disabled={busy} onClick={() => addInternal(u.id)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50">
-                        <span className="font-medium">{u.name}</span>
-                        <span className="text-gray-400 text-xs flex-1 truncate">{u.email}</span>
-                        <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{roleLabel(u.role)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {/* EXTERNAL */}
-              {view === 'external' && (
-                <>
-                  <div className="flex items-center gap-2 mb-3">
-                    <button onClick={() => setView('list')} className="text-blue-600 text-sm hover:underline">&larr; Back</button>
-                    <h3 className="text-lg font-semibold ml-auto" style={{ color: '#0b2652' }}>Add External Person</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email(s) *</label>
-                      <div className="space-y-2">
-                        {emails.map((em, i) => (
-                          <div key={i} className="flex gap-2">
-                            <input type="email" value={em} onChange={e => setEmails(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
-                              placeholder="name@example.com" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                            {emails.length > 1 && <button onClick={() => setEmails(prev => prev.filter((_, idx) => idx !== i))} className="px-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">&times;</button>}
-                          </div>
-                        ))}
-                      </div>
-                      <button onClick={() => setEmails(prev => [...prev, ''])} className="mt-2 text-sm text-blue-600 hover:text-blue-800">+ Add another email</button>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Name (optional)</label>
-                      <input value={extName} onChange={e => setExtName(e.target.value)} placeholder="Person/Org name"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                      <input value={extSubject} onChange={e => setExtSubject(e.target.value)} placeholder={`Hearing notification — ${caseItem.caseNumber}`}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
-                      <textarea value={extMessage} onChange={e => setExtMessage(e.target.value)} rows={4} placeholder="Write the hearing details to send…"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                    </div>
-                    <p className="text-xs text-gray-400">No SMTP configured yet — sending is recorded as a demo.</p>
-                    <div className="flex justify-end gap-2">
-                      <button disabled={busy} onClick={() => setView('list')} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-                      <button disabled={busy} onClick={addExternal} className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">{busy ? 'Sending…' : 'Add & Send Email'}</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </>
-  );
-}
-
 // Coordinator actions — compact header buttons that open the verify / forward popups.
 function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential }: {
   onStatusChange: (status: string, extra?: any) => Promise<void>;
@@ -2482,76 +2363,269 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
 // Used inside any role panel (proctor, deputy proctor, disciplinary committee, etc.) on the case detail.
 // Compact "Set Hearing" header button + modal. Loads its own hearing permission so it can
 // live in the page header instead of taking a full-width inline panel.
-function SetHearingButton({ caseItem, role, onRefresh }: {
+// Combined hearing module: set date/time/place AND choose the hearing panel (internal + external)
+// in one review-and-submit flow. On submit it creates the hearing (emailing assignees), then
+// attaches the panel members (external members are emailed). Replaces the old separate
+// "Set Hearing" and "Hearing Panel" buttons.
+function HearingModuleButton({ caseItem, role, onRefresh }: {
   caseItem: Case;
   role: string;
   onRefresh: () => Promise<void>;
 }) {
   const [canHearing, setCanHearing] = useState(false);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<'details' | 'panel' | 'review'>('details');
+  const [busy, setBusy] = useState(false);
+
+  // Step 1 — details
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [location, setLocation] = useState('');
-  const [busy, setBusy] = useState(false);
+
+  // Step 2 — panel
+  const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState('');
+  const [internalSelected, setInternalSelected] = useState<User[]>([]);
+  const [emails, setEmails] = useState<string[]>(['']);
+  const [extName, setExtName] = useState('');
+  const [extSubject, setExtSubject] = useState('');
+  const [extMessage, setExtMessage] = useState('');
 
   useEffect(() => {
     if (!role) return;
     forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
   }, [role]);
 
+  useEffect(() => {
+    if (!open) return;
+    usersApi.getAll().then(res => setUsers(res.data.data || [])).catch(() => {});
+  }, [open]);
+
+  const roleLabel = (r?: string) => (r || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
   if (!canHearing || caseItem.type === 'type-1' || isClosed) return null;
 
-  const handleSchedule = async () => {
-    if (!date || !time || !location) return;
+  const reset = () => {
+    setStep('details'); setDate(''); setTime(''); setLocation('');
+    setInternalSelected([]); setSearch(''); setEmails(['']); setExtName(''); setExtSubject(''); setExtMessage('');
+  };
+
+  const close = () => { if (!busy) { setOpen(false); reset(); } };
+
+  const selectedIds = new Set(internalSelected.map(u => u.id));
+  const filteredUsers = users.filter(u => !selectedIds.has(u.id) && (
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()) ||
+    roleLabel(u.role).toLowerCase().includes(search.toLowerCase())
+  ));
+
+  const externalEmails = emails.map(e => e.trim()).filter(Boolean);
+  const detailsValid = !!date && !!time && !!location;
+
+  const handleSubmit = async () => {
+    if (!detailsValid) { setStep('details'); return; }
     setBusy(true);
     try {
-      await hearingsApi.create({ caseId: caseItem.id, date, time, location, participants: [caseItem.studentName] });
+      // 1) Create the hearing (backend notifies + emails the assignees).
+      const participants = [caseItem.studentName, ...internalSelected.map(u => u.name)].filter(Boolean);
+      await hearingsApi.create({ caseId: caseItem.id, date, time, location, participants });
+      // 2) Attach internal panel members.
+      for (const u of internalSelected) {
+        await casesApi.addInternalHearingPerson(caseItem.id, u.id);
+      }
+      // 3) Attach + email external panel members, if any.
+      if (externalEmails.length > 0 && extMessage.trim()) {
+        await casesApi.addExternalHearingPerson(caseItem.id, {
+          emails: externalEmails,
+          name: extName.trim() || undefined,
+          subject: extSubject.trim() || undefined,
+          message: extMessage.trim(),
+        });
+      }
       await onRefresh();
-      toast.success('Hearing scheduled');
-      setDate(''); setTime(''); setLocation(''); setOpen(false);
+      toast.success('Hearing scheduled and panel notified');
+      setOpen(false); reset();
     } catch (err: any) {
-      toast.error('Schedule failed', { description: err?.response?.data?.message || 'Unable to schedule' });
+      toast.error('Failed to schedule hearing', { description: err?.response?.data?.message || 'Unable to schedule' });
     } finally {
       setBusy(false);
     }
   };
 
+  const stepBadge = (s: 'details' | 'panel' | 'review', n: number, label: string) => (
+    <div className="flex items-center gap-2">
+      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${step === s ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>{n}</span>
+      <span className={`text-sm ${step === s ? 'text-indigo-700 font-medium' : 'text-gray-400'}`}>{label}</span>
+    </div>
+  );
+
   return (
     <>
-      <button onClick={() => setOpen(true)}
+      <button onClick={() => { setOpen(true); setStep('details'); }}
         className="flex items-center gap-2 px-4 py-2 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm hover:bg-indigo-100">
-        <ClockIcon /> Set Hearing
+        <ClockIcon /> Set Hearing &amp; Panel
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Schedule Hearing — {caseItem.caseNumber}</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-                  <input type="time" value={time} onChange={e => setTime(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
-                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Proctor Office, Room 201"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button disabled={busy} onClick={() => setOpen(false)}
-                    className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-                  <button disabled={busy || !date || !time || !location} onClick={handleSchedule}
-                    className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{busy ? 'Scheduling…' : 'Schedule'}</button>
-                </div>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={close} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Set Hearing — {caseItem.caseNumber}</h3>
+                <button onClick={close} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
+
+              <div className="flex items-center justify-between mb-5">
+                {stepBadge('details', 1, 'Details')}
+                <div className="flex-1 h-px bg-gray-200 mx-2" />
+                {stepBadge('panel', 2, 'Panel')}
+                <div className="flex-1 h-px bg-gray-200 mx-2" />
+                {stepBadge('review', 3, 'Review')}
+              </div>
+
+              {/* STEP 1 — DETAILS */}
+              {step === 'details' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+                    <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                    <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Proctor Office, Room 201"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button onClick={close} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                    <button disabled={!detailsValid} onClick={() => setStep('panel')}
+                      className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">Next: Panel &rarr;</button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2 — PANEL */}
+              {step === 'panel' && (
+                <div className="space-y-4">
+                  {/* Selected panel */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Panel members {(internalSelected.length + externalEmails.length) > 0 && <span className="text-gray-400">({internalSelected.length + externalEmails.length})</span>}</p>
+                    {internalSelected.length === 0 && externalEmails.length === 0 ? (
+                      <p className="text-xs text-gray-400">None selected yet. Add internal staff and/or external people below.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {internalSelected.map(u => (
+                          <div key={u.id} className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2">
+                            <span className="text-sm font-medium">{u.name}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">internal</span>
+                            <span className="text-xs text-gray-400 flex-1 truncate">{roleLabel(u.role)}</span>
+                            <button onClick={() => setInternalSelected(prev => prev.filter(p => p.id !== u.id))} className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                          </div>
+                        ))}
+                        {externalEmails.map((em, i) => (
+                          <div key={`ext-${i}`} className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2">
+                            <span className="text-sm font-medium">{em}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px]">external</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Internal picker */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Add internal staff</label>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email or role…"
+                      className="w-full px-3 py-2 mb-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    {search && (
+                      <div className="space-y-1 max-h-40 overflow-auto border border-gray-100 rounded-lg p-1">
+                        {filteredUsers.length === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-2">No users found</p>
+                        ) : filteredUsers.slice(0, 20).map(u => (
+                          <button key={u.id} onClick={() => { setInternalSelected(prev => [...prev, u]); setSearch(''); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-lg hover:bg-blue-50">
+                            <span className="font-medium">{u.name}</span>
+                            <span className="text-gray-400 text-xs flex-1 truncate">{u.email}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{roleLabel(u.role)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* External */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Add external people (emailed)</label>
+                    <div className="space-y-2">
+                      {emails.map((em, i) => (
+                        <div key={i} className="flex gap-2">
+                          <input type="email" value={em} onChange={e => setEmails(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
+                            placeholder="name@example.com" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                          {emails.length > 1 && <button onClick={() => setEmails(prev => prev.filter((_, idx) => idx !== i))} className="px-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">&times;</button>}
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => setEmails(prev => [...prev, ''])} className="mt-2 text-sm text-blue-600 hover:text-blue-800">+ Add another email</button>
+                    {externalEmails.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        <input value={extName} onChange={e => setExtName(e.target.value)} placeholder="Name/Org (optional)"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                        <input value={extSubject} onChange={e => setExtSubject(e.target.value)} placeholder={`Subject (default: Hearing notification — ${caseItem.caseNumber})`}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                        <textarea value={extMessage} onChange={e => setExtMessage(e.target.value)} rows={3} placeholder="Message to external people * (required to email them)"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between gap-2 pt-1">
+                    <button onClick={() => setStep('details')} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">&larr; Back</button>
+                    <button onClick={() => setStep('review')} className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Next: Review &rarr;</button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3 — REVIEW */}
+              {step === 'review' && (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
+                    <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="font-medium">{date || '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Time</span><span className="font-medium">{time || '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Location</span><span className="font-medium">{location || '—'}</span></div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Panel ({internalSelected.length + externalEmails.length})</p>
+                    {internalSelected.length === 0 && externalEmails.length === 0 ? (
+                      <p className="text-xs text-gray-400">No panel members — the hearing will still be scheduled.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {internalSelected.map(u => (
+                          <div key={u.id} className="flex items-center gap-2 text-sm"><span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">internal</span>{u.name} · {roleLabel(u.role)}</div>
+                        ))}
+                        {externalEmails.map((em, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm"><span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px]">external</span>{em}</div>
+                        ))}
+                      </div>
+                    )}
+                    {externalEmails.length > 0 && !extMessage.trim() && (
+                      <p className="text-xs text-amber-600 mt-2">Add a message on the Panel step to email the external people.</p>
+                    )}
+                  </div>
+                  <div className="flex justify-between gap-2 pt-1">
+                    <button disabled={busy} onClick={() => setStep('panel')} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">&larr; Back</button>
+                    <button disabled={busy || !detailsValid} onClick={handleSubmit}
+                      className="px-5 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{busy ? 'Submitting…' : 'Confirm & Schedule'}</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
