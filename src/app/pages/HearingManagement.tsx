@@ -577,7 +577,7 @@ export default function HearingManagement() {
                     setClosing(true);
                     try {
                       await hearingsApi.update(closingHearing.id, { remarks: closeRemarks });
-                      await hearingsApi.updateStatus(closingHearing.id, { status: 'completed' });
+                      await hearingsApi.updateStatus(closingHearing.id, 'completed');
                       const res = await hearingsApi.getAll();
                       if (res.data.data) setHearingsData(res.data.data);
                       toast.success('Hearing closed successfully');

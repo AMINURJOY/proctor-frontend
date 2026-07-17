@@ -16,12 +16,19 @@ import {
   MailIcon,
   RefreshIcon
 } from '../components/Icons';
-import { Case, CaseStatus, User } from '../types';
+import { Case, CaseStatus, Hearing, User } from '../types';
 import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, API_BASE_URL } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import HearingCountdown from '../components/HearingCountdown';
+
+// A hearing left in "scheduled" state blocks forwarding: the next role acts on the
+// hearing's outcome, so the case can't move on until it's closed out with remarks.
+// Returns the open hearing (for messaging), or null when the case is free to forward.
+function getOpenHearing(caseItem: Case): Hearing | null {
+  return (caseItem.hearings || []).find(h => h.status === 'scheduled') || null;
+}
 
 // Workflow steps for the stepper
 const workflowSteps = [
@@ -490,6 +497,7 @@ export default function CaseDetail() {
               {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
                 <DeputyProctorPanel caseItem={caseItem} remarks={deputyRemarks} onForward={handleForward} />
               )}
+              <CloseHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               <HearingModuleButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               {canEditCase && (
                 <button
@@ -1015,6 +1023,12 @@ export default function CaseDetail() {
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           <p className="text-xs text-gray-500 mb-1">Hearing Notes:</p>
                           <p className="text-sm text-gray-700">{hearing.notes}</p>
+                        </div>
+                      )}
+                      {hearing.remarks && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 bg-blue-50 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
+                          <p className="text-xs text-blue-600 mb-1">Hearing Remarks:</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{hearing.remarks}</p>
                         </div>
                       )}
                     </div>
@@ -1819,10 +1833,15 @@ function ForwardButton({ fromRole, caseItem, onForward, beforeForward, label = '
 
   if (!hasForwardable) return null;
 
+  // An open hearing must be closed first — the next role acts on its outcome.
+  const openHearing = getOpenHearing(caseItem);
+
   return (
     <>
       <button onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        disabled={!!openHearing}
+        title={openHearing ? 'Close the hearing before forwarding this case.' : undefined}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50">
         <ForwardIcon /> {label}
       </button>
       {open && (
@@ -1914,6 +1933,9 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
 
   const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
 
+  // An open hearing must be closed first — the next role acts on its outcome.
+  const openHearing = getOpenHearing(caseItem);
+
   return (
     <>
       {/* Header buttons */}
@@ -1922,7 +1944,9 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
         <CheckIcon /> Verify Case
       </button>
       <button onClick={() => setForwardOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        disabled={!!openHearing}
+        title={openHearing ? 'Close the hearing before forwarding this case.' : undefined}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50">
         <ForwardIcon /> Accept & Forward
       </button>
 
@@ -2038,10 +2062,15 @@ function DeputyProctorPanel({ caseItem, remarks, onForward }: {
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
   if (isClosed) return null;
 
+  // An open hearing must be closed first — the next role acts on its outcome.
+  const openHearing = getOpenHearing(caseItem);
+
   return (
     <>
       <button onClick={() => setForwardOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">
+        disabled={!!openHearing}
+        title={openHearing ? 'Close the hearing before forwarding this case.' : undefined}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50">
         <ForwardIcon /> Accept &amp; Forward
       </button>
       {forwardOpen && (
@@ -2359,10 +2388,110 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   );
 }
 
-// Reusable hearing schedule form. Renders only when the current role has __hearing__ permission.
-// Used inside any role panel (proctor, deputy proctor, disciplinary committee, etc.) on the case detail.
-// Compact "Set Hearing" header button + modal. Loads its own hearing permission so it can
-// live in the page header instead of taking a full-width inline panel.
+// "Close Hearing" header action — shown while a hearing is still open, next to the
+// countdown so it reads as the natural follow-up once the hearing time arrives.
+// Only the person who set the hearing may close it (the server enforces the same rule in
+// HearingService.UpdateHearingStatusAsync), so everyone else sees a hint naming the owner
+// rather than a button that would fail. Closing saves the remarks first, then completes the
+// hearing — which moves the case to "hearing-completed" and unblocks forwarding.
+function CloseHearingButton({ caseItem, role, onRefresh }: {
+  caseItem: Case;
+  role: string;
+  onRefresh: () => Promise<void>;
+}) {
+  const { currentUser } = useAuth();
+  const [canHearing, setCanHearing] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!role) return;
+    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role]);
+
+  const hearing = getOpenHearing(caseItem);
+  if (!hearing || !canHearing) return null;
+
+  // Legacy hearings have no recorded creator and stay closable by any hearing-capable user.
+  const isOwner = !hearing.createdById || hearing.createdById === currentUser?.id;
+  if (!isOwner) {
+    return (
+      <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+        <ClockIcon />
+        Hearing open — only {hearing.createdByName || 'the person who set it'} can close it
+      </span>
+    );
+  }
+
+  const handleClose = async () => {
+    if (!remarks.trim()) return;
+    setBusy(true);
+    try {
+      await hearingsApi.update(hearing.id, { remarks });
+      await hearingsApi.updateStatus(hearing.id, 'completed');
+      await onRefresh();
+      toast.success('Hearing closed');
+      setRemarks('');
+      setOpen(false);
+    } catch (err: any) {
+      toast.error('Failed to close hearing', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={() => { setRemarks(hearing.remarks || ''); setOpen(true); }}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">
+        <CheckIcon /> Close Hearing
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>
+                  Close Hearing — <span className="font-mono text-sm">{caseItem.caseNumber}</span>
+                </h3>
+                <button onClick={() => !busy && setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div className="mb-4 text-sm text-gray-600">
+                <p><span className="font-medium">Date:</span> {hearing.date} at {hearing.time}</p>
+                <p><span className="font-medium">Location:</span> {hearing.location}</p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  What did the victim/witnesses say? <span className="text-red-500">*</span>
+                </label>
+                <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
+                  placeholder="Write the statements heard during the hearing — victim testimony, witness accounts, observations, decisions made..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={8} />
+              </div>
+              <p className="text-xs text-gray-500 mb-4">Once closed, this case can be forwarded to the next role.</p>
+              <div className="flex justify-end gap-2">
+                <button disabled={busy} onClick={() => setOpen(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button disabled={busy || !remarks.trim()} onClick={handleClose}
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                  <CheckIcon /> {busy ? 'Closing…' : 'Close Hearing'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // Combined hearing module: set date/time/place AND choose the hearing panel (internal + external)
 // in one review-and-submit flow. On submit it creates the hearing (emailing assignees), then
 // attaches the panel members (external members are emailed). Replaces the old separate
