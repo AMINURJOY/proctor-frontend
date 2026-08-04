@@ -226,6 +226,17 @@ export const settingsApi = {
   update: (key: string, value: string) => api.put(`/settings/${key}`, { value }),
 };
 
+// AI (Gemini) report drafting. The API key is write-only — the server returns only a masked
+// preview, so `apiKey` is sent on save and never read back.
+export const aiApi = {
+  getSettings: () => api.get('/ai/settings'),
+  updateSettings: (data: { provider?: string; model?: string; apiKey?: string }) =>
+    api.put('/ai/settings', data),
+  test: (data: { apiKey?: string; model?: string }) => api.post('/ai/test', data),
+  generateReport: (caseId: string, data: { language: 'bangla' | 'english'; instructions?: string }) =>
+    api.post(`/ai/cases/${caseId}/report`, data),
+};
+
 export const articlesApi = {
   getAll: () => api.get('/articles'),
   create: (data: { articleNo: string; title: string; description: string; order?: number }) => api.post('/articles', data),

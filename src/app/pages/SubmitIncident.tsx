@@ -949,41 +949,74 @@ export default function SubmitIncident() {
 
               <p className="text-sm text-gray-500 mb-3">বিনীত,</p>
 
-              {/* Complainant & Accused side by side */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="border rounded p-4">
-                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>অভিযোগকারীর তথ্য</p>
-                  {[
-                    ['নাম', complainants[0]?.name || currentUser?.name],
-                    ['আইডি', complainants[0]?.studentId],
-                    ['ডিপার্টমেন্ট', t2StudentDepartment],
-                    ['কন্টাক্ট নাম্বার', t2StudentContact],
-                    ['এডভাইজারের নাম', t2AdvisorName],
-                    ['বাবার নাম', t2FatherName],
-                    ['বাবার কন্টাক্ট নাম্বার', t2FatherContact],
-                  ].map(([label, val]) => (
-                    <div key={label as string} className="flex justify-between py-0.5 border-b border-gray-100 text-sm">
-                      <span className="text-gray-500">{label}:</span>
-                      <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+              {/* Complainants & Accused side by side — every person entered on the form is
+                  listed, not just the first one. */}
+              {(() => {
+                const namedComplainants = complainants.filter(c => c.name.trim() || c.studentId.trim());
+                const namedAccused = accusedPersons.filter(a => a.name.trim() || a.accusedStudentId.trim());
+                const shownComplainants = namedComplainants.length > 0 ? namedComplainants : [complainants[0]];
+                const shownAccused = namedAccused.length > 0 ? namedAccused : [accusedPersons[0]];
+                const heading = (base: string, count: number) => count > 1 ? `${base} (${count} জন)` : base;
+
+                return (
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="border rounded p-4">
+                      <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>
+                        {heading('অভিযোগকারীর তথ্য', namedComplainants.length)}
+                      </p>
+                      <div className="space-y-4">
+                        {shownComplainants.map((c, idx) => (
+                          <div key={idx}>
+                            {shownComplainants.length > 1 && (
+                              <p className="text-xs font-semibold text-gray-400 mb-1">অভিযোগকারী {idx + 1}</p>
+                            )}
+                            {[
+                              ['নাম', c?.name || (idx === 0 ? currentUser?.name : '')],
+                              ['আইডি', c?.studentId],
+                              ['ডিপার্টমেন্ট', c?.department],
+                              ['কন্টাক্ট নাম্বার', c?.contact],
+                              ['এডভাইজারের নাম', c?.advisorName],
+                              ['বাবার নাম', c?.fatherName],
+                              ['বাবার কন্টাক্ট নাম্বার', c?.fatherContact],
+                            ].map(([label, val]) => (
+                              <div key={label as string} className="flex justify-between py-0.5 border-b border-gray-100 text-sm">
+                                <span className="text-gray-500">{label}:</span>
+                                <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-                <div className="border border-orange-200 rounded p-4 bg-orange-50/30">
-                  <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>অভিযুক্তের তথ্য</p>
-                  {[
-                    ['নাম', t2AccusedName],
-                    ['আইডি', t2AccusedId],
-                    ['ডিপার্টমেন্ট', t2AccusedDepartment],
-                    ['কন্টাক্ট নাম্বার', t2AccusedContact],
-                    ['অভিভাবকের নাম্বার', t2GuardianContact],
-                  ].map(([label, val]) => (
-                    <div key={label as string} className="flex justify-between py-0.5 border-b border-orange-100 text-sm">
-                      <span className="text-gray-500">{label}:</span>
-                      <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+                    <div className="border border-orange-200 rounded p-4 bg-orange-50/30">
+                      <p className="text-sm font-bold mb-3" style={{ color: '#0b2652' }}>
+                        {heading('অভিযুক্তের তথ্য', namedAccused.length)}
+                      </p>
+                      <div className="space-y-4">
+                        {shownAccused.map((a, idx) => (
+                          <div key={idx}>
+                            {shownAccused.length > 1 && (
+                              <p className="text-xs font-semibold text-gray-400 mb-1">অভিযুক্ত {idx + 1}</p>
+                            )}
+                            {[
+                              ['নাম', a?.name],
+                              ['আইডি', a?.accusedStudentId],
+                              ['ডিপার্টমেন্ট', a?.department],
+                              ['কন্টাক্ট নাম্বার', a?.contact],
+                              ['অভিভাবকের নাম্বার', a?.guardianContact],
+                            ].map(([label, val]) => (
+                              <div key={label as string} className="flex justify-between py-0.5 border-b border-orange-100 text-sm">
+                                <span className="text-gray-500">{label}:</span>
+                                <span className="font-medium text-gray-700">{(val as string) || '—'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* Extra info */}
               <div className="grid grid-cols-2 gap-3 text-sm mb-4 p-3 bg-gray-50 rounded">

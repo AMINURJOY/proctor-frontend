@@ -8,6 +8,7 @@ type DraftReport = {
   id: string;
   content: string;
   createdByName: string;
+  createdById?: string;
   createdDate: string;
   updatedDate?: string;
 };
@@ -56,6 +57,7 @@ export default function DraftReportsPage() {
           id: r.id,
           content: r.content,
           createdByName: r.createdByName,
+          createdById: r.createdById,
           createdDate: r.createdDate,
           updatedDate: r.updatedDate,
         }));
@@ -143,7 +145,13 @@ export default function DraftReportsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {drafts.map(d => (
+          {drafts.map(d => {
+            // A draft belongs to whoever wrote it: everyone with access can read it, but only
+            // the author may edit. Legacy drafts with no recorded author fall back to the name.
+            const isMine = d.createdById
+              ? d.createdById === currentUser?.id
+              : d.createdByName === currentUser?.name;
+            return (
             <div key={d.id} className="bg-white rounded-xl shadow-md border border-gray-100 p-5">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
@@ -152,7 +160,7 @@ export default function DraftReportsPage() {
                       {(d.createdByName || '?').charAt(0).toUpperCase()}
                     </div>
                     <span className="text-sm font-medium text-gray-800">{d.createdByName}</span>
-                    {d.createdByName === currentUser?.name && (
+                    {isMine && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">you</span>
                     )}
                   </div>
@@ -164,17 +172,24 @@ export default function DraftReportsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => navigate(`/reports/${caseId}/edit`)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
-                    Edit
-                  </button>
+                  {isMine ? (
+                    <button onClick={() => navigate(`/reports/${caseId}/edit?reportId=${d.id}`)}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="px-2 py-1 text-xs rounded-lg bg-gray-100 text-gray-500 border border-gray-200">
+                      Read-only
+                    </span>
+                  )}
                 </div>
               </div>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">
                 {d.content.length > 220 ? d.content.slice(0, 220).trimEnd() + '…' : d.content}
               </p>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

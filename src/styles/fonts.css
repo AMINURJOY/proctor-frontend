@@ -1,0 +1,64 @@
+/*
+ * July Unicode (ICTD) — the Bangla typeface used across the Proctor system.
+ *
+ * The files live in src/assets/fonts so Vite fingerprints them into dist/assets on build;
+ * a public/ copy would work at runtime but would not be hashed or bundled. Paths are relative
+ * to this stylesheet, which is what lets Vite rewrite them for the production build.
+ *
+ * IMPORTANT: every face is scoped with `unicode-range` to the Bengali block. The browser then
+ * only downloads and applies July for Bangla characters and falls through to the next family in
+ * the stack for Latin text, digits and punctuation — so English keeps exactly the font it had
+ * before July was added. Without this, naming July first in a stack would restyle the entire
+ * English UI too.
+ *
+ * Ranges: U+0980–09FF is the Bengali block (including Bengali digits ০–৯). U+0964–0965 are the
+ * danda/double danda, U+200C–200D the zero-width joiners that drive conjunct formation, and
+ * U+25CC the dotted circle used to display an isolated vowel sign. All four are needed for
+ * Bangla to shape correctly and are invisible or unused in English text.
+ */
+
+@font-face {
+  font-family: 'July';
+  src: url('../assets/fonts/July-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0980-09FF, U+0964-0965, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'July';
+  src: url('../assets/fonts/July-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  unicode-range: U+0980-09FF, U+0964-0965, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'July';
+  src: url('../assets/fonts/July-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0980-09FF, U+0964-0965, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'July';
+  src: url('../assets/fonts/July-Bold-Italic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+  unicode-range: U+0980-09FF, U+0964-0965, U+200C-200D, U+25CC;
+}
+
+/*
+ * July is listed first so it wins for Bangla, then Tailwind's stock sans stack — unchanged from
+ * what the app used before — handles everything else.
+ */
+html,
+body {
+  font-family: 'July', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}

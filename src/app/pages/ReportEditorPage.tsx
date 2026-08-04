@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
@@ -9,9 +9,25 @@ import { Underline } from '@tiptap/extension-underline';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Highlight } from '@tiptap/extension-highlight';
-import { casesApi, articlesApi } from '../services/api';
+import { casesApi, articlesApi, aiApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Case, Article } from '../types';
 import { toast } from 'sonner';
+import julyRegular from '../../assets/fonts/July-Regular.ttf';
+import julyBold from '../../assets/fonts/July-Bold.ttf';
+
+// The PDF export opens an about:blank window, so the bundled font has to be referenced by an
+// absolute URL — a relative one would resolve against the blank document and 404, dropping the
+// report back to a fallback font that renders Bangla conjuncts incorrectly.
+const abs = (url: string) => new URL(url, window.location.origin).href;
+const BANGLA_FONT_STACK = `'July', 'Noto Sans Bengali', Arial, sans-serif`;
+// Same Bengali-only unicode-range as styles/fonts.css: July shapes the Bangla, Latin text in the
+// exported document keeps the font it always used.
+const JULY_RANGE = `U+0980-09FF, U+0964-0965, U+200C-200D, U+25CC`;
+const JULY_FACE_CSS = `
+  @font-face { font-family: 'July'; src: url('${abs(julyRegular)}') format('truetype'); font-weight: 400; font-style: normal; unicode-range: ${JULY_RANGE}; }
+  @font-face { font-family: 'July'; src: url('${abs(julyBold)}') format('truetype'); font-weight: 700; font-style: normal; unicode-range: ${JULY_RANGE}; }
+`;
 
 function generateReportHTML(caseItem: Case): string {
   const cr = (caseItem.complainants || []).map(c =>
@@ -109,6 +125,12 @@ const InfoRow = ({ label, value, k, copiedKey, onCopy }: {
 export default function ReportEditorPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetReportId = searchParams.get('reportId') || '';
+  const { currentUser } = useAuth();
+  // A report may only be edited by its author. `false` puts the editor in read-only mode.
+  const [canEditReport, setCanEditReport] = useState(true);
+  const [reportAuthor, setReportAuthor] = useState('');
   const [caseItem, setCaseItem] = useState<Case | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
@@ -118,6 +140,11 @@ export default function ReportEditorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showCaseInfo, setShowCaseInfo] = useState(true);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // "Create report with AI" modal
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiLanguage, setAiLanguage] = useState<'bangla' | 'english'>('bangla');
+  const [aiInstructions, setAiInstructions] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableHover, setTableHover] = useState<{ rows: number; cols: number }>({ rows: 0, cols: 0 });
 
@@ -156,20 +183,39 @@ export default function ReportEditorPage() {
         setCaseItem(c); setArticles(arts);
         const reportsRes = await casesApi.getReports(caseId!);
         const reports = reportsRes.data.data || [];
-        if (reports.length > 0) {
-          const latest = reports[reports.length - 1];
-          setExistingReportId(latest.id);
-          editor?.commands.setContent(latest.content || generateReportHTML(c));
+        // Open the report named in ?reportId= (from the Draft Reports list); otherwise fall
+        // back to the most recent one, which is what the plain /edit link has always shown.
+        const target = (targetReportId && reports.find((r: any) => r.id === targetReportId))
+          || (reports.length > 0 ? reports[reports.length - 1] : null);
+        if (target) {
+          setExistingReportId(target.id);
+          // Only the author may edit. Legacy reports carry no author id, so they stay editable.
+          const mine = target.createdById
+            ? target.createdById === currentUser?.id
+            : target.createdByName === currentUser?.name;
+          setCanEditReport(mine);
+          setReportAuthor(target.createdByName || '');
+          editor?.commands.setContent(target.content || generateReportHTML(c));
         } else {
+          setCanEditReport(true);
           editor?.commands.setContent(generateReportHTML(c));
         }
       } catch { toast.error('Failed to load case data'); } finally { setLoading(false); }
     };
     if (caseId && editor) fetchData();
-  }, [caseId, editor]);
+  }, [caseId, editor, targetReportId, currentUser?.id, currentUser?.name]);
+
+  // Someone else's report is shown but not editable.
+  useEffect(() => {
+    editor?.setEditable(canEditReport);
+  }, [editor, canEditReport]);
 
   const handleSave = useCallback(async (isDraft: boolean, isFinal: boolean) => {
     if (!editor || !caseId) return;
+    if (!canEditReport) {
+      toast.error(`Only ${reportAuthor || 'the author'} can edit this report.`);
+      return;
+    }
     setSaving(true);
     try {
       const data = { content: editor.getHTML(), isDraft, isFinal };
@@ -178,7 +224,42 @@ export default function ReportEditorPage() {
       toast.success(isDraft ? 'Draft saved' : 'Report finalized');
     } catch (err: any) { toast.error('Save failed', { description: err?.response?.data?.message || 'Error' }); }
     finally { setSaving(false); }
-  }, [editor, caseId, existingReportId]);
+  }, [editor, caseId, existingReportId, canEditReport, reportAuthor]);
+
+  // Ask Gemini to draft the report from the case record, then drop the HTML into the editor.
+  // Nothing is saved automatically — the officer reviews and edits before hitting Save Draft.
+  const handleGenerateWithAi = useCallback(async () => {
+    if (!editor || !caseId) return;
+    setAiBusy(true);
+    try {
+      const res = await aiApi.generateReport(caseId, {
+        language: aiLanguage,
+        instructions: aiInstructions.trim() || undefined,
+      });
+      const html = res.data.data?.html || '';
+      if (!html) { toast.error('The AI returned an empty report'); return; }
+      editor.commands.setContent(html);
+
+      // If the report on screen belonged to someone else, the generated text becomes a brand new
+      // report owned by the current user — dropping existingReportId makes Save create rather
+      // than update, so the other author's report is left untouched.
+      const startedNewReport = !canEditReport;
+      if (startedNewReport) {
+        setExistingReportId(null);
+        setCanEditReport(true);
+      }
+
+      setAiOpen(false);
+      setAiInstructions('');
+      toast.success('Draft generated', {
+        description: startedNewReport
+          ? 'Saved as a new report of your own. Review it carefully before saving.'
+          : 'Review the content carefully before saving.',
+      });
+    } catch (err: any) {
+      toast.error('AI generation failed', { description: err?.response?.data?.message || 'Check Settings → AI Integration.' });
+    } finally { setAiBusy(false); }
+  }, [editor, caseId, aiLanguage, aiInstructions, canEditReport]);
 
   const inlineImagesAsBase64 = useCallback(async (html: string, maxWidth = 80): Promise<string> => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -226,7 +307,7 @@ export default function ReportEditorPage() {
     try {
       const inlined = await inlineImagesAsBase64(editor.getHTML());
       const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><style>body{font-family:'Noto Sans Bengali',Arial;font-size:14px;max-width:850px;margin:0 auto}table{border-collapse:collapse;width:100%;margin-bottom:16px}th,td{border:1px solid #000;padding:8px}th{background:#f2f2f2}h3{font-size:16px;border-bottom:1px solid #000;padding-bottom:4px;margin-top:20px}img{width:80px;height:auto;display:block;margin:0 auto}ul{list-style:disc outside;padding-left:28px;margin:8px 0}ol{list-style:decimal outside;padding-left:28px;margin:8px 0}li{margin:2px 0}</style></head><body>${inlined}</body></html>`;
+<head><meta charset="utf-8"><style>body{font-family:'July','Noto Sans Bengali',Arial;font-size:14px;max-width:850px;margin:0 auto}table{border-collapse:collapse;width:100%;margin-bottom:16px}th,td{border:1px solid #000;padding:8px}th{background:#f2f2f2}h3{font-size:16px;border-bottom:1px solid #000;padding-bottom:4px;margin-top:20px}img{width:80px;height:auto;display:block;margin:0 auto}ul{list-style:disc outside;padding-left:28px;margin:8px 0}ol{list-style:decimal outside;padding-left:28px;margin:8px 0}li{margin:2px 0}</style></head><body>${inlined}</body></html>`;
       const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
       a.download = `report-${caseItem?.caseNumber || 'case'}.doc`; a.click();
@@ -247,8 +328,9 @@ export default function ReportEditorPage() {
       }
       const docHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>report-${caseItem?.caseNumber || 'case'}</title>
 <style>
+  ${JULY_FACE_CSS}
   @page { size: A4; margin: 0.75in; }
-  body { font-family: 'Noto Sans Bengali', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000; margin: 0; padding: 0; }
+  body { font-family: ${BANGLA_FONT_STACK}; font-size: 14px; line-height: 1.6; color: #000; margin: 0; padding: 0; }
   table { border-collapse: collapse; width: 100%; margin: 12px 0; page-break-inside: avoid; }
   th, td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 14px; }
   th { background: #f2f2f2; font-weight: bold; }
@@ -311,7 +393,7 @@ export default function ReportEditorPage() {
     <div className="-m-4 sm:-m-6 min-h-[calc(100vh-80px)] flex flex-col bg-[#f1f3f4]">
       {/* Global editor styles */}
       <style>{`
-        .report-tiptap-editor { font-family: 'Noto Sans Bengali', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #000; }
+        .report-tiptap-editor { font-family: ${BANGLA_FONT_STACK}; font-size: 14px; line-height: 1.6; color: #000; }
         .report-tiptap-editor table { border-collapse: collapse; width: 100%; margin: 12px 0; }
         .report-tiptap-editor th, .report-tiptap-editor td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 14px; min-width: 60px; }
         .report-tiptap-editor th { background-color: #f2f2f2; font-weight: bold; }
@@ -378,8 +460,28 @@ export default function ReportEditorPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             {showCaseInfo ? 'Hide' : 'Show'} Case Info
           </button>
-          <button disabled={saving} onClick={() => handleSave(true, false)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">{saving ? '...' : 'Save Draft'}</button>
-          <button disabled={saving} onClick={() => handleSave(false, true)} className="px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">Finalize</button>
+          {/* Drafting with AI is always available — it writes a NEW report of your own, so it is
+              never blocked by someone else owning the report currently on screen, nor by the
+              case being closed. Only editing an existing report is ownership-restricted. */}
+          <button onClick={() => setAiOpen(true)}
+            title="Draft this report automatically from the case record"
+            className="px-3 py-1.5 text-sm rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
+              <path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" />
+            </svg>
+            Create with AI
+          </button>
+          {canEditReport ? (
+            <>
+              <button disabled={saving} onClick={() => handleSave(true, false)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">{saving ? '...' : 'Save Draft'}</button>
+              <button disabled={saving} onClick={() => handleSave(false, true)} className="px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">Finalize</button>
+            </>
+          ) : (
+            <span className="px-3 py-1.5 text-sm rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+              Read-only — {reportAuthor || 'the author'}'s report. Use “Create with AI” to start your own.
+            </span>
+          )}
           <button onClick={() => window.print()} className="px-3 py-1.5 text-sm rounded-lg text-white" style={{ backgroundColor: '#0b2652' }}>Print</button>
           <button onClick={handleExportDocx} className="px-3 py-1.5 text-sm rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50">DOCX</button>
           <button onClick={handleExportPdf} className="px-3 py-1.5 text-sm rounded-lg border border-red-300 text-red-700 hover:bg-red-50">PDF</button>
@@ -676,6 +778,64 @@ export default function ReportEditorPage() {
         </div>
       </div>
 
+      {/* Create-with-AI Modal */}
+      {aiOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !aiBusy && setAiOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>Create Report with AI</h3>
+              <p className="text-xs text-gray-500 mb-4">
+                The case record — complainants, accused, hearings, notes and evidence — is sent to the
+                configured AI model, which returns a full report in the standard Proctor Office format.
+              </p>
+
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Report language</label>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {([
+                  { id: 'bangla', label: 'বাংলা', sub: 'Bangla' },
+                  { id: 'english', label: 'English', sub: 'English' },
+                ] as const).map(opt => (
+                  <button key={opt.id} type="button" onClick={() => setAiLanguage(opt.id)}
+                    className={`px-4 py-3 rounded-lg border text-left transition-colors ${
+                      aiLanguage === opt.id
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}>
+                    <div className="text-sm font-medium">{opt.label}</div>
+                    <div className="text-xs text-gray-500">{opt.sub}</div>
+                  </button>
+                ))}
+              </div>
+
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Extra instructions <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <textarea value={aiInstructions} onChange={e => setAiInstructions(e.target.value)} rows={3}
+                placeholder="e.g. emphasise the CCTV evidence; recommend suspension rather than expulsion"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3" />
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-xs text-amber-800">
+                  The generated draft replaces the current editor content and is <strong>not</strong> saved
+                  automatically. Verify every name, date and finding before saving — AI output can be wrong.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button disabled={aiBusy} onClick={() => setAiOpen(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                <button disabled={aiBusy} onClick={handleGenerateWithAi}
+                  className="px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 flex items-center gap-2">
+                  {aiBusy && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                  {aiBusy ? 'Generating…' : 'Generate Report'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Preview Modal */}
       {showPreview && editor && (
         <>
@@ -694,7 +854,7 @@ export default function ReportEditorPage() {
                 .rp h2{font-size:22px;margin:8px 0} .rp h3{font-size:16px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:4px;margin:20px 0 10px}
                 .rp img{max-width:80px;display:block;margin:0 auto} .rp p{margin:4px 0;line-height:1.6} .rp ul,.rp ol{padding-left:24px}
               `}</style>
-              <div className="rp p-8" style={{ fontFamily: "'Noto Sans Bengali',Arial", color: '#000', maxWidth: 850, margin: '0 auto' }}
+              <div className="rp p-8" style={{ fontFamily: BANGLA_FONT_STACK, color: '#000', maxWidth: 850, margin: '0 auto' }}
                 dangerouslySetInnerHTML={{ __html: editor.getHTML() }} />
             </div>
           </div>

@@ -185,6 +185,7 @@ export interface Report {
   caseId: string;
   content: string;
   createdByName: string;
+  createdById?: string;
   isDraft: boolean;
   isFinal: boolean;
   createdDate: string;

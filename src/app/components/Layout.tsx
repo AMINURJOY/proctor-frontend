@@ -187,6 +187,7 @@ export default function Layout() {
     { path: '/settings/ranks', label: 'Ranks (পদবি)', superAdminOnly: true },
     { path: '/settings/articles', label: 'Articles (অনুচ্ছেদ)', superAdminOnly: true },
     { path: '/settings/forwarding', label: 'Case Forwarding', superAdminOnly: true },
+    { path: '/settings/ai', label: 'AI Integration', superAdminOnly: true },
     { path: '/settings/profile', label: 'Profile', superAdminOnly: false },
   ].filter(item => isSuperAdmin || !item.superAdminOnly);
 

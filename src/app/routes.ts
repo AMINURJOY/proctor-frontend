@@ -75,6 +75,7 @@ export const router = createBrowserRouter([
       { path: 'settings/ranks', Component: SettingsPage },
       { path: 'settings/articles', Component: SettingsPage },
       { path: 'settings/forwarding', Component: SettingsPage },
+      { path: 'settings/ai', Component: SettingsPage },
       { path: 'settings/profile', Component: SettingsPage },
       { path: '*', Component: StudentCatchAllRedirect },
     ],

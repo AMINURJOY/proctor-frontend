@@ -340,21 +340,22 @@ export default function CaseDetail() {
   const isAssignedToMe = !!currentUser?.name && caseItem.assignedTo === currentUser.name;
   const isInMyRoleQueue = !!currentUser?.role && caseItem.forwardedToRole === currentUser.role;
   const isActiveAssignee = (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
-  // Owner student OR any staff the case has been forwarded/assigned to may edit case info.
-  const canEditCase = (isOwnSubmission && currentUser?.role === 'student')
-    || isAssignedToMe || isInMyRoleQueue || isActiveAssignee
-    || currentUser?.role === 'super-admin';
   // Associated staff (not the student/VC) may append additional information to the case.
+  // The Proctor oversees every case, so they never need a forward to add information.
   const canAddInfo = !!currentUser?.role
     && currentUser.role !== 'student' && currentUser.role !== 'vc'
-    && (isAssignedToMe || isInMyRoleQueue || isActiveAssignee || currentUser.role === 'super-admin');
-  // Coordinator verify/forward actions live as header buttons (popups). Show them when the
-  // coordinator can act on this case (in their gender-routed queue, un-routed, or assigned).
+    && (isAssignedToMe || isInMyRoleQueue || isActiveAssignee
+        || currentUser.role === 'proctor' || currentUser.role === 'super-admin');
+  // Verify / forward actions live as header buttons (popups). Show them when the acting user
+  // can work the case: coordinators in their gender-routed queue (or un-routed/assigned), and
+  // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
+  // same powers without needing the case forwarded to them.
   const caseClosedish = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
   const coordinatorCanAct = !caseClosedish && (
     (currentUser?.role === 'coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator')) ||
     (currentUser?.role === 'female-coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator')) ||
-    ((currentUser?.role === 'coordinator' || currentUser?.role === 'female-coordinator') && isActiveAssignee)
+    ((currentUser?.role === 'coordinator' || currentUser?.role === 'female-coordinator') && isActiveAssignee) ||
+    currentUser?.role === 'proctor'
   );
   // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
   const assistantProctorCanAct = !caseClosedish && currentUser?.role === 'assistant-proctor'
@@ -481,7 +482,7 @@ export default function CaseDetail() {
             })()}
             <div className="flex flex-wrap gap-2 justify-end">
               {coordinatorCanAct && (
-                <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} />
+                <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} actingRole={role} onStatusChange={handleStatusChange} onForward={handleForward} />
               )}
               {canDraftReport && (
                 <button
@@ -499,14 +500,6 @@ export default function CaseDetail() {
               )}
               <CloseHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               <HearingModuleButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
-              {canEditCase && (
-                <button
-                  onClick={() => navigate(`/cases/${caseItem.id}/edit`)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
-                >
-                  Edit Case
-                </button>
-              )}
               {caseItem.type === 'type-1' && !caseItem.isAcknowledged && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
                 <button
                   onClick={() => setShowAckDialog(true)}
@@ -1345,7 +1338,9 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     // The specific assigned coordinator is additionally covered by isActiveAssignee below.
     'coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator',
     'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator',
-    'proctor': caseItem.forwardedToRole === 'proctor',
+    // The Proctor oversees every case — a coordinator only assists them — so the Proctor can
+    // always act, whether or not the case has been forwarded to them.
+    'proctor': true,
     'assistant-proctor': caseItem.forwardedToRole === 'assistant-proctor',
     'deputy-proctor': caseItem.forwardedToRole === 'deputy-proctor',
     'registrar': caseItem.forwardedToRole === 'registrar',
@@ -1695,13 +1690,13 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
         )}
       </div>
 
-      <UnifiedForwardSection
-        fromRole="proctor"
-        actionLoading={actionLoading}
-        withLoading={withLoading}
-        title="Assign / Forward to:"
-        onForward={onForward}
-      />
+      {/* Forwarding for the Proctor lives in the header "Accept & Forward" button (the same
+          panel the coordinators use), so it is verify-gated in one place instead of two. */}
+      <p className="text-sm text-gray-600">
+        Use the <span className="font-medium text-blue-700">Verify Case</span> and{' '}
+        <span className="font-medium text-blue-700">Accept &amp; Forward</span> buttons in the header
+        to verify this case and hand it on.
+      </p>
     </div>
   );
 }
@@ -1866,11 +1861,12 @@ function ForwardButton({ fromRole, caseItem, onForward, beforeForward, label = '
 }
 
 // Coordinator actions — compact header buttons that open the verify / forward popups.
-function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential }: {
+function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential, actingRole }: {
   onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
   isConfidential: boolean;
+  actingRole: string;
 }) {
   const [actionLoading, setActionLoading] = useState(false);
   const withLoading = async (fn: () => Promise<void>) => {
@@ -1931,21 +1927,39 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
     await onStatusChange('resubmission-requested', { note: noteText });
   };
 
-  const coordRole = isConfidential ? 'female-coordinator' : 'coordinator';
+  // Forwarding happens as the acting user's own role. The Proctor gets the same panel as the
+  // coordinators, so fall back to the gender-routed coordinator role only for the coordinators.
+  const coordRole = actingRole === 'proctor'
+    ? 'proctor'
+    : (isConfidential ? 'female-coordinator' : 'coordinator');
 
   // An open hearing must be closed first — the next role acts on its outcome.
   const openHearing = getOpenHearing(caseItem);
 
+  // Forwarding is a two-step flow: the case must be verified first, so "Accept & Forward"
+  // stays disabled until "Verify Case → Accept" moves it out of the pre-verification states.
+  const needsVerification = ['submitted', 'resubmission-requested', 'on-hold'].includes(caseItem.status);
+  const forwardBlockedReason = needsVerification
+    ? 'Verify the case first — use "Verify Case" and choose Accept.'
+    : openHearing
+      ? 'Close the hearing before forwarding this case.'
+      : undefined;
+
   return (
     <>
-      {/* Header buttons */}
+      {/* Header buttons. Once the case is past verification the button becomes a solid green
+          "Verified" state indicator — done, and no longer clickable. */}
       <button onClick={() => setVerifyOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-700 text-sm hover:bg-cyan-100">
-        <CheckIcon /> Verify Case
+        disabled={!needsVerification}
+        title={needsVerification ? undefined : 'This case has already been verified.'}
+        className={needsVerification
+          ? 'flex items-center gap-2 px-4 py-2 rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-700 text-sm hover:bg-cyan-100'
+          : 'flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-600 bg-emerald-600 text-white text-sm cursor-default'}>
+        <CheckIcon /> {needsVerification ? 'Verify Case' : 'Verified'}
       </button>
       <button onClick={() => setForwardOpen(true)}
-        disabled={!!openHearing}
-        title={openHearing ? 'Close the hearing before forwarding this case.' : undefined}
+        disabled={!!forwardBlockedReason}
+        title={forwardBlockedReason}
         className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50">
         <ForwardIcon /> Accept & Forward
       </button>
@@ -2025,11 +2039,6 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential 
                 actionLoading={actionLoading}
                 withLoading={withLoading}
                 title="Accept & Forward to:"
-                beforeForward={async () => {
-                  if (['submitted', 'resubmission-requested', 'on-hold'].includes(caseItem.status)) {
-                    await onStatusChange('verified');
-                  }
-                }}
                 onForward={onForward}
               />
             </div>

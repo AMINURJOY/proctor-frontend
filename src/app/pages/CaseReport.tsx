@@ -35,6 +35,25 @@ export default function CaseReport() {
   }
 
   const finalReport = caseItem.reports?.find(r => r.isFinal);
+
+  const complainantList = (caseItem.complainants?.length ? caseItem.complainants : [{
+    name: caseItem.studentName,
+    studentId: caseItem.studentId,
+    department: caseItem.studentDepartment,
+    contact: caseItem.studentContact,
+    advisorName: caseItem.studentAdvisorName,
+    fatherName: caseItem.studentFatherName,
+    fatherContact: caseItem.studentFatherContact,
+  }]) as any[];
+
+  const accusedList = (caseItem.accusedPersons?.length ? caseItem.accusedPersons : [{
+    name: caseItem.accusedName,
+    accusedStudentId: caseItem.accusedId,
+    department: caseItem.accusedDepartment,
+    contact: caseItem.accusedContact,
+    guardianContact: caseItem.accusedGuardianContact,
+  }]) as any[];
+
   const Field = ({ label, value }: { label: string; value?: string | null }) => (
     <div className="py-1.5 border-b border-gray-100">
       <span className="text-xs text-gray-500">{label}</span>
@@ -93,36 +112,53 @@ export default function CaseReport() {
 
           <p className="text-sm text-gray-500 mb-4">বিনীত,</p>
 
-          {/* Complainant Details & Accused Details - Side by Side */}
+          {/* Complainants & Accused - Side by Side.
+              The case's flat studentName/accusedName columns only ever hold the first person;
+              the full lists live in the complainants/accusedPersons collections. Fall back to
+              the flat columns for older cases saved before those collections existed. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Complainant Details */}
+            {/* Complainants */}
             <div className="border border-gray-200 rounded-lg p-4">
               <h4 className="text-sm font-bold mb-3 pb-2 border-b border-gray-200" style={{ color: '#0b2652' }}>
-                অভিযোগকারীর তথ্য
+                অভিযোগকারীর তথ্য{complainantList.length > 1 ? ` (${complainantList.length} জন)` : ''}
               </h4>
-              <div className="space-y-1">
-                <Field label="নাম" value={caseItem.studentName} />
-                <Field label="আইডি" value={caseItem.studentId} />
-                <Field label="ডিপার্টমেন্ট" value={caseItem.studentDepartment} />
-                <Field label="কন্টাক্ট নাম্বার" value={caseItem.studentContact} />
-                <Field label="এডভাইজারের নাম" value={caseItem.studentAdvisorName} />
-                <Field label="বাবার নাম" value={caseItem.studentFatherName} />
-                <Field label="বাবার কন্টাক্ট নাম্বার" value={caseItem.studentFatherContact} />
+              <div className="space-y-4">
+                {complainantList.map((c, i) => (
+                  <div key={i} className="space-y-1">
+                    {complainantList.length > 1 && (
+                      <p className="text-xs font-semibold text-gray-400">অভিযোগকারী {i + 1}</p>
+                    )}
+                    <Field label="নাম" value={c.name} />
+                    <Field label="আইডি" value={c.studentId} />
+                    <Field label="ডিপার্টমেন্ট" value={c.department} />
+                    <Field label="কন্টাক্ট নাম্বার" value={c.contact} />
+                    <Field label="এডভাইজারের নাম" value={c.advisorName} />
+                    <Field label="বাবার নাম" value={c.fatherName} />
+                    <Field label="বাবার কন্টাক্ট নাম্বার" value={c.fatherContact} />
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Accused Details */}
+            {/* Accused */}
             <div className="border border-orange-200 rounded-lg p-4 bg-orange-50/30">
               <h4 className="text-sm font-bold mb-3 pb-2 border-b border-orange-200" style={{ color: '#0b2652' }}>
-                অভিযুক্তের তথ্য
+                অভিযুক্তের তথ্য{accusedList.length > 1 ? ` (${accusedList.length} জন)` : ''}
               </h4>
               <p className="text-xs text-gray-400 mb-2">যা যা তথ্য জানা আছে তা দিয়ে সাহায্য করুন</p>
-              <div className="space-y-1">
-                <Field label="নাম" value={caseItem.accusedName} />
-                <Field label="আইডি" value={caseItem.accusedId} />
-                <Field label="ডিপার্টমেন্ট" value={caseItem.accusedDepartment} />
-                <Field label="কন্টাক্ট নাম্বার" value={caseItem.accusedContact} />
-                <Field label="অভিভাবকের নাম্বার" value={caseItem.accusedGuardianContact} />
+              <div className="space-y-4">
+                {accusedList.map((a, i) => (
+                  <div key={i} className="space-y-1">
+                    {accusedList.length > 1 && (
+                      <p className="text-xs font-semibold text-gray-400">অভিযুক্ত {i + 1}</p>
+                    )}
+                    <Field label="নাম" value={a.name} />
+                    <Field label="আইডি" value={a.accusedStudentId} />
+                    <Field label="ডিপার্টমেন্ট" value={a.department} />
+                    <Field label="কন্টাক্ট নাম্বার" value={a.contact} />
+                    <Field label="অভিভাবকের নাম্বার" value={a.guardianContact} />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
