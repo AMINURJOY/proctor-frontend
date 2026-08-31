@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router';
 import { rolesApi, settingsApi, checklistApi, ranksApi, articlesApi, forwardingRulesApi, caseCategoriesApi, caseSubjectsApi, aiApi } from '../services/api';
 import { toast } from 'sonner';
+import { roleLabel } from '../utils/roles';
 
 const menuItems = [
   'Dashboard', 'Submit Incident', 'Incidents (Type-1)', 'Cases',
@@ -57,7 +58,7 @@ const permDefs = [
 ];
 
 const formatRole = (role: string) =>
-  role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  roleLabel(role);
 
 export default function SettingsPage() {
   const { currentUser } = useAuth();
@@ -97,6 +98,13 @@ export default function SettingsPage() {
   const [routingLoading, setRoutingLoading] = useState(true);
   const [routingSaving, setRoutingSaving] = useState(false);
   const [routingSavedMsg, setRoutingSavedMsg] = useState('');
+
+  // --- Control Room State ---
+  // The 24/7 number attached to every Fast (Type-1) acknowledgment. Lives on the Incident
+  // Routing tab because it is part of how a fast incident reaches the complainant.
+  const [controlRoomNumber, setControlRoomNumber] = useState('');
+  const [controlRoomSaving, setControlRoomSaving] = useState(false);
+  const [controlRoomSavedMsg, setControlRoomSavedMsg] = useState('');
 
   // --- Case Viewing State ---
   const [caseViewingType1, setCaseViewingType1] = useState<string[]>([]);
@@ -167,6 +175,8 @@ export default function SettingsPage() {
         if (setting?.value) {
           setForwardingRoles(setting.value.split(',').map((s: string) => s.trim()).filter(Boolean));
         }
+        const cr = await settingsApi.getByKey('control_room_number');
+        setControlRoomNumber(((cr.data.data || cr.data)?.value || '').trim());
       } catch {
         // Keep defaults
       } finally {
@@ -175,6 +185,19 @@ export default function SettingsPage() {
     };
     fetchRouting();
   }, [isSuperAdmin, activeTab]);
+
+  const handleSaveControlRoom = async () => {
+    setControlRoomSaving(true);
+    setControlRoomSavedMsg('');
+    try {
+      await settingsApi.update('control_room_number', controlRoomNumber.trim());
+      setControlRoomSavedMsg('Control Room number saved successfully');
+    } catch {
+      setControlRoomSavedMsg('Failed to save Control Room number');
+    } finally {
+      setControlRoomSaving(false);
+    }
+  };
 
   // Fetch case viewing settings
   useEffect(() => {
@@ -546,6 +569,40 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Control Room contact */}
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+                <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>
+                  24/7 Control Room Number
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Included automatically in the acknowledgment sent for Fast (Type-1) incidents, so the
+                  complainant always has a live contact while help is on the way.
+                </p>
+                <input
+                  type="tel"
+                  value={controlRoomNumber}
+                  onChange={(e) => setControlRoomNumber(e.target.value)}
+                  placeholder="+880 1XXX XXXXXX"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-2 text-xs text-gray-500">Leave blank to omit the contact line from acknowledgments.</p>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    onClick={handleSaveControlRoom}
+                    disabled={controlRoomSaving}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50"
+                    style={{ backgroundColor: '#0b2652' }}
+                  >
+                    {controlRoomSaving ? 'Saving...' : 'Save Number'}
+                  </button>
+                  {controlRoomSavedMsg && (
+                    <span className={`text-sm ${controlRoomSavedMsg.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                      {controlRoomSavedMsg}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* Type-1 Forwarding */}
               <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
                 <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>
@@ -1070,14 +1127,14 @@ function ForwardingManager() {
             <label className="block text-xs text-gray-500 mb-1">From Role</label>
             <select value={fromRole} onChange={e => setFromRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
               <option value="">Select...</option>
-              {allRoles.map(r => <option key={r} value={r}>{r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
+              {allRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">To Role</label>
             <select value={toRole} onChange={e => setToRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
               <option value="">Select...</option>
-              {allRoles.map(r => <option key={r} value={r}>{r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
+              {allRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </div>
           <div>
@@ -1100,7 +1157,7 @@ function ForwardingManager() {
             <div className="flex flex-wrap gap-2">
               {grouped[role].map((rule: any) => (
                 <div key={rule.id} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs">
-                  <span className="font-medium">&rarr; {rule.toRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                  <span className="font-medium">&rarr; {roleLabel(rule.toRole)}</span>
                   <span className="text-gray-400">({rule.resultStatus})</span>
                   <button onClick={() => { forwardingRulesApi.delete(rule.id).then(() => { fetchRules(); toast.success('Removed'); }); }}
                     className="ml-1 text-red-500 hover:text-red-700">&times;</button>
@@ -1125,7 +1182,7 @@ function ForwardingManager() {
                   else { await forwardingRulesApi.create({ fromRole: role, toRole: '__close__', resultStatus: 'closed' }); }
                   fetchRules();
                 }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
               </label>
             );
           })}
@@ -1147,7 +1204,7 @@ function ForwardingManager() {
                   else { await forwardingRulesApi.create({ fromRole: role, toRole: '__hearing__', resultStatus: 'hearing-scheduled' }); }
                   fetchRules();
                 }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
               </label>
             );
           })}
@@ -1169,7 +1226,7 @@ function ForwardingManager() {
                   else { await forwardingRulesApi.create({ fromRole: role, toRole: '__draft_report__', resultStatus: 'draft-report' }); }
                   fetchRules();
                 }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{role.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
               </label>
             );
           })}
@@ -1441,7 +1498,7 @@ function CaseCategoriesManager() {
                 </p>
                 {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
                 <p className="text-xs text-gray-400">
-                  Applies to: {item.appliesToType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} · Order {item.sortOrder}
+                  Applies to: {roleLabel(item.appliesToType)} · Order {item.sortOrder}
                   {subjectName(item.subjectId) ? ` · Subject: ${subjectName(item.subjectId)}` : ' · No subject'}
                 </p>
               </div>

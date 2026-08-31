@@ -14,14 +14,16 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   MailIcon,
-  RefreshIcon
+  RefreshIcon,
+  UserIcon
 } from '../components/Icons';
 import { Case, CaseStatus, Hearing, User } from '../types';
-import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, API_BASE_URL } from '../services/api';
+import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, API_BASE_URL } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import HearingCountdown from '../components/HearingCountdown';
+import { roleLabel } from '../utils/roles';
 
 // A hearing left in "scheduled" state blocks forwarding: the next role acts on the
 // hearing's outcome, so the case can't move on until it's closed out with remarks.
@@ -78,6 +80,17 @@ function getStepIndex(status: CaseStatus): number {
   return map[status] ?? 0;
 }
 
+type CloseExtra = { verdict?: string; recommendation?: string; note?: string; closingMessage?: string };
+
+// The "we are coming" note a Fast (Type-1) case opens with. The Control Room number is
+// appended so the complainant always has a live 24/7 contact.
+function defaultAckMessage(controlRoomNumber: string) {
+  const base = 'Received — we are coming. Please standby for further updates.';
+  return controlRoomNumber
+    ? `${base}\n\nControl Room (24/7): ${controlRoomNumber}`
+    : base;
+}
+
 export default function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -90,20 +103,36 @@ export default function CaseDetail() {
   const [addingInfo, setAddingInfo] = useState(false);
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
-  // Per-case notifications shown to the student in the "Message from Proctor Office" tab.
+  // Per-case notifications shown to the student in the "Message from Administrative" tab.
   const [caseNotifications, setCaseNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingNote, setAddingNote] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Document opened in the full-screen viewer (null = viewer closed).
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
+
+  // Close-case dialog. Holds the extra payload (verdict / recommendation) collected by the
+  // panel that asked to close, until the mandatory closing message is supplied.
+  const [pendingClose, setPendingClose] = useState<CloseExtra | null>(null);
+  const [closingMessage, setClosingMessage] = useState('');
+  const [closing, setClosing] = useState(false);
 
   // Acknowledge dialog
   const [showAckDialog, setShowAckDialog] = useState(false);
   const [ackComment, setAckComment] = useState('');
   const [ackSubmitting, setAckSubmitting] = useState(false);
+  // 24/7 Control Room number (Settings → General). Fast cases always tell the complainant
+  // where to call while help is on the way, so it is pre-filled into the acknowledgment.
+  const [controlRoomNumber, setControlRoomNumber] = useState('');
+  useEffect(() => {
+    settingsApi.getByKey('control_room_number')
+      .then(res => setControlRoomNumber((res.data?.data?.value || '').trim()))
+      .catch(() => setControlRoomNumber(''));
+  }, []);
 
   // Police-case confirmation dialog
   const [showPoliceConfirm, setShowPoliceConfirm] = useState(false);
@@ -130,7 +159,15 @@ export default function CaseDetail() {
       .catch(() => setCanDraftReport(false));
   }, [role]);
 
-  // Student "Message from Proctor" unread badge: compare the latest acknowledgment timestamp
+  // Escape closes the document viewer, matching the other modals on this page.
+  useEffect(() => {
+    if (!previewDoc) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewDoc(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewDoc]);
+
+  // Student "Message from Administrative" unread badge: compare the latest acknowledgment timestamp
   // against what the student has already seen (stored locally).
   useEffect(() => {
     if (currentUser?.role !== 'student' || !caseItem?.id) return;
@@ -181,7 +218,7 @@ export default function CaseDetail() {
           const vRes = await checklistApi.getVerifications(id!);
           setVerifications(vRes.data.data || []);
         } catch { setVerifications([]); }
-        // Per-case notifications feed the student's "Message from Proctor Office" tab.
+        // Per-case notifications feed the student's "Message from Administrative" tab.
         try {
           const nRes = await notificationsApi.getByCase(id!);
           setCaseNotifications(nRes.data.data || []);
@@ -258,8 +295,14 @@ export default function CaseDetail() {
     return `${API_BASE_URL}${url}`;
   };
 
-  const handleStatusChange = async (newStatus: string, extra?: { verdict?: string; recommendation?: string; note?: string }) => {
+  // Closing a case always requires a stated reason. Every "Close Case" button in the page
+  // funnels through here, so the prompt is enforced in one place rather than per panel.
+  const handleStatusChange = async (newStatus: string, extra?: CloseExtra) => {
     if (!caseItem) return;
+    if (newStatus === 'closed' && !(extra?.closingMessage || '').trim()) {
+      setPendingClose(extra ?? {});
+      return;
+    }
     try {
       await casesApi.updateStatus(caseItem.id, { status: newStatus, ...extra });
       const response = await casesApi.getById(caseItem.id);
@@ -277,7 +320,7 @@ export default function CaseDetail() {
       await casesApi.forward(caseItem.id, { targetRole, ...extra });
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
-      toast.success('Case forwarded', { description: `Forwarded to ${targetRole.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}` });
+      toast.success('Case forwarded', { description: `Forwarded to ${roleLabel(targetRole)}` });
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to forward case';
       toast.error('Error', { description: msg });
@@ -352,10 +395,12 @@ export default function CaseDetail() {
   // same powers without needing the case forwarded to them.
   const caseClosedish = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
   const coordinatorCanAct = !caseClosedish && (
-    (currentUser?.role === 'coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator')) ||
+    // The Administrative Officer is the Proctor's assistant and runs the office in practice,
+    // so both act on any case regardless of where it has been forwarded.
+    currentUser?.role === 'coordinator' ||
+    currentUser?.role === 'proctor' ||
     (currentUser?.role === 'female-coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator')) ||
-    ((currentUser?.role === 'coordinator' || currentUser?.role === 'female-coordinator') && isActiveAssignee) ||
-    currentUser?.role === 'proctor'
+    (currentUser?.role === 'female-coordinator' && isActiveAssignee)
   );
   // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
   const assistantProctorCanAct = !caseClosedish && currentUser?.role === 'assistant-proctor'
@@ -406,9 +451,9 @@ export default function CaseDetail() {
     { id: 'overview' as const, label: 'Overview' },
     { id: 'documents' as const, label: 'Documents' },
     { id: 'hearing' as const, label: 'Hearing' },
-    // Students never see internal Notes; they get "Message from Proctor Office" instead.
+    // Students never see internal Notes; they get "Message from Administrative" instead.
     isStudentView
-      ? { id: 'message' as const, label: 'Message from Proctor Office' }
+      ? { id: 'message' as const, label: 'Message from Administrative' }
       : { id: 'notes' as const, label: 'Notes' },
     { id: 'timeline' as const, label: 'Activity Timeline' },
   ];
@@ -455,7 +500,7 @@ export default function CaseDetail() {
               </span>
               {caseItem.forwardedToRole && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
-                  <ForwardIcon /> Forwarded to {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  <ForwardIcon /> Forwarded to {roleLabel(caseItem.forwardedToRole)}
                 </span>
               )}
             </div>
@@ -498,17 +543,22 @@ export default function CaseDetail() {
               {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
                 <DeputyProctorPanel caseItem={caseItem} remarks={deputyRemarks} onForward={handleForward} />
               )}
+              <AssignCaseButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               <CloseHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
+              <RescheduleHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               <HearingModuleButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               {caseItem.type === 'type-1' && !caseItem.isAcknowledged && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
                 <button
-                  onClick={() => setShowAckDialog(true)}
+                  onClick={() => {
+                    if (!ackComment.trim()) setAckComment(defaultAckMessage(controlRoomNumber));
+                    setShowAckDialog(true);
+                  }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700"
                 >
                   <CheckIcon /> Acknowledge
                 </button>
               )}
-              {caseItem.type === 'type-1' && caseItem.status === 'submitted' && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
+              {caseItem.type === 'type-1' && ['submitted', 'assigned'].includes(caseItem.status) && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
                 <>
                   <button
                     onClick={() => handleStatusChange('suggested-type-2')}
@@ -744,10 +794,34 @@ export default function CaseDetail() {
                 )
               )}
 
-              {/* Students see this only in the "Message from Proctor Office" tab, not in the overview. */}
+              {/* Who is handling this case — name, rank and contact, the same details the
+                  complainant receives by notification when handlers are assigned. */}
+              {(caseItem.assignments || []).filter(a => a.isActive).length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Handled By</h3>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(caseItem.assignments || []).filter(a => a.isActive).map(a => (
+                      <div key={a.id} className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm">
+                        <p className="font-medium">
+                          {a.userName}
+                          {a.isPrimary && <span className="ml-2 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">Primary</span>}
+                        </p>
+                        <p className="text-gray-600">{a.userRank || roleLabel(a.userRole)}</p>
+                        {a.userContactNumber && (
+                          <p className="text-gray-600">
+                            Contact: <a href={`tel:${a.userContactNumber}`} className="text-blue-700 hover:underline">{a.userContactNumber}</a>
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Students see this only in the "Message from Administrative" tab, not in the overview. */}
               {caseItem.isAcknowledged && currentUser?.role !== 'student' && (
                 <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Administrative</h3>
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
                     <div className="flex items-center gap-2 text-emerald-700">
                       <CheckIcon />
@@ -758,10 +832,9 @@ export default function CaseDetail() {
                         <p className="text-gray-800 whitespace-pre-wrap">{caseItem.acknowledgmentComment}</p>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500">
-                      {caseItem.acknowledgedByName && <>— <strong>{caseItem.acknowledgedByName}</strong> (Proctor)</>}
-                      {caseItem.acknowledgedAt && <> · {new Date(caseItem.acknowledgedAt).toLocaleString()}</>}
-                    </p>
+                    {caseItem.acknowledgedAt && (
+                      <p className="text-xs text-gray-500">{new Date(caseItem.acknowledgedAt).toLocaleString()}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -934,7 +1007,11 @@ export default function CaseDetail() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {caseItem.documents.map((doc) => (
-                    <div key={doc.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div
+                      key={doc.id}
+                      onClick={() => setPreviewDoc(doc)}
+                      className="cursor-zoom-in border border-gray-200 rounded-lg p-4 transition-shadow hover:border-blue-300 hover:shadow-md"
+                    >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f5f7fb' }}>
                           {doc.type === 'image' && <ImageIcon />}
@@ -945,7 +1022,7 @@ export default function CaseDetail() {
                           <p className="font-medium text-sm truncate">{doc.name}</p>
                           <p className="text-xs text-gray-500">
                             Uploaded by {doc.uploadedBy}
-                            {doc.uploadedByRole && <span className="ml-1 text-gray-400">({doc.uploadedByRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')})</span>}
+                            {doc.uploadedByRole && <span className="ml-1 text-gray-400">({roleLabel(doc.uploadedByRole)})</span>}
                           </p>
                           <p className="text-xs text-gray-500">{new Date(doc.uploadedDate).toLocaleDateString()}</p>
                         </div>
@@ -954,19 +1031,16 @@ export default function CaseDetail() {
                         <img src={getDocUrl(doc.url)} alt={doc.name} className="mt-3 w-full h-40 object-cover rounded-lg" />
                       )}
                       {doc.type === 'video' && (
-                        <video controls className="mt-3 w-full h-40 rounded-lg bg-gray-900 object-cover">
+                        // Clicks land on the card (opening the viewer) rather than the inline
+                        // controls, so the thumbnail is a preview and the viewer is where it plays.
+                        <video muted className="pointer-events-none mt-3 w-full h-40 rounded-lg bg-gray-900 object-cover">
                           <source src={getDocUrl(doc.url)} />
                         </video>
                       )}
-                      {doc.type === 'pdf' && (
-                        <a
-                          href={getDocUrl(doc.url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm hover:bg-blue-100"
-                        >
-                          <FileIcon /> View PDF
-                        </a>
+                      {(doc.type === 'pdf' || doc.type === 'other') && (
+                        <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm">
+                          <FileIcon /> Click to open
+                        </div>
                       )}
                     </div>
                   ))}
@@ -993,6 +1067,15 @@ export default function CaseDetail() {
                         <div>
                           <p className="font-medium">{hearing.date} at {hearing.time}</p>
                           <p className="text-sm text-gray-600">{hearing.location}</p>
+                          {hearing.createdByName && (
+                            <p className="mt-1 text-xs text-gray-500">Set by {hearing.createdByName}</p>
+                          )}
+                          {hearing.conductedByName && (
+                            <p className="text-xs text-gray-500">
+                              Conducted by <span className="font-medium text-gray-700">{hearing.conductedByName}</span>
+                              {hearing.conductedAt && <> · {new Date(hearing.conductedAt).toLocaleString()}</>}
+                            </p>
+                          )}
                         </div>
                         <span className={`px-3 py-1 text-xs rounded-full ${
                           hearing.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
@@ -1018,6 +1101,24 @@ export default function CaseDetail() {
                           <p className="text-sm text-gray-700">{hearing.notes}</p>
                         </div>
                       )}
+                      {(hearing.reschedules?.length || 0) > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <p className="text-xs text-amber-700 mb-1">
+                            Rescheduled {hearing.reschedules!.length} time{hearing.reschedules!.length > 1 ? 's' : ''}:
+                          </p>
+                          <ul className="space-y-1">
+                            {hearing.reschedules!.map((r) => (
+                              <li key={r.id} className="text-xs text-gray-600">
+                                <span className="text-gray-400 line-through">{r.fromDate} {r.fromTime}</span>
+                                {' → '}
+                                <span className="font-medium text-gray-800">{r.toDate} {r.toTime}</span>
+                                {r.toLocation && <span className="text-gray-500"> · {r.toLocation}</span>}
+                                <span className="text-gray-500"> — “{r.reason}” by {r.rescheduledBy}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {hearing.remarks && (
                         <div className="mt-3 pt-3 border-t border-gray-200 bg-blue-50 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
                           <p className="text-xs text-blue-600 mb-1">Hearing Remarks:</p>
@@ -1031,10 +1132,10 @@ export default function CaseDetail() {
             </div>
           )}
 
-          {/* Message from Proctor Tab (students) */}
+          {/* Message from Administrative Tab (students) */}
           {activeTab === 'message' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
+              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Administrative</h3>
 
               {caseItem.isAcknowledged && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
@@ -1067,7 +1168,7 @@ export default function CaseDetail() {
                 </div>
               ) : (
                 !caseItem.isAcknowledged && (
-                  <p className="text-gray-500 text-center py-8">No messages from the proctor office yet.</p>
+                  <p className="text-gray-500 text-center py-8">No messages from the administrative office yet.</p>
                 )
               )}
             </div>
@@ -1164,7 +1265,10 @@ export default function CaseDetail() {
               <div className="relative">
                 <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
                 <div className="space-y-6">
-                  {[...caseItem.timeline].reverse().map((event) => (
+                  {/* Newest first — sorted here rather than trusting the API's order. */}
+                  {[...caseItem.timeline]
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                    .map((event) => (
                     <div key={event.id} className="relative pl-10">
                       <div className="absolute left-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#0b2652' }}>
                         <div className="w-3 h-3 rounded-full bg-white"></div>
@@ -1187,6 +1291,111 @@ export default function CaseDetail() {
       </div>
 
       {/* Acknowledge dialog */}
+      {/* Close Case — a closing message is mandatory */}
+      {pendingClose && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { if (!closing) setPendingClose(null); }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Close Case</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Case <strong>{caseItem.caseNumber}</strong> cannot be closed without a reason. The message below is
+                recorded on the case and sent to the complainant.
+              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Closing message / reason <span className="text-red-600">*</span></label>
+              <textarea
+                value={closingMessage}
+                onChange={(e) => setClosingMessage(e.target.value)}
+                rows={4}
+                autoFocus
+                placeholder="Explain why this case is being closed…"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              />
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setPendingClose(null)}
+                  disabled={closing}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    const message = closingMessage.trim();
+                    if (!message) return;
+                    setClosing(true);
+                    try {
+                      const extra = { ...pendingClose, closingMessage: message };
+                      setPendingClose(null);
+                      setClosingMessage('');
+                      await handleStatusChange('closed', extra);
+                    } finally {
+                      setClosing(false);
+                    }
+                  }}
+                  disabled={closing || !closingMessage.trim()}
+                  className="px-4 py-2 text-sm rounded-lg bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-60"
+                >
+                  {closing ? 'Closing…' : 'Close Case'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Full-screen document viewer */}
+      {previewDoc && (
+        <>
+          <div className="fixed inset-0 bg-black/80 z-40" onClick={() => setPreviewDoc(null)} />
+          <div className="fixed inset-0 z-50 flex flex-col p-4 sm:p-8" onClick={() => setPreviewDoc(null)}>
+            <div className="mb-3 flex items-center justify-between gap-4 text-white">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{previewDoc.name}</p>
+                <p className="text-xs text-white/60">
+                  Uploaded by {previewDoc.uploadedBy} · {new Date(previewDoc.uploadedDate).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <a
+                  href={getDocUrl(previewDoc.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded-lg border border-white/30 px-3 py-1.5 text-sm hover:bg-white/10"
+                >
+                  Open in new tab
+                </a>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  className="rounded-lg border border-white/30 px-3 py-1.5 text-sm hover:bg-white/10"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            {/* Stop propagation so clicking the media itself doesn't dismiss the viewer. */}
+            <div className="flex min-h-0 flex-1 items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              {previewDoc.type === 'image' && (
+                <img src={getDocUrl(previewDoc.url)} alt={previewDoc.name} className="max-h-full max-w-full rounded-lg object-contain" />
+              )}
+              {previewDoc.type === 'video' && (
+                <video controls autoPlay className="max-h-full max-w-full rounded-lg bg-black">
+                  <source src={getDocUrl(previewDoc.url)} />
+                </video>
+              )}
+              {previewDoc.type !== 'image' && previewDoc.type !== 'video' && (
+                <iframe
+                  title={previewDoc.name}
+                  src={getDocUrl(previewDoc.url)}
+                  className="h-full w-full rounded-lg border-0 bg-white"
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {showAckDialog && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowAckDialog(false)} />
@@ -1194,6 +1403,12 @@ export default function CaseDetail() {
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Acknowledge Incident</h3>
               <p className="text-sm text-gray-600 mb-4">Send a quick "received — taking action shortly" note to the student.</p>
+              {controlRoomNumber && (
+                <p className="text-xs text-gray-500 mb-3 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
+                  The 24/7 Control Room number (<span className="font-medium">{controlRoomNumber}</span>) is added to
+                  this message automatically. Change it in Settings → General.
+                </p>
+              )}
               <textarea
                 value={ackComment}
                 onChange={(e) => setAckComment(e.target.value)}
@@ -1334,13 +1549,12 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
 
   // View-only enforcement: if case hasn't been forwarded to this role, show read-only message
   const roleForwardMap: Record<string, boolean> = {
-    // Coordinators act on cases routed to their role (gender-based) or not-yet-routed (legacy).
-    // The specific assigned coordinator is additionally covered by isActiveAssignee below.
-    'coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'coordinator',
-    'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator',
-    // The Proctor oversees every case — a coordinator only assists them — so the Proctor can
-    // always act, whether or not the case has been forwarded to them.
+    // The Administrative Officer assists the Proctor and holds the same powers, so both can
+    // always act, whether or not the case has been forwarded to them. The Female Coordinator
+    // stays scoped to cases routed to her (or not yet routed at all).
+    'coordinator': true,
     'proctor': true,
+    'female-coordinator': !caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator',
     'assistant-proctor': caseItem.forwardedToRole === 'assistant-proctor',
     'deputy-proctor': caseItem.forwardedToRole === 'deputy-proctor',
     'registrar': caseItem.forwardedToRole === 'registrar',
@@ -1361,23 +1575,23 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     return (
       <div className="bg-yellow-50 rounded-xl shadow-md p-4 border border-yellow-200 mb-6">
         <p className="text-sm text-yellow-700">
-          This case is currently being handled by <strong>{caseItem.forwardedToRole?.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</strong>. You can view the case details but cannot take actions until it is forwarded to you.
+          This case is currently being handled by <strong>{roleLabel(caseItem.forwardedToRole)}</strong>. You can view the case details but cannot take actions until it is forwarded to you.
         </p>
       </div>
     );
   }
 
-  // Coordinator actions are rendered as header buttons (Verify Case / Accept & Forward),
-  // so there is no inline body panel for coordinators.
-  if (role === 'coordinator' || role === 'female-coordinator') {
+  // The Female Coordinator's actions are rendered as header buttons (Verify Case /
+  // Accept & Forward), so there is no inline body panel for her.
+  if (role === 'female-coordinator') {
     return null;
   }
 
-  // Proctor panel
-  if (role === 'proctor') {
+  // Proctor panel — shared with the Administrative Officer, who holds the same powers.
+  if (role === 'proctor' || role === 'coordinator') {
     return (
       <>
-        <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} />
+        <ProctorPanel actionLoading={actionLoading} withLoading={withLoading} onStatusChange={onStatusChange} onForward={onForward} caseItem={caseItem} actingRole={role} />
       </>
     );
   }
@@ -1645,21 +1859,24 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
   );
 }
 
-// Proctor panel using shared UnifiedForwardSection + dynamic forwarding rules
-function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem }: {
+// Decision panel shared by the Proctor and the Administrative Officer, who holds the same
+// powers. Close permission is read for the acting role rather than hardcoded to "proctor".
+function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, caseItem, actingRole }: {
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
   onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
+  actingRole: string;
 }) {
   const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
-    forwardingRulesApi.getSpecial('proctor').then(res => {
+    if (!actingRole) return;
+    forwardingRulesApi.getSpecial(actingRole).then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
-  }, []);
+  }, [actingRole]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -1670,7 +1887,7 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
           </svg>
         </div>
         <div>
-          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Proctor: Case Decision Panel</h3>
+          <h3 className="font-semibold" style={{ color: '#0b2652' }}>{roleLabel(actingRole)}: Case Decision Panel</h3>
           <p className="text-xs text-gray-500">Review case and decide on action</p>
         </div>
       </div>
@@ -1927,11 +2144,9 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
     await onStatusChange('resubmission-requested', { note: noteText });
   };
 
-  // Forwarding happens as the acting user's own role. The Proctor gets the same panel as the
-  // coordinators, so fall back to the gender-routed coordinator role only for the coordinators.
-  const coordRole = actingRole === 'proctor'
-    ? 'proctor'
-    : (isConfidential ? 'female-coordinator' : 'coordinator');
+  // Forwarding always happens as the acting user's own role — the Proctor, the Administrative
+  // Officer and the Female Coordinator share this panel but each carries their own rules.
+  const coordRole = actingRole;
 
   // An open hearing must be closed first — the next role acts on its outcome.
   const openHearing = getOpenHearing(caseItem);
@@ -2295,7 +2510,6 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const roleLabel = (r: string) => r.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   // Nothing to forward to: hide the whole section (no forwarding permission).
   if (!loaded) return null;
@@ -2394,6 +2608,300 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
         <ForwardIcon /> Forward{selectedUsers.length > 0 ? ` (${selectedUsers.length})` : ''}
       </button>
     </div>
+  );
+}
+
+// Who a case can actually be handed to. The Proctor and the Administrative Officers decide
+// the assignment; the field officers below are the ones who work the case.
+const ASSIGNABLE_HANDLER_ROLES: string[] = ['assistant-proctor', 'deputy-proctor'];
+
+// "Assign Handlers" header action — once an instant incident reaches the Proctor /
+// Administrative Officer, they name who will actually handle it. Multiple people can be
+// picked; the complainant is then notified with each handler's name, rank and contact
+// number (CaseService.AssignCaseAsync). Gated on the role's __assign__ permission, the
+// same rule the server enforces on POST /cases/{id}/assignments.
+function AssignCaseButton({ caseItem, role, onRefresh }: {
+  caseItem: Case;
+  role: string;
+  onRefresh: () => Promise<void>;
+}) {
+  const [canAssign, setCanAssign] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [primary, setPrimary] = useState<string>('');
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!role) return;
+    forwardingRulesApi.getSpecial(role).then(res => setCanAssign(!!res.data.data?.canAssign)).catch(() => {});
+  }, [role]);
+
+  useEffect(() => {
+    if (!open) return;
+    usersApi.getAll().then(res => {
+      const all: User[] = res.data.data || [];
+      setUsers(all.filter(u => ASSIGNABLE_HANDLER_ROLES.includes(u.role)));
+    }).catch(() => {});
+  }, [open]);
+
+  const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
+  if (!canAssign || isClosed) return null;
+
+  // Only handler assignments belong in this dialog — a case auto-routed to an Administrative
+  // Officer also carries their assignment, which must not be pre-selected (or submitted).
+  const activeAssignees = (caseItem.assignments || [])
+    .filter(a => a.isActive && ASSIGNABLE_HANDLER_ROLES.includes(a.userRole));
+
+  const filtered = users.filter(u =>
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()) ||
+    roleLabel(u.role).toLowerCase().includes(search.toLowerCase())
+  );
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      // Keep the primary valid: clear it if that person was just removed, and default it
+      // to the first pick so the case always has one accountable owner.
+      setPrimary(p => (next.includes(p) ? p : next[0] || ''));
+      return next;
+    });
+  };
+
+  const handleAssign = async () => {
+    if (selected.length === 0) return;
+    setBusy(true);
+    try {
+      await casesApi.assign(caseItem.id, selected, primary || selected[0]);
+      await onRefresh();
+      toast.success('Case assigned', {
+        description: `${selected.length} handler${selected.length > 1 ? 's' : ''} notified, and so was the complainant.`,
+      });
+      setOpen(false);
+      setSearch('');
+    } catch (err: any) {
+      toast.error('Failed to assign', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          setSelected(activeAssignees.map(a => a.userId));
+          setPrimary(activeAssignees.find(a => a.isPrimary)?.userId || '');
+          setOpen(true);
+        }}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100"
+      >
+        <UserIcon /> {activeAssignees.length > 0 ? `Handlers (${activeAssignees.length})` : 'Assign Handlers'}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>
+                Assign Handlers — <span className="font-mono text-sm">{caseItem.caseNumber}</span>
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Pick the Assistant / Deputy Proctors who will handle this case. The complainant
+                is notified with each handler's name and contact number.
+              </p>
+
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name, email or role…"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+
+              <div className="max-h-64 overflow-auto rounded-lg border border-gray-200 mb-3">
+                {filtered.length === 0 ? (
+                  <p className="p-3 text-sm text-gray-400 text-center">No assistant or deputy proctors found</p>
+                ) : (
+                  filtered.map(u => (
+                    <div
+                      key={u.id}
+                      onClick={() => toggle(u.id)}
+                      className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${selected.includes(u.id) ? 'bg-blue-50' : ''}`}
+                    >
+                      <input type="checkbox" checked={selected.includes(u.id)} readOnly className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                      <span className="font-medium">{u.name}</span>
+                      <span className="flex-1 truncate text-xs text-gray-400">
+                        {u.contactNumber || u.email}
+                      </span>
+                      <span className="whitespace-nowrap rounded bg-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">
+                        {u.rank || roleLabel(u.role)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {selected.length > 1 && (
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Primary handler</label>
+                  <select
+                    value={primary}
+                    onChange={e => setPrimary(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {selected.map(id => {
+                      const u = users.find(x => x.id === id);
+                      return <option key={id} value={id}>{u?.name || id}</option>;
+                    })}
+                  </select>
+                </div>
+              )}
+
+              {selected.some(id => !users.find(u => u.id === id)?.contactNumber) && (
+                <p className="mb-3 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                  Some selected handlers have no contact number on file — the complainant will only
+                  see their name. Add numbers in User Management.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button disabled={busy} onClick={() => setOpen(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button disabled={busy || selected.length === 0} onClick={handleAssign}
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: '#0b2652' }}>
+                  <UserIcon /> {busy ? 'Assigning…' : `Assign${selected.length > 0 ? ` (${selected.length})` : ''} & Notify`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// "Reschedule Hearing" header action — an open hearing can be moved to a new slot with a
+// stated reason. Like closing, only the person who set the hearing may move it (the server
+// enforces the same rule in HearingService.RescheduleHearingAsync). The original slot and
+// the reason are kept in the hearing's reschedule history and on the case timeline.
+function RescheduleHearingButton({ caseItem, role, onRefresh }: {
+  caseItem: Case;
+  role: string;
+  onRefresh: () => Promise<void>;
+}) {
+  const { currentUser } = useAuth();
+  const [canHearing, setCanHearing] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!role) return;
+    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role]);
+
+  const hearing = getOpenHearing(caseItem);
+  if (!hearing || !canHearing) return null;
+
+  // Legacy hearings have no recorded creator and stay movable by any hearing-capable user.
+  const isOwner = !hearing.createdById || hearing.createdById === currentUser?.id;
+  if (!isOwner) return null;
+
+  const unchanged = date === hearing.date && time === hearing.time && location === hearing.location;
+
+  const handleReschedule = async () => {
+    if (!date || !time || !reason.trim() || unchanged) return;
+    setBusy(true);
+    try {
+      await hearingsApi.reschedule(hearing.id, { date, time, location, reason: reason.trim() });
+      await onRefresh();
+      toast.success('Hearing rescheduled', { description: `Moved to ${date} at ${time}` });
+      setReason('');
+      setOpen(false);
+    } catch (err: any) {
+      toast.error('Failed to reschedule', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          setDate(hearing.date);
+          setTime(hearing.time);
+          setLocation(hearing.location);
+          setOpen(true);
+        }}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-sm hover:bg-amber-100"
+      >
+        <ClockIcon /> Reschedule Hearing
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+              <h3 className="text-lg font-semibold mb-1" style={{ color: '#0b2652' }}>
+                Reschedule Hearing — <span className="font-mono text-sm">{caseItem.caseNumber}</span>
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Currently {hearing.date} at {hearing.time} · {hearing.location}
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New date <span className="text-red-500">*</span></label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New time <span className="text-red-500">*</span></label>
+                  <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input type="text" value={location} onChange={e => setLocation(e.target.value)}
+                  placeholder="Hearing venue"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason for rescheduling <span className="text-red-500">*</span>
+                </label>
+                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+                  placeholder="Why is this hearing being moved?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {unchanged && (
+                <p className="mb-3 text-xs text-amber-600">Pick a different date, time or location to reschedule.</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button disabled={busy} onClick={() => setOpen(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button disabled={busy || !date || !time || !reason.trim() || unchanged} onClick={handleReschedule}
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+                  <ClockIcon /> {busy ? 'Rescheduling…' : 'Reschedule & Notify'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -2539,7 +3047,6 @@ function HearingModuleButton({ caseItem, role, onRefresh }: {
     usersApi.getAll().then(res => setUsers(res.data.data || [])).catch(() => {});
   }, [open]);
 
-  const roleLabel = (r?: string) => (r || '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
   if (!canHearing || caseItem.type === 'type-1' || isClosed) return null;
@@ -2702,6 +3209,10 @@ function HearingModuleButton({ caseItem, role, onRefresh }: {
                   {/* External */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Add external people (emailed)</label>
+                    <p className="mb-2 text-xs text-gray-500">
+                      A profile is created automatically for each external person and they are assigned to
+                      this case, so they can sign in and follow it. Their credentials go out with the email.
+                    </p>
                     <div className="space-y-2">
                       {emails.map((em, i) => (
                         <div key={i} className="flex gap-2">

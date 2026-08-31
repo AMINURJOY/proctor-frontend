@@ -63,7 +63,7 @@ export default function Dashboard() {
     }
 
     // All other staff: cases assigned to them OR forwarded to their role
-    const confidentialAccess = ['proctor', 'female-coordinator', 'sexual-harassment-committee'].includes(role);
+    const confidentialAccess = ['proctor', 'coordinator', 'female-coordinator', 'sexual-harassment-committee'].includes(role);
     const isMyAssignment = (c: Case) =>
       c.assignedTo === currentUser?.name ||
       (c.assignedUserIds || []).includes(currentUser?.id || '\0') ||
@@ -74,8 +74,8 @@ export default function Dashboard() {
       if (c.type === 'confidential' && !confidentialAccess) return false;
       // Triage queue: only un-routed fresh submissions fall here. Gender-routed cases carry a
       // forwardedToRole and reach the matching coordinator through the general check below.
-      if (role === 'coordinator' && c.type !== 'confidential' && isNewSubmission(c) && !c.forwardedToRole) return true;
-      if (role === 'female-coordinator' && c.type === 'confidential' && isNewSubmission(c) && !c.forwardedToRole) return true;
+      if (role === 'coordinator' && isNewSubmission(c) && !c.forwardedToRole) return true;
+      if (role === 'female-coordinator' && (c.type === 'confidential' || c.type === 'type-1') && isNewSubmission(c) && !c.forwardedToRole) return true;
       return c.forwardedToRole === role || isMyAssignment(c);
     });
   })();
@@ -86,8 +86,9 @@ export default function Dashboard() {
       if (c.status === 'closed' || c.status === 'resolved' || c.status === 'rejected') return false;
       switch (role) {
         case 'student': return true; // any open case they submitted
-        case 'coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && c.type !== 'confidential';
-        case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && (c.type === 'confidential' || c.forwardedToRole === 'female-coordinator');
+        case 'coordinator': return c.status === 'submitted' || c.status === 'resubmission-requested';
+        // Her own track plus every instant incident — those go to the whole team.
+        case 'female-coordinator': return (c.status === 'submitted' || c.status === 'resubmission-requested') && (c.type === 'confidential' || c.type === 'type-1' || c.forwardedToRole === 'female-coordinator');
         case 'vc': return false; // VC only monitors
         case 'super-admin': return true;
         // In their role queue OR directly assigned to them (e.g. assistant/deputy proctors

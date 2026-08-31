@@ -4,6 +4,7 @@ import { casesApi } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
+import { roleLabel } from '../utils/roles';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -228,7 +229,7 @@ export default function MyCases() {
                           return (
                             <>
                               {c.forwardedToRole && (
-                                <div>→ {c.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</div>
+                                <div>→ {roleLabel(c.forwardedToRole)}</div>
                               )}
                               <div>{new Date(c.updatedDate).toLocaleDateString()}</div>
                               {c.incidentLocationDescription && (

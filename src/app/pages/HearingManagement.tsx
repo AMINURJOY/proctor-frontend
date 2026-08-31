@@ -398,6 +398,18 @@ export default function HearingManagement() {
                             <p className="text-sm text-gray-700">{hearing.notes}</p>
                           </div>
                         )}
+                        {hearing.conductedByName && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Conducted by <span className="font-medium text-gray-700">{hearing.conductedByName}</span>
+                            {hearing.conductedAt && <> · {new Date(hearing.conductedAt).toLocaleString()}</>}
+                          </p>
+                        )}
+                        {(hearing.reschedules?.length || 0) > 0 && (
+                          <p className="text-xs text-amber-700 mt-1">
+                            Rescheduled {hearing.reschedules!.length} time{hearing.reschedules!.length > 1 ? 's' : ''} —
+                            originally {hearing.reschedules![0].fromDate} at {hearing.reschedules![0].fromTime}
+                          </p>
+                        )}
                         {hearing.remarks && (
                           <div className="bg-blue-50 rounded-lg p-3 mt-2">
                             <p className="text-xs text-blue-600 mb-1">Hearing Remarks (বক্তব্য):</p>

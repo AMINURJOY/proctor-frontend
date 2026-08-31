@@ -9,7 +9,8 @@ export type UserRole =
   | 'female-coordinator'
   | 'sexual-harassment-committee'
   | 'vc'
-  | 'super-admin';
+  | 'super-admin'
+  | 'external';
 
 export type CaseType = 'type-1' | 'type-2' | 'confidential';
 
@@ -43,6 +44,7 @@ export interface User {
   gender?: Gender;
   avatar?: string;
   rank?: string;
+  contactNumber?: string;
 }
 
 export interface CaseCategory {
@@ -61,6 +63,8 @@ export interface CaseAssignment {
   userId: string;
   userName: string;
   userRole: string;
+  userRank?: string;
+  userContactNumber?: string;
   assignedAt: string;
   isPrimary: boolean;
   isActive: boolean;
@@ -163,6 +167,11 @@ export interface Case {
   acknowledgedByName?: string;
   acknowledgmentComment?: string;
 
+  // Closure
+  closingMessage?: string;
+  closedAt?: string;
+  closedByName?: string;
+
   // Location (Type-1)
   incidentLatitude?: number;
   incidentLongitude?: number;
@@ -241,6 +250,23 @@ export interface Hearing {
   remarks?: string;
   createdById?: string;
   createdByName?: string;
+  conductedById?: string;
+  conductedByName?: string;
+  conductedAt?: string;
+  reschedules?: HearingReschedule[];
+}
+
+export interface HearingReschedule {
+  id: string;
+  fromDate: string;
+  fromTime: string;
+  fromLocation?: string;
+  toDate: string;
+  toTime: string;
+  toLocation?: string;
+  reason: string;
+  rescheduledBy: string;
+  rescheduledAt: string;
 }
 
 export interface TimelineEvent {

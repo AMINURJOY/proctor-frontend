@@ -1,7 +1,8 @@
 import { useAuth } from '../context/AuthContext';
-import { users } from '../data/mockData';
+import { roleLabel } from '../utils/roles';
+import { proctorialBody, users } from '../data/mockData';
 import { useNavigate } from 'react-router';
-import { LockIcon, UserIcon } from './Icons';
+import { LockIcon } from './Icons';
 import { useState } from 'react';
 import { User } from '../types';
 
@@ -47,19 +48,41 @@ export default function LoginPage() {
     }
   };
 
+  // Solid role chips: each role gets one saturated colour, white text.
   const roleColors: Record<string, string> = {
-    'student': 'bg-blue-100 text-blue-700',
-    'coordinator': 'bg-green-100 text-green-700',
-    'proctor': 'bg-purple-100 text-purple-700',
-    'assistant-proctor': 'bg-indigo-100 text-indigo-700',
-    'deputy-proctor': 'bg-pink-100 text-pink-700',
-    'registrar': 'bg-orange-100 text-orange-700',
-    'disciplinary-committee': 'bg-red-100 text-red-700',
-    'female-coordinator': 'bg-teal-100 text-teal-700',
-    'sexual-harassment-committee': 'bg-amber-100 text-amber-700',
-    'vc': 'bg-slate-100 text-slate-700',
-    'super-admin': 'bg-emerald-100 text-emerald-700'
+    'student': 'bg-blue-600 hover:bg-blue-700',
+    'coordinator': 'bg-emerald-700 hover:bg-emerald-800',
+    'proctor': 'bg-purple-700 hover:bg-purple-800',
+    'assistant-proctor': 'bg-sky-700 hover:bg-sky-800',
+    'deputy-proctor': 'bg-indigo-600 hover:bg-indigo-700',
+    'registrar': 'bg-orange-600 hover:bg-orange-700',
+    'disciplinary-committee': 'bg-rose-800 hover:bg-rose-900',
+    'female-coordinator': 'bg-teal-600 hover:bg-teal-700',
+    'sexual-harassment-committee': 'bg-amber-600 hover:bg-amber-700',
+    'vc': 'bg-slate-700 hover:bg-slate-800',
+    'super-admin': 'bg-green-700 hover:bg-green-800',
+    'external': 'bg-stone-600 hover:bg-stone-700'
   };
+
+  // Quick login shows the Proctorial Body plus a student account (to test the complainant
+  // side) and the super admin — the rest of the demo roles are covered by the real profiles.
+  const otherAccounts = users.filter((u) => u.role === 'student' || u.role === 'super-admin');
+  const quickLoginProfiles = [...proctorialBody, ...otherAccounts];
+
+  const renderQuickLoginChip = (user: User) => (
+    <button
+      key={user.id}
+      onClick={() => handleQuickLogin(user)}
+      disabled={loading}
+      title={`${user.name} - ${user.rank ?? roleLabel(user.role)} (${user.email})`}
+      className={`rounded-lg px-2.5 py-2 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 ${roleColors[user.role]}`}
+    >
+      <span className="block truncate text-xs font-semibold leading-tight">{user.name}</span>
+      <span className="mt-0.5 block truncate text-[10px] leading-tight text-white/75">
+        {user.rank ?? roleLabel(user.role)}
+      </span>
+    </button>
+  );
 
   return (
     <div className="min-h-[100svh] w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,_#f4f7fc_0%,_#e9eef8_45%,_#dde7f4_100%)]">
@@ -175,42 +198,36 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-8 border-t border-slate-200 pt-8">
-              <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="mt-8 border-t border-slate-200 pt-6">
+              <div className="mb-3 flex items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Quick Login</h3>
-                  <p className="text-sm text-slate-500">Select a role to jump directly into the portal.</p>
+                  <h3 className="text-base font-semibold text-slate-900">Quick Login</h3>
+                  <p className="text-xs text-slate-500">Select a profile to jump directly into the portal.</p>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                  {users.length} roles
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                  {quickLoginProfiles.length} profiles
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {users.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => handleQuickLogin(user)}
-                    disabled={loading}
-                    className="group rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0b2652]/25 hover:bg-white hover:shadow-lg disabled:opacity-60"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#0b2652] text-white shadow-lg shadow-[#0b2652]/20">
-                        <UserIcon />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="truncate text-sm font-semibold text-slate-900">{user.name}</h4>
-                        <p className="mt-1 truncate text-xs text-slate-500">{user.email}</p>
-                        <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${roleColors[user.role]}`}>
-                          {user.role.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Proctorial Body
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {proctorialBody.map(renderQuickLoginChip)}
               </div>
 
-              <p className="mt-5 text-center text-sm text-slate-500">
+              {otherAccounts.length > 0 && (
+                <>
+                  <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Student &amp; Admin
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {otherAccounts.map(renderQuickLoginChip)}
+                  </div>
+                </>
+              )}
+
+              <p className="mt-4 text-center text-xs text-slate-500">
                 Demo System - Choose any account to enter immediately.
               </p>
             </div>

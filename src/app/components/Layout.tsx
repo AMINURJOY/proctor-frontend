@@ -20,6 +20,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { notificationsApi, casesApi } from '../services/api';
 import { AppNotification } from '../types';
+import { roleLabel } from '../utils/roles';
 
 export default function Layout() {
   const { currentUser, logout } = useAuth();
@@ -194,7 +195,7 @@ export default function Layout() {
   const isActive = (path: string) => location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
   const isSettingsActive = location.pathname.startsWith('/settings');
 
-  const roleLabel = role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const displayRole = roleLabel(role);
 
   const roleColorMap: Record<string, string> = {
     'student': '#3b82f6',
@@ -314,7 +315,7 @@ export default function Layout() {
       <div className="p-4 border-t border-blue-900">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roleColorMap[role] || '#fff' }} />
-          <span className="text-xs text-blue-200">Role: <span className="text-white font-medium">{roleLabel}</span></span>
+          <span className="text-xs text-blue-200">Role: <span className="text-white font-medium">{displayRole}</span></span>
         </div>
       </div>
     </>
@@ -435,7 +436,7 @@ export default function Layout() {
                   </div>
                   <div className="text-left hidden md:block">
                     <p className="text-sm font-medium text-gray-900">{currentUser?.name}</p>
-                    <p className="text-xs text-gray-500 capitalize">{roleLabel}</p>
+                    <p className="text-xs text-gray-500 capitalize">{displayRole}</p>
                   </div>
                   <ChevronDownIcon />
                 </button>
@@ -451,7 +452,7 @@ export default function Layout() {
                           className="inline-block mt-2 text-xs px-2 py-1 rounded-full text-white"
                           style={{ backgroundColor: roleColorMap[role] || '#0b2652' }}
                         >
-                          {roleLabel}
+                          {displayRole}
                         </span>
                       </div>
                       <button

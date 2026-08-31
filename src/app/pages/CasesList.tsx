@@ -7,6 +7,7 @@ import { casesApi, settingsApi } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
+import { roleLabel } from '../utils/roles';
 
 export default function CasesList() {
   const navigate = useNavigate();
@@ -281,7 +282,7 @@ export default function CasesList() {
                       {caseItem.forwardedToRole && (
                         <div className="mt-1">
                           <span className="inline-flex px-1.5 py-0.5 text-[10px] rounded bg-indigo-50 text-indigo-600">
-                            {caseItem.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            {roleLabel(caseItem.forwardedToRole)}
                           </span>
                         </div>
                       )}

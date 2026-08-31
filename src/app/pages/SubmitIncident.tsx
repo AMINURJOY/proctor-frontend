@@ -5,6 +5,7 @@ import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../c
 import { casesApi, settingsApi, caseCategoriesApi, studentsApi, caseSubjectsApi } from '../services/api';
 import { CaseCategory } from '../types';
 import { toast } from 'sonner';
+import { roleLabel } from '../utils/roles';
 
 type SubmissionType = null | 'type-1' | 'type-2';
 
@@ -187,7 +188,7 @@ export default function SubmitIncident() {
       if (setting?.value) {
         const roles = setting.value.split(',').map((s: string) => s.trim()).filter(Boolean);
         const label = roles.map((r: string) =>
-          r.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+          roleLabel(r)
         ).join(' / ');
         if (label) setForwardingLabel(label);
       }

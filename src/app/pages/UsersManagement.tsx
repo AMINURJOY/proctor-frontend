@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { usersApi, ranksApi } from '../services/api';
 import { User, UserRole, Gender } from '../types';
+import { roleLabel } from '../utils/roles';
 
 const genderBadge = (g?: string) => {
   const v = (g || '').toLowerCase();
@@ -27,7 +28,7 @@ export default function UsersManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<User | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '', gender: 'unspecified' as Gender });
+  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '', contactNumber: '', gender: 'unspecified' as Gender });
   const [ranks, setRanks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -84,7 +85,7 @@ export default function UsersManagement() {
     } finally {
       setSaving(false);
       setShowCreateModal(false);
-      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
+      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', contactNumber: '', gender: 'unspecified' });
     }
   };
 
@@ -104,7 +105,7 @@ export default function UsersManagement() {
     } finally {
       setSaving(false);
       setShowEditModal(null);
-      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
+      setFormData({ name: '', email: '', role: 'student', password: '', rank: '', contactNumber: '', gender: 'unspecified' });
     }
   };
 
@@ -121,7 +122,7 @@ export default function UsersManagement() {
   };
 
   const openEdit = (user: User) => {
-    setFormData({ name: user.name, email: user.email, role: user.role, password: '', rank: (user as any).rankName || '', gender: (user.gender as Gender) || 'unspecified' });
+    setFormData({ name: user.name, email: user.email, role: user.role, password: '', rank: (user as any).rankName || '', contactNumber: user.contactNumber || '', gender: (user.gender as Gender) || 'unspecified' });
     setShowEditModal(user);
   };
 
@@ -137,10 +138,12 @@ export default function UsersManagement() {
     'sexual-harassment-committee': 'bg-amber-100 text-amber-700',
     'vc': 'bg-slate-100 text-slate-700',
     'super-admin': 'bg-emerald-100 text-emerald-700',
+    // Created automatically when someone outside the university is called to a hearing.
+    'external': 'bg-gray-100 text-gray-700',
   };
 
   const formatRole = (role: string) =>
-    role.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    roleLabel(role);
 
   return (
     <div>
@@ -151,7 +154,7 @@ export default function UsersManagement() {
         </div>
         <button
           onClick={() => {
-            setFormData({ name: '', email: '', role: 'student', password: '', rank: '', gender: 'unspecified' });
+            setFormData({ name: '', email: '', role: 'student', password: '', rank: '', contactNumber: '', gender: 'unspecified' });
             setShowCreateModal(true);
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-white"
@@ -315,6 +318,19 @@ export default function UsersManagement() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact number</label>
+                  <input
+                    type="tel"
+                    value={formData.contactNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
+                    placeholder="+880 1XXX XXXXXX"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shared with the complainant when this person is assigned to their case.
+                  </p>
+                </div>
                 <div className="flex gap-3 justify-end pt-2">
                   <button
                     onClick={() => setShowCreateModal(false)}
@@ -387,6 +403,19 @@ export default function UsersManagement() {
                     <option value="other">Other</option>
                     <option value="unspecified">Unspecified</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact number</label>
+                  <input
+                    type="tel"
+                    value={formData.contactNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
+                    placeholder="+880 1XXX XXXXXX"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shared with the complainant when this person is assigned to their case.
+                  </p>
                 </div>
                 <div className="flex gap-3 justify-end pt-2">
                   <button

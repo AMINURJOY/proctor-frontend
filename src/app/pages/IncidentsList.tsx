@@ -7,6 +7,7 @@ import { Case, CaseStatus, Priority } from '../types';
 import { casesApi, settingsApi } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
+import { roleLabel } from '../utils/roles';
 
 export default function IncidentsList() {
   const navigate = useNavigate();
@@ -124,7 +125,7 @@ export default function IncidentsList() {
                     )}
                     {incident.forwardedToRole && (
                       <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
-                        → {incident.forwardedToRole.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        → {roleLabel(incident.forwardedToRole)}
                       </span>
                     )}
                   </div>

@@ -182,6 +182,8 @@ export const hearingsApi = {
   getUpcoming: (mineOnly = false) => api.get('/hearings/upcoming', { params: { mineOnly } }),
   notifyEmail: (id: string, data: { recipients: string[]; subject?: string; message: string }) =>
     api.post(`/hearings/${id}/notify-email`, data),
+  reschedule: (id: string, data: { date: string; time: string; location?: string; reason: string }) =>
+    api.post(`/hearings/${id}/reschedule`, data),
 };
 
 // Dashboard
