@@ -64,10 +64,12 @@ export default function LoginPage() {
     'external': 'bg-stone-600 hover:bg-stone-700'
   };
 
-  // Quick login shows the Proctorial Body plus a student account (to test the complainant
-  // side) and the super admin — the rest of the demo roles are covered by the real profiles.
+  // These demo profiles match the seeded accounts and use the same login flow.
+  const committeeAccounts = users.filter((u) =>
+    ['registrar', 'disciplinary-committee', 'vc', 'sexual-harassment-committee'].includes(u.role)
+  );
   const otherAccounts = users.filter((u) => u.role === 'student' || u.role === 'super-admin');
-  const quickLoginProfiles = [...proctorialBody, ...otherAccounts];
+  const quickLoginProfiles = [...proctorialBody, ...committeeAccounts, ...otherAccounts];
 
   const renderQuickLoginChip = (user: User) => (
     <button
@@ -214,6 +216,13 @@ export default function LoginPage() {
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {proctorialBody.map(renderQuickLoginChip)}
+              </div>
+
+              <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Registrar, Committees &amp; VC
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {committeeAccounts.map(renderQuickLoginChip)}
               </div>
 
               {otherAccounts.length > 0 && (

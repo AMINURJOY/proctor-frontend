@@ -1,9 +1,10 @@
 import React from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import AdvancedSearch from './pages/AdvancedSearch';
 import CasesList from './pages/CasesList';
 import CaseDetail from './pages/CaseDetail';
 import SubmitIncident from './pages/SubmitIncident';
@@ -15,7 +16,6 @@ import ReportsPage from './pages/ReportsPage';
 import ReportEditorPage from './pages/ReportEditorPage';
 import DraftReportsPage from './pages/DraftReportsPage';
 import UsersManagement from './pages/UsersManagement';
-import SettingsPage from './pages/SettingsPage';
 import MyCases from './pages/MyCases';
 import NotificationsPage from './pages/NotificationsPage';
 import CaseReport from './pages/CaseReport';
@@ -38,6 +38,14 @@ function StudentCatchAllRedirect() {
   return React.createElement(Navigate, { to: target, replace: true });
 }
 
+function AdminSettingsGuard() {
+  const { currentUser, loading } = useAuth();
+  if (loading) return React.createElement('div', { className: 'p-6 text-sm text-gray-500' }, 'Loading settings…');
+  return currentUser?.role === 'super-admin'
+    ? React.createElement(Outlet)
+    : React.createElement(Navigate, { to: '/settings/profile', replace: true });
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -48,6 +56,7 @@ export const router = createBrowserRouter([
     Component: Layout,
     children: [
       { path: 'dashboard', Component: StudentDashboardGuard },
+      { path: 'advanced-search', Component: AdvancedSearch },
       { path: 'submit', Component: SubmitIncident },
       { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
@@ -64,19 +73,23 @@ export const router = createBrowserRouter([
       { path: 'draft-reports', Component: DraftReportsPage },
       { path: 'users', Component: UsersManagement },
       { path: 'students', Component: StudentsList },
-      { path: 'settings', element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },
-      { path: 'settings/menu-access', Component: SettingsPage },
-      { path: 'settings/permissions', Component: SettingsPage },
-      { path: 'settings/incident-routing', Component: SettingsPage },
-      { path: 'settings/case-viewing', Component: SettingsPage },
-      { path: 'settings/checklist', Component: SettingsPage },
-      { path: 'settings/case-categories', Component: SettingsPage },
-      { path: 'settings/case-subjects', Component: SettingsPage },
-      { path: 'settings/ranks', Component: SettingsPage },
-      { path: 'settings/articles', Component: SettingsPage },
-      { path: 'settings/forwarding', Component: SettingsPage },
-      { path: 'settings/ai', Component: SettingsPage },
-      { path: 'settings/profile', Component: SettingsPage },
+      { path: 'settings', children: [
+        { index: true, element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },
+        { path: 'profile', lazy: async () => ({ Component: (await import('./pages/settings/ProfilePage')).default }) },
+        { element: React.createElement(AdminSettingsGuard), children: [
+          { path: 'menu-access', element: React.createElement(Navigate, { to: '/settings/permissions', replace: true }) },
+          { path: 'permissions', lazy: async () => ({ Component: (await import('./pages/settings/RolePermissionsPage')).default }) },
+          { path: 'incident-routing', lazy: async () => ({ Component: (await import('./pages/settings/IncidentRoutingPage')).default }) },
+          { path: 'case-viewing', lazy: async () => ({ Component: (await import('./pages/settings/CaseViewingPage')).default }) },
+          { path: 'checklist', lazy: async () => ({ Component: (await import('./pages/settings/ChecklistPage')).default }) },
+          { path: 'case-categories', lazy: async () => ({ Component: (await import('./pages/settings/CaseCategoriesPage')).default }) },
+          { path: 'case-subjects', lazy: async () => ({ Component: (await import('./pages/settings/CaseSubjectsPage')).default }) },
+          { path: 'ranks', lazy: async () => ({ Component: (await import('./pages/settings/RanksPage')).default }) },
+          { path: 'articles', lazy: async () => ({ Component: (await import('./pages/settings/ArticlesPage')).default }) },
+          { path: 'forwarding', lazy: async () => ({ Component: (await import('./pages/settings/ForwardingPage')).default }) },
+          { path: 'ai', lazy: async () => ({ Component: (await import('./pages/settings/AiIntegrationPage')).default }) },
+        ] },
+      ] },
       { path: '*', Component: StudentCatchAllRedirect },
     ],
   },

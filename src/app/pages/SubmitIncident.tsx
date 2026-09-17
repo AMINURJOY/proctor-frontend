@@ -58,6 +58,8 @@ export default function SubmitIncident() {
   const [t2Files, setT2Files] = useState<UploadedFile[]>([]);
   const [t2IncidentDate, setT2IncidentDate] = useState('');
   const [t2VideoLink, setT2VideoLink] = useState('');
+  const [t2Semester, setT2Semester] = useState('');
+  const [t2Cgpa, setT2Cgpa] = useState('');
 
   // Categories (admin-managed)
   const [categories, setCategories] = useState<CaseCategory[]>([]);
@@ -114,7 +116,7 @@ export default function SubmitIncident() {
 
     let cancelled = false;
     studentsApi
-      .getByStudentId(currentUser.id)
+      .getMe()
       .then((res) => {
         if (cancelled) return;
         const s = res?.data?.data;
@@ -324,6 +326,8 @@ export default function SubmitIncident() {
         data.categoryId = t2CategoryId || undefined;
         // Legacy single fields from first complainant/accused
         data.studentDepartment = t2StudentDepartment || undefined;
+        data.studentSemester = t2Semester ? Number(t2Semester) : undefined;
+        data.studentCgpa = t2Cgpa ? Number(t2Cgpa) : undefined;
         data.studentContact = t2StudentContact || undefined;
         data.studentAdvisorName = t2AdvisorName || undefined;
         data.studentFatherName = t2FatherName || undefined;
@@ -806,6 +810,14 @@ export default function SubmitIncident() {
                     <p className="text-sm font-semibold" style={{ color: '#0b2652' }}>Complainants (অভিযোগকারী)</p>
                     <button type="button" onClick={() => setComplainants(prev => [...prev, { ...emptyComplainant }])}
                       className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">+ Add Another</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <label className="text-xs text-gray-600">Primary student's semester
+                      <input type="number" min="1" max="12" value={t2Semester} onChange={e => setT2Semester(e.target.value)} placeholder="1–12" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                    </label>
+                    <label className="text-xs text-gray-600">Primary student's CGPA
+                      <input type="number" min="0" max="4" step="0.01" value={t2Cgpa} onChange={e => setT2Cgpa(e.target.value)} placeholder="0.00–4.00" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                    </label>
                   </div>
                   <div className="space-y-4">
                     {complainants.map((c, i) => (

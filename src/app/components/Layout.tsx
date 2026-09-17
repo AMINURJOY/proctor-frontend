@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import {
   DashboardIcon,
+  SearchIcon,
   IncidentIcon,
   CasesIcon,
   HearingIcon,
@@ -155,6 +156,7 @@ export default function Layout() {
   // Menu items with backend permission keys
   const allMenuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon, menuKey: 'dashboard' },
+    { path: '/advanced-search', label: 'Advanced Search', icon: SearchIcon, menuKey: 'advanced-search' },
     { path: '/submit', label: 'Submit Incident', icon: PlusIcon, menuKey: 'submit' },
     { path: '/incidents', label: 'Incidents (Type-1)', icon: IncidentIcon, menuKey: 'incidents' },
     { path: '/cases', label: 'Cases', icon: CasesIcon, menuKey: 'cases' },

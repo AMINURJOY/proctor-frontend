@@ -134,6 +134,8 @@ export interface Case {
   submittedByUserId?: string;
   // Type-2 form fields
   studentDepartment?: string;
+  studentSemester?: number;
+  studentCgpa?: number;
   studentContact?: string;
   studentAdvisorName?: string;
   studentFatherName?: string;

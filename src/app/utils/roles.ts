@@ -5,7 +5,7 @@
 // carries the same power as the Proctor. Only the label differs — renaming the enum would
 // ripple through forwarding rules, seeded settings and persisted values.
 const ROLE_LABELS: Record<string, string> = {
-  'coordinator': 'Administrative Officer',
+  'coordinator': 'Assistant Administrative Officer',
   'female-coordinator': 'Female Administrative Officer',
   'vc': 'VC',
   'super-admin': 'Super Admin',

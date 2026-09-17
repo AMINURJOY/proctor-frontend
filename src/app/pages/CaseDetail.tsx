@@ -853,6 +853,12 @@ export default function CaseDetail() {
               )}
 
               {/* Complainant/Submitter (left) and Accused (right) — submitter and complainant are the same person */}
+              {(caseItem.studentSemester != null || caseItem.studentCgpa != null) && (
+                <div className="flex flex-wrap gap-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
+                  {caseItem.studentSemester != null && <span><strong>Semester:</strong> {caseItem.studentSemester}</span>}
+                  {caseItem.studentCgpa != null && <span><strong>CGPA:</strong> {caseItem.studentCgpa.toFixed(2)}</span>}
+                </div>
+              )}
               {((caseItem.complainants?.length || 0) > 0 || caseItem.studentName || (caseItem.accusedPersons?.length || 0) > 0 || caseItem.accusedName) && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                   {/* Left: Complainant (= submitter) */}
@@ -957,6 +963,16 @@ export default function CaseDetail() {
                 </div>
               )}
 
+              {currentUser?.role !== 'student' && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Investigation and action</h3>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 space-y-2">
+                    <p>{caseItem.notes?.[0]?.content || 'No investigation note recorded yet.'}</p>
+                    {caseItem.timeline?.[0] && <p className="text-gray-500">Latest action: {caseItem.timeline[0].action} · {new Date(caseItem.timeline[0].timestamp).toLocaleString()}</p>}
+                    <p className="text-gray-500">{caseItem.hearings?.length || 0} hearing(s) · {caseItem.reports?.length || 0} report(s)</p>
+                  </div>
+                </div>
+              )}
               {caseItem.recommendation && (
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Registrar Recommendation</h3>
@@ -965,14 +981,12 @@ export default function CaseDetail() {
                   </div>
                 </div>
               )}
-              {caseItem.verdict && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Final Verdict</h3>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-gray-700 leading-relaxed">{caseItem.verdict}</p>
-                  </div>
+              <div>
+                <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Final decision / punishment</h3>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-gray-700 leading-relaxed">{caseItem.verdict || 'No final decision or punishment recorded.'}</p>
                 </div>
-              )}
+              </div>
             </div>
           )}
 

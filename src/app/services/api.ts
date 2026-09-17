@@ -158,6 +158,7 @@ export const casesApi = {
 // Students (master directory; powers Type-2 autofill)
 export const studentsApi = {
   getAll: () => api.get('/students'),
+  getMe: () => api.get('/students/me'),
   getByStudentId: (studentId: string) => api.get(`/students/by-student-id/${encodeURIComponent(studentId)}`),
   create: (data: any) => api.post('/students', data),
 };
@@ -188,6 +189,7 @@ export const hearingsApi = {
 
 // Dashboard
 export const dashboardApi = {
+  getAnalytics: (params?: Record<string, string | number | undefined>) => api.get('/dashboard/analytics', { params }),
   getStats: () => api.get('/dashboard/stats'),
   getRecentActivity: () => api.get('/dashboard/recent-activity'),
 };

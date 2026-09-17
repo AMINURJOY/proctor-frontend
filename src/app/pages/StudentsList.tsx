@@ -11,6 +11,7 @@ interface Student {
   contact?: string;
   email?: string;
   gender: string;
+  cgpa?: number | null;
   advisorName?: string;
   fatherName?: string;
   fatherContact?: string;
@@ -18,7 +19,7 @@ interface Student {
   isActive: boolean;
 }
 
-const emptyForm = { studentId: '', name: '', department: '', contact: '', email: '', gender: 'male', fatherName: '', fatherContact: '', advisorName: '' };
+const emptyForm = { studentId: '', name: '', department: '', contact: '', email: '', gender: 'male', cgpa: '', fatherName: '', fatherContact: '', advisorName: '' };
 
 const genderBadge = (g: string) => {
   const v = (g || '').toLowerCase();
@@ -54,9 +55,13 @@ export default function StudentsList() {
       toast.error('Student ID and name are required');
       return;
     }
+    if (form.cgpa !== '' && (Number(form.cgpa) < 0 || Number(form.cgpa) > 4)) {
+      toast.error('CGPA must be between 0 and 4');
+      return;
+    }
     setSaving(true);
     try {
-      await studentsApi.create(form);
+      await studentsApi.create({ ...form, cgpa: form.cgpa === '' ? null : Number(form.cgpa) });
       toast.success('Student added');
       setForm(emptyForm);
       setShowNew(false);
@@ -103,6 +108,7 @@ export default function StudentsList() {
               <option value="female">Female</option>
               <option value="unspecified">Unspecified</option>
             </select>
+            <input type="number" min="0" max="4" step="0.01" placeholder="CGPA (out of 4)" value={form.cgpa} onChange={e => setForm({ ...form, cgpa: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Contact / Phone" value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -142,6 +148,7 @@ export default function StudentsList() {
                   <th className="px-4 py-3 font-medium">ID</th>
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Gender</th>
+                  <th className="px-4 py-3 font-medium">CGPA</th>
                   <th className="px-4 py-3 font-medium">Department</th>
                   <th className="px-4 py-3 font-medium">Contact</th>
                   <th className="px-4 py-3 font-medium">Father</th>
@@ -155,6 +162,7 @@ export default function StudentsList() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs capitalize ${genderBadge(s.gender)}`}>{s.gender}</span>
                     </td>
+                    <td className="px-4 py-3 text-gray-600">{s.cgpa == null ? '—' : Number(s.cgpa).toFixed(2)}</td>
                     <td className="px-4 py-3 text-gray-600">{s.department || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.contact || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.fatherName ? `${s.fatherName}${s.fatherContact ? ` (${s.fatherContact})` : ''}` : '—'}</td>

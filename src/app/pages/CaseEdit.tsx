@@ -26,6 +26,8 @@ export default function CaseEdit() {
   const [locationDescription, setLocationDescription] = useState('');
   const [incidentDate, setIncidentDate] = useState('');
   const [videoLink, setVideoLink] = useState('');
+  const [studentSemester, setStudentSemester] = useState('');
+  const [studentCgpa, setStudentCgpa] = useState('');
   const [complainants, setComplainants] = useState<any[]>([{ ...emptyComplainant }]);
   const [accusedPersons, setAccusedPersons] = useState<any[]>([{ ...emptyAccused }]);
 
@@ -46,6 +48,8 @@ export default function CaseEdit() {
         setLocationDescription(c.incidentLocationDescription || '');
         setIncidentDate(c.incidentDate ? c.incidentDate.slice(0, 10) : '');
         setVideoLink(c.videoLink || '');
+        setStudentSemester(c.studentSemester?.toString() || '');
+        setStudentCgpa(c.studentCgpa?.toString() || '');
         setComplainants((c.complainants && c.complainants.length > 0)
           ? c.complainants.map(x => ({
               name: x.name || '', studentId: x.studentId || '', department: x.department || '',
@@ -132,6 +136,8 @@ export default function CaseEdit() {
         priority,
         categoryId: categoryId || undefined,
         videoLink: videoLink || undefined,
+        studentSemester: studentSemester ? Number(studentSemester) : undefined,
+        studentCgpa: studentCgpa ? Number(studentCgpa) : undefined,
       };
       if (caseItem.type === 'type-1') {
         if (latitude !== null) payload.incidentLatitude = latitude;
@@ -211,6 +217,14 @@ export default function CaseEdit() {
             <input type="url" value={videoLink} onChange={(e) => setVideoLink(e.target.value)}
               placeholder="https://drive.google.com/..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-sm text-gray-700">Primary student's semester
+              <input type="number" min="1" max="12" value={studentSemester} onChange={e => setStudentSemester(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+            </label>
+            <label className="text-sm text-gray-700">Primary student's CGPA
+              <input type="number" min="0" max="4" step="0.01" value={studentCgpa} onChange={e => setStudentCgpa(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+            </label>
           </div>
         </div>
 
