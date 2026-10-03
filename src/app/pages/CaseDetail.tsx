@@ -982,9 +982,9 @@ export default function CaseDetail() {
                 </div>
               )}
               <div>
-                <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Final decision / punishment</h3>
+                <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Final punishment</h3>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-gray-700 leading-relaxed">{caseItem.verdict || 'No final decision or punishment recorded.'}</p>
+                  <p className="text-gray-700 leading-relaxed">{caseItem.verdict || 'No final punishment recorded.'}</p>
                 </div>
               </div>
             </div>
@@ -1722,14 +1722,14 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
           </svg>
         </div>
         <div>
-          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Disciplinary Committee: Final Verdict</h3>
-          <p className="text-xs text-gray-500">Review all evidence and issue final decision</p>
+          <h3 className="font-semibold" style={{ color: '#0b2652' }}>Disciplinary Committee: Final Punishment</h3>
+          <p className="text-xs text-gray-500">Review all evidence and issue final punishment</p>
         </div>
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Final Decision</label>
-        <textarea value={verdict} onChange={e => setVerdict(e.target.value)} placeholder="Enter the committee's final decision..."
+        <label className="block text-sm font-medium text-gray-700 mb-1">Final Punishment</label>
+        <textarea value={verdict} onChange={e => setVerdict(e.target.value)} placeholder="Enter the committee's final punishment..."
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" rows={3} />
       </div>
 
@@ -1751,7 +1751,7 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
         }} className="hidden" />
         <div onClick={() => verdictFileInputRef.current?.click()}
           className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400">
-          <p className="text-sm text-gray-500">{verdictUploading ? 'Uploading...' : 'Click to attach final verdict documents'}</p>
+          <p className="text-sm text-gray-500">{verdictUploading ? 'Uploading...' : 'Click to attach final punishment documents'}</p>
         </div>
       </div>
 
@@ -1769,7 +1769,7 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
             await onStatusChange('closed', { verdict });
           })}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900 disabled:opacity-50">
-            <CheckIcon /> Issue Verdict & Close Case
+            <CheckIcon /> Issue Punishment & Close Case
           </button>
         )}
         <button onClick={() => window.open(`/cases/${caseItem.id}/report`, '_blank')}

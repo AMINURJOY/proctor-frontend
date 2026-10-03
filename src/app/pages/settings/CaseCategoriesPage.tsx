@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { caseCategoriesApi, caseSubjectsApi } from '../../services/api';
 import { toast } from 'sonner';
 import { roleLabel } from '../../utils/roles';
 
 export default function CaseCategoriesPage() {
   const [items, setItems] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
@@ -17,12 +15,8 @@ export default function CaseCategoriesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [catRes, subRes] = await Promise.all([
-        caseCategoriesApi.getAll(true),
-        caseSubjectsApi.getAll(true),
-      ]);
+      const catRes = await caseCategoriesApi.getAll(true);
       setItems(catRes.data?.data || []);
-      setSubjects(subRes.data?.data || []);
     } catch (err: any) {
       toast.error('Failed to load categories', { description: err?.response?.data?.message || '' });
     } finally {
@@ -32,10 +26,8 @@ export default function CaseCategoriesPage() {
 
   useEffect(() => { load(); }, []);
 
-  const subjectName = (id?: string) => subjects.find(s => String(s.id) === String(id))?.subject;
-
   const resetForm = () => {
-    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0, subjectId: '' });
+    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0 });
     setEditingId(null);
     setShowNew(false);
   };
@@ -119,15 +111,7 @@ export default function CaseCategoriesPage() {
                 <option value="type-2">Type-2 only</option>
               </select>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-500 mb-1">Subject</label>
-              <select value={form.subjectId} onChange={e => setForm({ ...form, subjectId: e.target.value })}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
-                <option value="">— No subject (won't appear under any subject on the Type-2 form) —</option>
-                {subjects.map((s: any) => (<option key={s.id} value={s.id}>{s.subject}</option>))}
-              </select>
-              <p className="text-xs text-gray-400 mt-1">Maps this category under a subject. On the Type-2 form the student picks the subject first, then only its mapped categories appear.</p>
-            </div>
+
             <div className="md:col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Description</label>
               <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
@@ -189,7 +173,6 @@ export default function CaseCategoriesPage() {
                 {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
                 <p className="text-xs text-gray-400">
                   Applies to: {roleLabel(item.appliesToType)} · Order {item.sortOrder}
-                  {subjectName(item.subjectId) ? ` · Subject: ${subjectName(item.subjectId)}` : ' · No subject'}
                 </p>
               </div>
               <div className="flex gap-2">

@@ -83,7 +83,6 @@ export const router = createBrowserRouter([
           { path: 'case-viewing', lazy: async () => ({ Component: (await import('./pages/settings/CaseViewingPage')).default }) },
           { path: 'checklist', lazy: async () => ({ Component: (await import('./pages/settings/ChecklistPage')).default }) },
           { path: 'case-categories', lazy: async () => ({ Component: (await import('./pages/settings/CaseCategoriesPage')).default }) },
-          { path: 'case-subjects', lazy: async () => ({ Component: (await import('./pages/settings/CaseSubjectsPage')).default }) },
           { path: 'ranks', lazy: async () => ({ Component: (await import('./pages/settings/RanksPage')).default }) },
           { path: 'articles', lazy: async () => ({ Component: (await import('./pages/settings/ArticlesPage')).default }) },
           { path: 'forwarding', lazy: async () => ({ Component: (await import('./pages/settings/ForwardingPage')).default }) },

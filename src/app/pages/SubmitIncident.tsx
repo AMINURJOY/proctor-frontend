@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { UploadIcon, ArrowRightIcon, ImageIcon, VideoIcon, FileIcon } from '../components/Icons';
-import { casesApi, settingsApi, caseCategoriesApi, studentsApi, caseSubjectsApi } from '../services/api';
+import { casesApi, settingsApi, caseCategoriesApi, studentsApi } from '../services/api';
 import { CaseCategory } from '../types';
 import { toast } from 'sonner';
 import { roleLabel } from '../utils/roles';
@@ -48,9 +48,6 @@ export default function SubmitIncident() {
   const t1FileRef = useRef<HTMLInputElement>(null);
 
   // Type-2 form state
-  const [t2Subject, setT2Subject] = useState('');
-  const [t2SubjectId, setT2SubjectId] = useState('');
-  const [subjects, setSubjects] = useState<{ id: string; subject: string }[]>([]);
   const [t2Gender, setT2Gender] = useState<'male' | 'female'>('male');
   const [t2Description, setT2Description] = useState('');
   const [t2CategoryId, setT2CategoryId] = useState('');
@@ -200,20 +197,12 @@ export default function SubmitIncident() {
       const items: CaseCategory[] = res.data?.data || [];
       setCategories(items);
     }).catch(() => {});
-
-    caseSubjectsApi.getAll().then(res => {
-      const items = (res.data?.data || [])
-        .filter((s: any) => s?.id && s?.subject)
-        .map((s: any) => ({ id: String(s.id), subject: String(s.subject) }));
-      setSubjects(items);
-    }).catch(() => {});
   }, []);
 
   // Categories mapped to the chosen subject (superadmin maps each category to a subject).
   const subjectCategories = categories.filter(c =>
     c.isActive
-    && (c.appliesToType === 'type-2' || c.appliesToType === 'both')
-    && (t2SubjectId ? c.subjectId === t2SubjectId : false));
+    && (c.appliesToType === 'type-2' || c.appliesToType === 'both'));
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -319,7 +308,7 @@ export default function SubmitIncident() {
         if (t1Phone.trim()) data.studentContact = t1Phone.trim();
       }
       if (selectedType === 'type-2') {
-        data.subject = t2Subject;
+
         data.gender = t2Gender;
         // Use the first complainant's typed (numeric) ID as the case student ID.
         data.studentId = complainants[0]?.studentId?.trim() || '';
@@ -419,7 +408,7 @@ export default function SubmitIncident() {
                 setT1Longitude(null);
                 setT1LocationDescription('');
                 setT1CategoryId('');
-                setT2Subject('');
+
                 setT2Description('');
                 setT2CategoryId('');
                 setT2Files([]);
@@ -710,7 +699,7 @@ export default function SubmitIncident() {
             </button>
             <button
               type="button"
-              disabled={!t2Description.trim() || !t2Subject.trim()}
+              disabled={!t2Description.trim()}
               onClick={() => { setConfirmMode(false); setShowPreview(true); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
             >
@@ -742,35 +731,14 @@ export default function SubmitIncident() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Case Subject *</label>
-                      <select value={t2SubjectId}
-                        onChange={e => {
-                          const sid = e.target.value;
-                          setT2SubjectId(sid);
-                          setT2Subject(subjects.find(s => s.id === sid)?.subject || '');
-                          setT2CategoryId(''); // reset category when subject changes
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                        <option value="">Select subject...</option>
-                        {subjects.map(s => (<option key={s.id} value={s.id}>{s.subject}</option>))}
-                      </select>
-                      {subjects.length === 0 && (
-                        <p className="text-xs text-gray-400 mt-1">No subjects configured yet. Ask an admin to add some in Settings → Case Subjects.</p>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
                       <select value={t2CategoryId} onChange={e => setT2CategoryId(e.target.value)}
-                        disabled={!t2SubjectId}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-400">
-                        <option value="">{t2SubjectId ? 'Select category...' : 'Select a subject first'}</option>
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                        <option value="">Select category...</option>
                         {subjectCategories.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                       </select>
-                      {t2SubjectId && subjectCategories.length === 0 && (
-                        <p className="text-xs text-gray-400 mt-1">No categories mapped to this subject. Ask an admin to map some in Settings → Case Categories.</p>
-                      )}
                     </div>
                   </div>
 
@@ -910,7 +878,7 @@ export default function SubmitIncident() {
                 </div>
               </div>
 
-              <button onClick={openConfirmSubmit} disabled={submitting || !t2Description.trim() || !t2Subject.trim() || !t2CategoryId}
+              <button onClick={openConfirmSubmit} disabled={submitting || !t2Description.trim() || !t2CategoryId}
                 className="w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60"
                 style={{ backgroundColor: '#0b2652' }}>
                 {submitting ? 'Submitting...' : 'Submit Formal Case'}
@@ -952,7 +920,7 @@ export default function SubmitIncident() {
 
               <div className="text-sm mb-3">
                 <p><span className="text-gray-500">বরাবর,</span> <strong>প্রক্টর</strong>, ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি</p>
-                <p className="mt-1"><span className="text-gray-500">বিষয়: </span><strong>{t2Subject || '—'}</strong></p>
+
               </div>
 
               <div className="bg-gray-50 rounded p-4 mb-4 text-sm">
