@@ -112,6 +112,7 @@ export interface CaseAccused {
   department?: string;
   contact?: string;
   guardianContact?: string;
+  cgpa?: number;
 }
 
 export interface Case {

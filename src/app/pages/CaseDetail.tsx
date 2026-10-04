@@ -710,17 +710,27 @@ export default function CaseDetail() {
               )}
 
               {caseItem.type === 'type-1' ? (
-                /* Type-1: Incident Location + Description side-by-side in one section */
-                ((caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) || caseItem.description) && (
+                /* Type-1: Contact, Incident Location + Description side-by-side in one section */
+                ((caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) || caseItem.description || caseItem.studentContact) && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                    {/* Left: Incident Location */}
-                    {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
+                    {/* Left: Contact & Incident Location */}
+                    {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription || caseItem.studentContact) && (
                       <div>
-                        <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
-                        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                          {caseItem.incidentLocationDescription && (
-                            <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
-                          )}
+                        {caseItem.studentContact && (
+                          <div className="mb-4">
+                            <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Contact Information</h3>
+                            <div className="bg-gray-50 rounded-lg p-4">
+                              <p className="text-gray-700"><span className="font-medium">Phone Number:</span> {caseItem.studentContact}</p>
+                            </div>
+                          </div>
+                        )}
+                        {(caseItem.incidentLatitude != null || caseItem.incidentLocationDescription) && (
+                          <>
+                            <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Incident Location</h3>
+                            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                              {caseItem.incidentLocationDescription && (
+                                <p className="text-gray-700">{caseItem.incidentLocationDescription}</p>
+                              )}
                           {caseItem.incidentLatitude != null && caseItem.incidentLongitude != null && (
                             <>
                               <div className="flex items-center gap-3 text-sm">
@@ -744,7 +754,9 @@ export default function CaseDetail() {
                               />
                             </>
                           )}
-                        </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -890,6 +902,7 @@ export default function CaseDetail() {
                             {a.department && <p className="text-gray-600">Dept: {a.department}</p>}
                             {a.contact && <p className="text-gray-600">Contact: {a.contact}</p>}
                             {a.guardianContact && <p className="text-gray-600">Guardian: {a.guardianContact}</p>}
+                            {a.cgpa != null && <p className="text-gray-600">CGPA: {a.cgpa}</p>}
                           </div>
                         ))}
                       </div>

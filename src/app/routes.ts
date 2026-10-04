@@ -62,7 +62,6 @@ export const router = createBrowserRouter([
       { path: 'cases', Component: CasesList },
       { path: 'cases/:id', Component: CaseDetail },
       { path: 'cases/:id/edit', Component: CaseEdit },
-      { path: 'cases/:id/report', Component: CaseReport },
       { path: 'my-cases', Component: MyCases },
       { path: 'notifications', Component: NotificationsPage },
       { path: 'hearings', Component: HearingManagement },
@@ -92,4 +91,8 @@ export const router = createBrowserRouter([
       { path: '*', Component: StudentCatchAllRedirect },
     ],
   },
+  {
+    path: '/cases/:id/report',
+    Component: CaseReport,
+  }
 ]);

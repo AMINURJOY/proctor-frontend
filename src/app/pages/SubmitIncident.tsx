@@ -844,7 +844,9 @@ export default function SubmitIncident() {
                           <input placeholder="Contact" value={a.contact} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], contact: e.target.value }; setAccusedPersons(u); }}
                             className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
                           <input placeholder="Guardian Contact" value={a.guardianContact} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], guardianContact: e.target.value }; setAccusedPersons(u); }}
-                            className="col-span-2 px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                          <input type="number" step="0.01" placeholder="CGPA" value={a.cgpa || ''} onChange={e => { const u = [...accusedPersons]; u[i] = { ...u[i], cgpa: e.target.value ? parseFloat(e.target.value) : undefined }; setAccusedPersons(u); }}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
                         </div>
                       </div>
                     ))}

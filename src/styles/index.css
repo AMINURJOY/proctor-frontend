@@ -1,3 +1,24 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+.report-content-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+.report-content-wrapper th, .report-content-wrapper td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  text-align: left;
+}
+.report-content-wrapper th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}
+.report-content-wrapper img,
+.report-tiptap-editor img {
+  max-width: 120px;
+  max-height: 120px;
+  display: inline-block;
+}

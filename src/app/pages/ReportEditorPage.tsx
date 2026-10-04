@@ -71,6 +71,9 @@ function generateReportHTML(caseItem: Case): string {
 <p>[তদন্ত কমিটি নিম্নলিখিত সুপারিশ প্রদান করছে:]</p>
 <ul><li>[সুপারিশ ১]</li><li>[সুপারিশ ২]</li><li>[সুপারিশ ৩]</li></ul>
 <p></p>
+<h3>১১। চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
+<p>${caseItem.verdict || '[Disciplinary Committee থেকে চূড়ান্ত সিদ্ধান্ত এখানে যুক্ত হবে]'}</p>
+<p></p>
 <h3>প্রক্টোরিয়াল সদস্য:</h3>
 <table><thead><tr><th>নাম</th><th>পদবী</th><th>স্বাক্ষর</th></tr></thead><tbody><tr><td>[নাম]</td><td>[অধ্যাপক ও প্রক্টর]</td><td></td></tr><tr><td>[নাম]</td><td>[সহকারী প্রক্টর]</td><td></td></tr></tbody></table>
 <h3>সংযুক্তি:</h3>

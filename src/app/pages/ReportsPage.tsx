@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { casesApi } from '../services/api';
 import { Case } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 type SortKey = 'caseNumber' | 'studentName' | 'type' | 'status' | 'createdDate' | 'updatedDate';
 type SortDir = 'asc' | 'desc';
@@ -11,6 +12,7 @@ const titleCase = (s: string) => s.split('-').map(w => w.charAt(0).toUpperCase()
 
 export default function ReportsPage() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -22,6 +24,27 @@ export default function ReportsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all');
+  
+  // View Report Modal State
+  const [viewReportCaseId, setViewReportCaseId] = useState<string | null>(null);
+  const [reportContent, setReportContent] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const openViewReport = async (caseId: string) => {
+    setViewReportCaseId(caseId);
+    setReportContent(null);
+    setReportLoading(true);
+    try {
+      const res = await casesApi.getReports(caseId);
+      const reports = res.data?.data || [];
+      const finalReport = reports.find((r: any) => r.isFinal);
+      setReportContent(finalReport?.content || null);
+    } catch {
+      setReportContent(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   useEffect(() => {
     casesApi.getAll({ pageSize: 100 }).then(res => {
@@ -252,13 +275,24 @@ export default function ReportsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => navigate(`/reports/${c.id}/edit`)}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-white" style={{ backgroundColor: '#0b2652' }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        {reportCount > 0 ? 'Edit Report' : 'Create Report'}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openViewReport(c.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-white" style={{ backgroundColor: '#10b981' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          View Report
+                        </button>
+                        {currentUser?.role !== 'disciplinary-committee' && currentUser?.role !== 'vc' && currentUser?.role !== 'student' && (
+                          <button
+                            onClick={() => navigate(`/reports/${c.id}/edit`)}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-white" style={{ backgroundColor: '#0b2652' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            {reportCount > 0 ? 'Edit' : 'Create'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -276,6 +310,59 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {/* View Report Modal */}
+      {viewReportCaseId && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setViewReportCaseId(null)} />
+          <div className="fixed inset-4 z-50 flex flex-col bg-gray-100 rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center bg-white px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold" style={{ color: '#0b2652' }}>View Report</h3>
+              <div className="flex items-center gap-2">
+                <button onClick={() => {
+                  const printWin = window.open('', '_blank');
+                  if (!printWin) return;
+                  const finalContent = reportContent || '';
+                  printWin.document.write(`
+                    <html>
+                      <head>
+                        <title>Print Report</title>
+                        <style>
+                          body { font-family: 'July', 'Noto Sans Bengali', Arial, sans-serif; padding: 20px; }
+                          table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+                          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+                          img { max-width: 120px; max-height: 120px; display: inline-block; }
+                          .text-center { text-align: center; }
+                        </style>
+                      </head>
+                      <body>${finalContent}</body>
+                    </html>
+                  `);
+                  printWin.document.close();
+                  printWin.focus();
+                  setTimeout(() => printWin.print(), 500);
+                }} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Print
+                </button>
+                <button onClick={() => setViewReportCaseId(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-6 flex justify-center bg-gray-50">
+              {reportLoading ? (
+                <div className="flex items-center justify-center h-full w-full">
+                  <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="bg-white shadow-sm border border-gray-200 rounded p-12 max-w-4xl w-full report-content-wrapper prose"
+                     dangerouslySetInnerHTML={{ __html: reportContent || '<p class="text-center text-gray-500">No final report available for this case.</p>' }} />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
