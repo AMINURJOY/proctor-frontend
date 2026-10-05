@@ -58,7 +58,7 @@ function getType1StepIndex(status: CaseStatus, acknowledged: boolean): number {
   return 0;
 }
 
-function getStepIndex(status: CaseStatus): number {
+function getStepIndex(caseItem: Case): number {
   const map: Record<CaseStatus, number> = {
     'submitted': 0,
     'pending': 0,
@@ -77,7 +77,18 @@ function getStepIndex(status: CaseStatus): number {
     'on-hold': -2,
     'suggested-type-2': -3,
   };
-  return map[status] ?? 0;
+
+  let index = map[caseItem.status] ?? 0;
+
+  // If a finalized report exists and we haven't advanced to Review/Decision/Closed,
+  // push the progress to the Report step (5).
+  if (index >= 3 && index < 6) {
+    if (caseItem.reports?.some(r => r.isFinal)) {
+      index = 5;
+    }
+  }
+
+  return index;
 }
 
 type CloseExtra = { verdict?: string; recommendation?: string; note?: string; closingMessage?: string };
@@ -394,7 +405,7 @@ export default function CaseDetail() {
   // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
   // same powers without needing the case forwarded to them.
   const caseClosedish = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
-  const coordinatorCanAct = !caseClosedish && (
+  const coordinatorCanAct = !caseClosedish && caseItem.type !== 'type-1' && (
     // The Administrative Officer is the Proctor's assistant and runs the office in practice,
     // so both act on any case regardless of where it has been forwarded.
     currentUser?.role === 'coordinator' ||
@@ -403,7 +414,7 @@ export default function CaseDetail() {
     (currentUser?.role === 'female-coordinator' && isActiveAssignee)
   );
   // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
-  const assistantProctorCanAct = !caseClosedish && currentUser?.role === 'assistant-proctor'
+  const assistantProctorCanAct = !caseClosedish && caseItem.type !== 'type-1' && currentUser?.role === 'assistant-proctor'
     && (caseItem.forwardedToRole === 'assistant-proctor' || isActiveAssignee);
   const hasConfidentialMenu = permissions['confidential']?.canRead === true;
   const canViewConfidential = isOwnSubmission
@@ -474,7 +485,7 @@ export default function CaseDetail() {
   const progressSteps = isType1 ? type1Steps : workflowSteps;
   const currentStepIndex = isType1
     ? getType1StepIndex(caseItem.status, !!caseItem.isAcknowledged)
-    : getStepIndex(caseItem.status);
+    : getStepIndex(caseItem);
   const isRejected = caseItem.status === 'rejected';
   const isOnHold = caseItem.status === 'on-hold';
 
@@ -558,7 +569,7 @@ export default function CaseDetail() {
                   <CheckIcon /> Acknowledge
                 </button>
               )}
-              {caseItem.type === 'type-1' && ['submitted', 'assigned'].includes(caseItem.status) && ['proctor', 'assistant-proctor', 'deputy-proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(currentUser?.role || '') && (
+              {caseItem.type === 'type-1' && ['submitted', 'assigned'].includes(caseItem.status) && (isActiveAssignee || ['proctor', 'super-admin'].includes(currentUser?.role || '')) && (
                 <>
                   <button
                     onClick={() => handleStatusChange('suggested-type-2')}
@@ -2674,7 +2685,7 @@ function AssignCaseButton({ caseItem, role, onRefresh }: {
   }, [open]);
 
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
-  if (!canAssign || isClosed) return null;
+  if (!canAssign || isClosed || caseItem.type === 'type-2') return null;
 
   // Only handler assignments belong in this dialog — a case auto-routed to an Administrative
   // Officer also carries their assignment, which must not be pre-selected (or submitted).
@@ -2685,7 +2696,13 @@ function AssignCaseButton({ caseItem, role, onRefresh }: {
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase()) ||
     roleLabel(u.role).toLowerCase().includes(search.toLowerCase())
-  );
+  ).sort((a, b) => {
+    const aSelected = selected.includes(a.id);
+    const bSelected = selected.includes(b.id);
+    if (aSelected && !bSelected) return -1;
+    if (!aSelected && bSelected) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const toggle = (id: string) => {
     setSelected(prev => {

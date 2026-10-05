@@ -69,6 +69,7 @@ export const router = createBrowserRouter([
       { path: 'monitoring', Component: VCMonitoring },
       { path: 'reports', Component: ReportsPage },
       { path: 'reports/:caseId/edit', Component: ReportEditorPage },
+      { path: 'reports/:id/view', Component: CaseReport },
       { path: 'draft-reports', Component: DraftReportsPage },
       { path: 'users', Component: UsersManagement },
       { path: 'students', Component: StudentsList },

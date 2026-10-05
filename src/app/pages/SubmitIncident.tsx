@@ -201,8 +201,7 @@ export default function SubmitIncident() {
 
   // Categories mapped to the chosen subject (superadmin maps each category to a subject).
   const subjectCategories = categories.filter(c =>
-    c.isActive
-    && (c.appliesToType === 'type-2' || c.appliesToType === 'both'));
+    c.isActive);
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -624,7 +623,7 @@ export default function SubmitIncident() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select a category (optional)...</option>
-                  {categories.filter(c => c.isActive && (c.appliesToType === 'type-1' || c.appliesToType === 'both')).map(c => (
+                  {categories.filter(c => c.isActive).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -780,8 +779,17 @@ export default function SubmitIncident() {
                       className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">+ Add Another</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mb-4">
-                    <label className="text-xs text-gray-600">Primary student's semester
-                      <input type="number" min="1" max="12" value={t2Semester} onChange={e => setT2Semester(e.target.value)} placeholder="1–12" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                    <label className="text-xs text-gray-600">Academic Semester
+                      <input type="text" readOnly value={
+                        (() => {
+                          if (!t2IncidentDate) return '';
+                          const d = new Date(t2IncidentDate);
+                          if (isNaN(d.getTime())) return '';
+                          const m = d.getMonth() + 1;
+                          const term = m <= 4 ? 'Spring' : m <= 8 ? 'Summer' : 'Fall';
+                          return `${term}-${d.getFullYear()}`;
+                        })()
+                      } placeholder="Auto-calculated" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-gray-100" />
                     </label>
                     <label className="text-xs text-gray-600">Primary student's CGPA
                       <input type="number" min="0" max="4" step="0.01" value={t2Cgpa} onChange={e => setT2Cgpa(e.target.value)} placeholder="0.00–4.00" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />

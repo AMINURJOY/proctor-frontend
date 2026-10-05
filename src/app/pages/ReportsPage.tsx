@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { casesApi } from '../services/api';
 import { Case } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { exportReportToPdf } from '../utils/pdfExport';
 
 type SortKey = 'caseNumber' | 'studentName' | 'type' | 'status' | 'createdDate' | 'updatedDate';
 type SortDir = 'asc' | 'desc';
@@ -11,8 +12,8 @@ type ReportFilter = 'all' | 'none' | 'draft' | 'final';
 const titleCase = (s: string) => s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 export default function ReportsPage() {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
+
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -24,7 +25,6 @@ export default function ReportsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all');
-  
   // View Report Modal State
   const [viewReportCaseId, setViewReportCaseId] = useState<string | null>(null);
   const [reportContent, setReportContent] = useState<string | null>(null);
@@ -320,28 +320,9 @@ export default function ReportsPage() {
               <h3 className="text-lg font-bold" style={{ color: '#0b2652' }}>View Report</h3>
               <div className="flex items-center gap-2">
                 <button onClick={() => {
-                  const printWin = window.open('', '_blank');
-                  if (!printWin) return;
-                  const finalContent = reportContent || '';
-                  printWin.document.write(`
-                    <html>
-                      <head>
-                        <title>Print Report</title>
-                        <style>
-                          body { font-family: 'July', 'Noto Sans Bengali', Arial, sans-serif; padding: 20px; }
-                          table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-                          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-                          img { max-width: 120px; max-height: 120px; display: inline-block; }
-                          .text-center { text-align: center; }
-                        </style>
-                      </head>
-                      <body>${finalContent}</body>
-                    </html>
-                  `);
-                  printWin.document.close();
-                  printWin.focus();
-                  setTimeout(() => printWin.print(), 500);
-                }} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
+                  const caseNumber = cases.find(c => c.id === viewReportCaseId)?.caseNumber || viewReportCaseId;
+                  exportReportToPdf(reportContent || '', caseNumber);
+                }} disabled={!reportContent || reportLoading} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                   Print
                 </button>
@@ -362,6 +343,7 @@ export default function ReportsPage() {
             </div>
           </div>
         </>
+
       )}
     </div>
   );
