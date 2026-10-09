@@ -141,7 +141,7 @@ export const casesApi = {
   deleteDocument: (caseId: string, documentId: string) =>
     api.delete(`/cases/${caseId}/documents/${documentId}`),
   delete: (id: string) => api.delete(`/cases/${id}`),
-  forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string; assignedToUserId?: string; forwardToAll?: boolean }) =>
+  forward: (id: string, data: { targetRole: string; note?: string; recommendation?: string; verdict?: string; assignedToUserId?: string; forwardToAll?: boolean; markAsConfidential?: boolean }) =>
     api.post(`/cases/${id}/forward`, data),
   createReport: (caseId: string, data: { content: string; isDraft?: boolean; isFinal?: boolean }) =>
     api.post(`/cases/${caseId}/reports`, data),
@@ -153,6 +153,32 @@ export const casesApi = {
   acknowledge: (id: string, comment: string) => api.post(`/cases/${id}/acknowledge`, { comment }),
   assign: (id: string, userIds: string[], primaryUserId?: string) =>
     api.post(`/cases/${id}/assignments`, { userIds, primaryUserId }),
+};
+
+export const type3Api = {
+  start: (caseId: string, reportId: string, remarks: string) => api.post(`/type3/cases/${caseId}/start`, { reportId, remarks }),
+  queue: () => api.get('/type3/queue'),
+  forwardCase: (caseId: string, remarks: string) => api.post(`/type3/cases/${caseId}/forward`, { remarks }),
+  saveRemark: (caseId: string, remarks: string) => api.put(`/type3/cases/${caseId}/remark`, { remarks }),
+  createResolution: (cases: Array<{ caseId: string; shortDescription: string; secretaryRemarks: string }>) =>
+    api.post('/type3/resolutions', { cases }),
+  forwardResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/forward`, { remarks }),
+  approveResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/approve`, { remarks }),
+  downloadResolutionUrl: (resolutionId: string) => `${API_BASE_URL}/api/type3/resolutions/${resolutionId}/docx`,
+  downloadResolution: (resolutionId: string) => api.get(`/type3/resolutions/${resolutionId}/docx`, { responseType: 'blob' }),
+};
+
+export const investigationAttachmentsApi = {
+  access: (caseId: string) => api.get(`/cases/${caseId}/investigation-attachments/access`),
+  list: (caseId: string) => api.get(`/cases/${caseId}/investigation-attachments`),
+  uploadImage: (caseId: string, file: File, name?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
+    return api.post(`/cases/${caseId}/investigation-attachments/image`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  addDriveLink: (caseId: string, name: string, url: string) => api.post(`/cases/${caseId}/investigation-attachments/drive-link`, { name, url }),
+  contentUrl: (caseId: string, attachmentId: string) => `${API_BASE_URL}/api/cases/${caseId}/investigation-attachments/${attachmentId}/content`,
 };
 
 // Students (master directory; powers Type-2 autofill)
@@ -167,7 +193,7 @@ export const studentsApi = {
 export const caseCategoriesApi = {
   getAll: (includeInactive = false) => api.get('/case-categories', { params: { includeInactive } }),
   getById: (id: string) => api.get(`/case-categories/${id}`),
-  create: (data: { name: string; description?: string; isConfidential?: boolean; isActive?: boolean; appliesToType?: string; sortOrder?: number; subjectId?: string | null }) =>
+  create: (data: { name: string; description?: string; isActive?: boolean; appliesToType?: string; sortOrder?: number }) =>
     api.post('/case-categories', data),
   update: (id: string, data: any) => api.put(`/case-categories/${id}`, data),
   delete: (id: string) => api.delete(`/case-categories/${id}`),
@@ -200,6 +226,12 @@ export const rolesApi = {
   getPermissions: (id: string) => api.get(`/roles/${id}/permissions`),
   updatePermissions: (id: string, data: any) => api.put(`/roles/${id}/permissions`, data),
   getByName: (roleName: string) => api.get(`/roles/by-name/${roleName}`),
+};
+
+// Immutable system activity history
+export const auditLogsApi = {
+  getAll: (params?: Record<string, unknown>) => api.get('/audit-logs', { params }),
+  getFilters: () => api.get('/audit-logs/filters'),
 };
 
 // Notifications
@@ -258,9 +290,11 @@ export const ranksApi = {
 
 export const forwardingRulesApi = {
   getAll: () => api.get('/forwarding-rules'),
-  getForRole: (role: string) => api.get(`/forwarding-rules/from/${role}`),
-  getSpecial: (role: string) => api.get(`/forwarding-rules/special/${role}`),
-  create: (data: { fromRole: string; toRole: string; resultStatus?: string }) => api.post('/forwarding-rules', data),
+  getForRole: (role: string, caseType: string = 'type-2') =>
+    api.get(`/forwarding-rules/from/${role}`, { params: { caseType: caseType === 'type-1' ? 'type-1' : 'type-2' } }),
+  getSpecial: (role: string, caseType: string = 'type-2') =>
+    api.get(`/forwarding-rules/special/${role}`, { params: { caseType: caseType === 'type-1' ? 'type-1' : 'type-2' } }),
+  create: (data: { fromRole: string; toRole: string; appliesToType?: 'type-1' | 'type-2'; resultStatus?: string }) => api.post('/forwarding-rules', data),
   update: (id: string, data: any) => api.put(`/forwarding-rules/${id}`, data),
   delete: (id: string) => api.delete(`/forwarding-rules/${id}`),
 };

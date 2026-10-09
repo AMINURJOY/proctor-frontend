@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { casesApi, forwardingRulesApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
 
 type DraftReport = {
@@ -18,25 +19,32 @@ export default function DraftReportsPage() {
   const [searchParams] = useSearchParams();
   const caseId = searchParams.get('caseId') || '';
   const { currentUser } = useAuth();
+  const permissions = usePermissions();
 
   const [caseNumber, setCaseNumber] = useState<string>('');
+  const [caseType, setCaseType] = useState<string>('');
   const [drafts, setDrafts] = useState<DraftReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [canDraftReport, setCanDraftReport] = useState(false);
+  const [canDraftForCaseType, setCanDraftForCaseType] = useState(false);
+  const isReportableType = caseType === 'type-2' || caseType === 'confidential';
+  const canDraftReport = isReportableType && (currentUser?.role === 'super-admin'
+    || !!permissions.reports?.canCreate
+    || canDraftForCaseType);
 
   // "+ New Draft" modal state
   const [showNewDraft, setShowNewDraft] = useState(false);
   const [newContent, setNewContent] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Pull the user's draft-report permission once on mount
+  // A global menu Create grant applies to every report. The forwarding rule remains an
+  // optional case-type-specific grant for roles without global creation access.
   useEffect(() => {
     const role = currentUser?.role || '';
-    if (!role) { setCanDraftReport(false); return; }
-    forwardingRulesApi.getSpecial(role)
-      .then(res => setCanDraftReport(!!res.data?.data?.canDraftReport))
-      .catch(() => setCanDraftReport(false));
-  }, [currentUser?.role]);
+    if (!role || !caseType) { setCanDraftForCaseType(false); return; }
+    forwardingRulesApi.getSpecial(role, caseType)
+      .then(res => setCanDraftForCaseType(!!res.data?.data?.canDraftReport))
+      .catch(() => setCanDraftForCaseType(false));
+  }, [currentUser?.role, caseType]);
 
   const loadDrafts = async () => {
     if (!caseId) return;
@@ -47,6 +55,7 @@ export default function DraftReportsPage() {
       try {
         const cRes = await casesApi.getById(caseId);
         setCaseNumber(cRes.data?.data?.caseNumber || cRes.data?.caseNumber || '');
+        setCaseType(cRes.data?.data?.type || cRes.data?.type || 'type-2');
       } catch { /* ignore */ }
 
       const rRes = await casesApi.getReports(caseId);

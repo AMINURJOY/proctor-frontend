@@ -8,17 +8,18 @@ const tracks: { key: CaseTrack; label: string; setting: string }[] = [
   { key: 'type2', label: 'Type-2 (Formal Cases)', setting: 'case_viewing_type2' },
   { key: 'confidential', label: 'Confidential Cases', setting: 'case_viewing_confidential' },
 ];
-const roles = ['student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'];
+const roles = ['student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman', 'super-admin'];
 
 export default function CaseViewingPage() {
   const [viewers, setViewers] = useState<Record<CaseTrack, string[]>>({ type1: [], type2: [], confidential: [] });
+  const [investigationAccess, setInvestigationAccess] = useState<Record<'view' | 'upload', string[]>>({ view: [], upload: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     let active = true;
-    settingsApi.getByCategory('case_viewing').then(res => {
+    Promise.all([settingsApi.getByCategory('case_viewing'), settingsApi.getByCategory('investigation_access')]).then(([res, investigationRes]) => {
       if (!active) return;
       const rows = res.data.data || res.data;
       if (!Array.isArray(rows)) return;
@@ -30,6 +31,11 @@ export default function CaseViewingPage() {
         }
         return next;
       });
+      const investigationRows = investigationRes.data.data || investigationRes.data;
+      if (Array.isArray(investigationRows)) setInvestigationAccess({
+        view: (investigationRows.find((row: any) => row.key === 'investigation_attachment_view_roles')?.value || '').split(',').map((x: string) => x.trim()).filter(Boolean),
+        upload: (investigationRows.find((row: any) => row.key === 'investigation_attachment_upload_roles')?.value || '').split(',').map((x: string) => x.trim()).filter(Boolean),
+      });
     }).catch(() => { if (active) setMessage('Could not load case viewing settings.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -38,11 +44,18 @@ export default function CaseViewingPage() {
   const toggle = (track: CaseTrack, role: string) => setViewers(prev => ({ ...prev,
     [track]: prev[track].includes(role) ? prev[track].filter(x => x !== role) : [...prev[track], role]
   }));
+  const toggleInvestigation = (kind: 'view' | 'upload', role: string) => setInvestigationAccess(prev => ({ ...prev,
+    [kind]: prev[kind].includes(role) ? prev[kind].filter(x => x !== role) : [...prev[kind], role]
+  }));
   const save = async () => {
     setSaving(true);
     setMessage('');
     try {
-      await Promise.all(tracks.map(track => settingsApi.update(track.setting, viewers[track.key].join(','))));
+      await Promise.all([
+        ...tracks.map(track => settingsApi.update(track.setting, viewers[track.key].join(','))),
+        settingsApi.update('investigation_attachment_view_roles', investigationAccess.view.join(',')),
+        settingsApi.update('investigation_attachment_upload_roles', investigationAccess.upload.join(',')),
+      ]);
       setMessage('Case viewing settings saved.');
     } catch { setMessage('Could not save case viewing settings.'); }
     finally { setSaving(false); }
@@ -57,6 +70,16 @@ export default function CaseViewingPage() {
           <input type="checkbox" checked={viewers[track.key].includes(role)} onChange={() => toggle(track.key, role)} />{roleLabel(role)}
         </label>)}</div>
       </section>)}
+      <section className="rounded-xl border border-amber-200 bg-white p-6 shadow-md">
+        <h2 className="text-lg font-semibold text-[#0b2652]">Type-2 / Type-3 Investigation Attachments</h2>
+        <p className="mb-5 mt-1 text-sm text-slate-500">These permissions are enforced by the API for protected images and Google Drive links.</p>
+        {(['view', 'upload'] as const).map(kind => <div key={kind} className="mb-5 last:mb-0">
+          <h3 className="mb-2 text-sm font-semibold text-slate-700">Roles allowed to {kind}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">{roles.map(role => <label key={role} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm">
+            <input type="checkbox" checked={investigationAccess[kind].includes(role)} onChange={() => toggleInvestigation(kind, role)} />{roleLabel(role)}
+          </label>)}</div>
+        </div>)}
+      </section>
       <button onClick={save} disabled={saving} className="rounded-lg bg-[#0b2652] px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save Case Viewing Settings'}</button>
     </>}
     {message && <p role="status" className="text-sm text-slate-700">{message}</p>}

@@ -111,6 +111,11 @@ export default function ReportEditorPage() {
         const [caseRes, articlesRes] = await Promise.all([casesApi.getById(caseId!), articlesApi.getAll()]);
         const c = caseRes.data.data || caseRes.data;
         const arts = articlesRes.data.data || [];
+        if (c.type !== 'type-2' && c.type !== 'confidential') {
+          toast.error('Only Type-2 cases can have investigation reports.');
+          navigate('/reports', { replace: true });
+          return;
+        }
         setCaseItem(c); setArticles(arts);
         const reportsRes = await casesApi.getReports(caseId!);
         const reports = reportsRes.data.data || [];
@@ -134,7 +139,7 @@ export default function ReportEditorPage() {
       } catch { toast.error('Failed to load case data'); } finally { setLoading(false); }
     };
     if (caseId && editor) fetchData();
-  }, [caseId, editor, targetReportId, currentUser?.id, currentUser?.name]);
+  }, [caseId, editor, targetReportId, currentUser?.id, currentUser?.name, navigate]);
 
   // Someone else's report is shown but not editable.
   useEffect(() => {
@@ -153,9 +158,10 @@ export default function ReportEditorPage() {
       if (existingReportId) { await casesApi.updateReport(caseId, existingReportId, data); }
       else { const res = await casesApi.createReport(caseId, data); setExistingReportId(res.data.data?.id || null); }
       toast.success(isDraft ? 'Draft saved' : 'Report finalized');
+      if (isFinal) navigate('/completed-reports');
     } catch (err: any) { toast.error('Save failed', { description: err?.response?.data?.message || 'Error' }); }
     finally { setSaving(false); }
-  }, [editor, caseId, existingReportId, canEditReport, reportAuthor]);
+  }, [editor, caseId, existingReportId, canEditReport, reportAuthor, navigate]);
 
   // Ask Gemini to draft the report from the case record, then drop the HTML into the editor.
   // Nothing is saved automatically — the officer reviews and edits before hitting Save Draft.

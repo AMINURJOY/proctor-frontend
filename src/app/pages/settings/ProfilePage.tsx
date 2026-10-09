@@ -5,6 +5,7 @@ import { roleLabel } from '../../utils/roles';
 
 interface StudentProfile {
   studentId: string;
+  batch: string;
   gender: string;
   cgpa: number | null;
 }
@@ -57,6 +58,7 @@ export default function ProfilePage() {
         {isStudent
           ? <div><dt className="text-sm text-gray-500">Student ID</dt><dd className="text-gray-900">{loading ? 'Loading…' : student?.studentId || '—'}</dd></div>
           : <div><dt className="text-sm text-gray-500">User ID</dt><dd className="break-all font-mono text-sm text-gray-900">{currentUser?.id || '—'}</dd></div>}
+        {isStudent && <div><dt className="text-sm text-gray-500">Batch</dt><dd className="font-mono text-gray-900">{loading ? 'Loading…' : student?.batch || '—'}</dd></div>}
         <div><dt className="text-sm text-gray-500">Gender</dt><dd className="text-gray-900">{genderLabel}</dd></div>
         {isStudent && <div><dt className="text-sm text-gray-500">CGPA</dt><dd className="text-gray-900">{loading ? 'Loading…' : student?.cgpa == null ? '—' : Number(student.cgpa).toFixed(2)}</dd></div>}
       </dl>

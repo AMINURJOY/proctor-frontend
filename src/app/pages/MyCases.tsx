@@ -5,6 +5,7 @@ import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
 import { roleLabel } from '../utils/roles';
+import TablePagination from '../components/TablePagination';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -84,7 +85,6 @@ export default function MyCases() {
     }
   };
 
-  const totalPages = Math.ceil(totalCount / pageSize);
   const deletingCase = cases.find(c => c.id === deleteId);
 
   // Client-side filter on top of the backend "my cases" result set. Mirrors the
@@ -203,7 +203,6 @@ export default function MyCases() {
                         {c.categoryName && (
                           <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">
                             {c.categoryName}
-                            {c.categoryIsConfidential && <span className="text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">Confidential</span>}
                           </div>
                         )}
                       </td>
@@ -282,17 +281,8 @@ export default function MyCases() {
                 </tbody>
               </table>
             </div>
+            <TablePagination currentPage={page} pageSize={pageSize} totalItems={totalCount} onPageChange={setPage} itemLabel="cases" />
           </div>
-
-          {totalPages > 1 && (
-            <div className="flex justify-center gap-2 mt-4">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                className="px-3 py-1 text-sm rounded border border-gray-300 disabled:opacity-50">Previous</button>
-              <span className="px-3 py-1 text-sm">Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                className="px-3 py-1 text-sm rounded border border-gray-300 disabled:opacity-50">Next</button>
-            </div>
-          )}
         </>
       )}
 

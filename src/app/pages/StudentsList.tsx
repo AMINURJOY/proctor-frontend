@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { studentsApi } from '../services/api';
 import { SearchIcon, PlusIcon } from '../components/Icons';
 import { toast } from 'sonner';
+import TablePagination from '../components/TablePagination';
 
 interface Student {
   id: string;
   studentId: string;
   name: string;
   department?: string;
+  batch: string;
   contact?: string;
   email?: string;
   gender: string;
@@ -19,7 +21,7 @@ interface Student {
   isActive: boolean;
 }
 
-const emptyForm = { studentId: '', name: '', department: '', contact: '', email: '', gender: 'male', cgpa: '', fatherName: '', fatherContact: '', advisorName: '' };
+const emptyForm = { studentId: '', name: '', department: '', batch: '', contact: '', email: '', gender: 'male', cgpa: '', fatherName: '', fatherContact: '', advisorName: '' };
 
 const genderBadge = (g: string) => {
   const v = (g || '').toLowerCase();
@@ -35,6 +37,8 @@ export default function StudentsList() {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   const load = async () => {
     setLoading(true);
@@ -78,8 +82,13 @@ export default function StudentsList() {
     return !q ||
       s.studentId.toLowerCase().includes(q) ||
       s.name.toLowerCase().includes(q) ||
-      (s.department || '').toLowerCase().includes(q);
+      (s.department || '').toLowerCase().includes(q) ||
+      (s.batch || '').toLowerCase().includes(q);
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedStudents = filtered.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   return (
     <div>
@@ -110,6 +119,7 @@ export default function StudentsList() {
             </select>
             <input type="number" min="0" max="4" step="0.01" placeholder="CGPA (out of 4)" value={form.cgpa} onChange={e => setForm({ ...form, cgpa: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input placeholder="Batch (e.g. CSE_231)" value={form.batch} onChange={e => setForm({ ...form, batch: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Contact / Phone" value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Father's Name" value={form.fatherName} onChange={e => setForm({ ...form, fatherName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -130,7 +140,7 @@ export default function StudentsList() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by ID, name or department…"
+              placeholder="Search by ID, name, batch or department…"
               className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -150,12 +160,13 @@ export default function StudentsList() {
                   <th className="px-4 py-3 font-medium">Gender</th>
                   <th className="px-4 py-3 font-medium">CGPA</th>
                   <th className="px-4 py-3 font-medium">Department</th>
+                  <th className="px-4 py-3 font-medium">Batch</th>
                   <th className="px-4 py-3 font-medium">Contact</th>
                   <th className="px-4 py-3 font-medium">Father</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(s => (
+                {paginatedStudents.map(s => (
                   <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-3 font-mono font-medium text-gray-900">{s.studentId}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
@@ -164,6 +175,7 @@ export default function StudentsList() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{s.cgpa == null ? '—' : Number(s.cgpa).toFixed(2)}</td>
                     <td className="px-4 py-3 text-gray-600">{s.department || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-gray-700">{s.batch || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.contact || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.fatherName ? `${s.fatherName}${s.fatherContact ? ` (${s.fatherContact})` : ''}` : '—'}</td>
                   </tr>
@@ -172,6 +184,7 @@ export default function StudentsList() {
             </table>
           </div>
         )}
+        {!loading && <TablePagination currentPage={page} pageSize={pageSize} totalItems={filtered.length} onPageChange={setPage} itemLabel="students" />}
       </div>
     </div>
   );

@@ -61,12 +61,16 @@ export default function LoginPage() {
     'sexual-harassment-committee': 'bg-amber-600 hover:bg-amber-700',
     'vc': 'bg-slate-700 hover:bg-slate-800',
     'super-admin': 'bg-green-700 hover:bg-green-800',
-    'external': 'bg-stone-600 hover:bg-stone-700'
+    'external': 'bg-stone-600 hover:bg-stone-700',
+    'dc-chairman': 'bg-fuchsia-700 hover:bg-fuchsia-800',
+    'dc-member': 'bg-violet-700 hover:bg-violet-800',
+    'dc-secretary': 'bg-indigo-700 hover:bg-indigo-800',
+    'chairman': 'bg-rose-800 hover:bg-rose-900'
   };
 
   // These demo profiles match the seeded accounts and use the same login flow.
   const committeeAccounts = users.filter((u) =>
-    ['registrar', 'disciplinary-committee', 'vc', 'sexual-harassment-committee'].includes(u.role)
+    ['registrar', 'disciplinary-committee', 'vc', 'sexual-harassment-committee', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman'].includes(u.role)
   );
   const otherAccounts = users.filter((u) => u.role === 'student' || u.role === 'super-admin');
   const quickLoginProfiles = [...proctorialBody, ...committeeAccounts, ...otherAccounts];

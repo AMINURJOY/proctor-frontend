@@ -17,8 +17,8 @@ import {
   RefreshIcon,
   UserIcon
 } from '../components/Icons';
-import { Case, CaseStatus, Hearing, User } from '../types';
-import { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, API_BASE_URL } from '../services/api';
+import { Case, CaseStatus, Hearing, User, InvestigationAttachment } from '../types';
+import api, { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, API_BASE_URL } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
@@ -102,6 +102,14 @@ function defaultAckMessage(controlRoomNumber: string) {
     : base;
 }
 
+function formatSemester(semester: number) {
+  const mod100 = semester % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13
+    ? 'th'
+    : semester % 10 === 1 ? 'st' : semester % 10 === 2 ? 'nd' : semester % 10 === 3 ? 'rd' : 'th';
+  return `${semester}${suffix} Semester`;
+}
+
 export default function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -123,6 +131,12 @@ export default function CaseDetail() {
   // Document opened in the full-screen viewer (null = viewer closed).
   const [previewDoc, setPreviewDoc] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const investigationFileRef = useRef<HTMLInputElement>(null);
+  const [investigationAccess, setInvestigationAccess] = useState({ canView: false, canUpload: false });
+  const [investigationAttachments, setInvestigationAttachments] = useState<InvestigationAttachment[]>([]);
+  const [investigationUploading, setInvestigationUploading] = useState(false);
+  const [driveName, setDriveName] = useState('');
+  const [driveUrl, setDriveUrl] = useState('');
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
 
@@ -156,19 +170,28 @@ export default function CaseDetail() {
   // the header action row, so it's lifted to the top alongside other state.
   const role = currentUser?.role || '';
 
-  // Dynamic permission for showing the Draft Report header link.
-  // Mirrors the gating on POST /api/cases/{id}/reports in the backend, so the
-  // button only appears for roles that are configured in Settings → Draft Report Permission.
+  // Report creation can be granted globally from menu permissions or narrowly for one
+  // case type from Case Forwarding. This mirrors the API authorization rule.
   // NOTE: this state and its effect MUST be declared BEFORE any early `return`
   // so the hook count stays stable across renders (otherwise React throws
   // "Rendered more hooks than during the previous render").
-  const [canDraftReport, setCanDraftReport] = useState(false);
+  const [canDraftForCaseType, setCanDraftForCaseType] = useState(false);
+  const [canCloseByRole, setCanCloseByRole] = useState(false);
+  const isReportableType = caseItem?.type === 'type-2' || caseItem?.type === 'confidential';
+  const canDraftReport = isReportableType && (
+    role === 'super-admin'
+    || !!permissions.reports?.canCreate
+    || canDraftForCaseType
+  );
   useEffect(() => {
-    if (!role) { setCanDraftReport(false); return; }
-    forwardingRulesApi.getSpecial(role)
-      .then(res => setCanDraftReport(!!res.data?.data?.canDraftReport))
-      .catch(() => setCanDraftReport(false));
-  }, [role]);
+    if (!role) { setCanDraftForCaseType(false); setCanCloseByRole(false); return; }
+    forwardingRulesApi.getSpecial(role, caseItem?.type || 'type-2')
+      .then(res => {
+        setCanDraftForCaseType(!!res.data?.data?.canDraftReport);
+        setCanCloseByRole(!!res.data?.data?.canClose);
+      })
+      .catch(() => { setCanDraftForCaseType(false); setCanCloseByRole(false); });
+  }, [role, caseItem?.type]);
 
   // Escape closes the document viewer, matching the other modals on this page.
   useEffect(() => {
@@ -224,6 +247,15 @@ export default function CaseDetail() {
       try {
         const response = await casesApi.getById(id!);
         setCaseItem(response.data.data || response.data);
+        try {
+          const accessResponse = await investigationAttachmentsApi.access(id!);
+          const access = accessResponse.data.data || accessResponse.data;
+          setInvestigationAccess(access);
+          if (access.canView) {
+            const attachmentResponse = await investigationAttachmentsApi.list(id!);
+            setInvestigationAttachments(attachmentResponse.data.data || []);
+          }
+        } catch { setInvestigationAccess({ canView: false, canUpload: false }); setInvestigationAttachments([]); }
         // Also fetch coordinator checklist verifications for this case
         try {
           const vRes = await checklistApi.getVerifications(id!);
@@ -306,6 +338,35 @@ export default function CaseDetail() {
     return `${API_BASE_URL}${url}`;
   };
 
+  const refreshInvestigationAttachments = async () => {
+    if (!caseItem?.id) return;
+    const response = await investigationAttachmentsApi.list(caseItem.id);
+    setInvestigationAttachments(response.data.data || []);
+  };
+
+  const uploadInvestigationImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!caseItem || !file) return;
+    setInvestigationUploading(true);
+    try { await investigationAttachmentsApi.uploadImage(caseItem.id, file); await refreshInvestigationAttachments(); toast.success('Investigation image uploaded securely.'); }
+    catch (error: any) { toast.error(error.response?.data?.message || 'Could not upload investigation image.'); }
+    finally { setInvestigationUploading(false); if (investigationFileRef.current) investigationFileRef.current.value = ''; }
+  };
+
+  const addInvestigationDriveLink = async () => {
+    if (!caseItem || !driveName.trim() || !driveUrl.trim()) return toast.error('Link name and Google Drive URL are required.');
+    setInvestigationUploading(true);
+    try { await investigationAttachmentsApi.addDriveLink(caseItem.id, driveName.trim(), driveUrl.trim()); await refreshInvestigationAttachments(); setDriveName(''); setDriveUrl(''); toast.success('Investigation Drive link added.'); }
+    catch (error: any) { toast.error(error.response?.data?.message || 'Could not add Drive link.'); }
+    finally { setInvestigationUploading(false); }
+  };
+
+  const openInvestigationImage = async (attachment: InvestigationAttachment) => {
+    if (!caseItem || !attachment.contentUrl) return;
+    try { const response = await api.get(attachment.contentUrl, { responseType: 'blob' }); const url = URL.createObjectURL(response.data); window.open(url, '_blank', 'noopener,noreferrer'); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+    catch { toast.error('You do not have access to this protected image.'); }
+  };
+
   // Closing a case always requires a stated reason. Every "Close Case" button in the page
   // funnels through here, so the prompt is enforced in one place rather than per panel.
   const handleStatusChange = async (newStatus: string, extra?: CloseExtra) => {
@@ -325,7 +386,7 @@ export default function CaseDetail() {
     }
   };
 
-  const handleForward = async (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => {
+  const handleForward = async (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string; assignedToUserId?: string; markAsConfidential?: boolean }) => {
     if (!caseItem) return;
     try {
       await casesApi.forward(caseItem.id, { targetRole, ...extra });
@@ -386,7 +447,9 @@ export default function CaseDetail() {
     );
   }
 
-  const isConfidential = caseItem.type === 'confidential';
+  const isConfidential = !!caseItem.isConfidential || caseItem.type === 'confidential';
+  const isType3 = caseItem.type === 'type-3';
+  const confidentialMark = (caseItem.timeline || []).find(event => event.action === 'Marked Confidential');
   const isOwnSubmission = !!currentUser?.id && (
     caseItem.submittedByUserId === currentUser.id ||
     caseItem.studentId === currentUser.id
@@ -394,6 +457,8 @@ export default function CaseDetail() {
   const isAssignedToMe = !!currentUser?.name && caseItem.assignedTo === currentUser.name;
   const isInMyRoleQueue = !!currentUser?.role && caseItem.forwardedToRole === currentUser.role;
   const isActiveAssignee = (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
+  const acknowledgedByMe = !!currentUser?.id && caseItem.isAcknowledged && caseItem.acknowledgedById === currentUser.id;
+  const canCloseType1 = canCloseByRole || acknowledgedByMe || (!!caseItem.isAcknowledged && isActiveAssignee);
   // Associated staff (not the student/VC) may append additional information to the case.
   // The Proctor oversees every case, so they never need a forward to add information.
   const canAddInfo = !!currentUser?.role
@@ -405,7 +470,7 @@ export default function CaseDetail() {
   // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
   // same powers without needing the case forwarded to them.
   const caseClosedish = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
-  const coordinatorCanAct = !caseClosedish && caseItem.type !== 'type-1' && (
+  const coordinatorCanAct = !caseClosedish && !isType3 && caseItem.type !== 'type-1' && (
     // The Administrative Officer is the Proctor's assistant and runs the office in practice,
     // so both act on any case regardless of where it has been forwarded.
     currentUser?.role === 'coordinator' ||
@@ -414,7 +479,7 @@ export default function CaseDetail() {
     (currentUser?.role === 'female-coordinator' && isActiveAssignee)
   );
   // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
-  const assistantProctorCanAct = !caseClosedish && caseItem.type !== 'type-1' && currentUser?.role === 'assistant-proctor'
+  const assistantProctorCanAct = !caseClosedish && !isType3 && caseItem.type !== 'type-1' && currentUser?.role === 'assistant-proctor'
     && (caseItem.forwardedToRole === 'assistant-proctor' || isActiveAssignee);
   const hasConfidentialMenu = permissions['confidential']?.canRead === true;
   const canViewConfidential = isOwnSubmission
@@ -577,19 +642,23 @@ export default function CaseDetail() {
                   >
                     <ArrowRightIcon /> Suggest to Type-2
                   </button>
-                  <button
-                    onClick={() => setShowPoliceConfirm(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
-                  >
-                    <XIcon /> Mark as Police Case
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange('closed')}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900"
-                  >
-                    <CheckIcon /> Close Case
-                  </button>
+                  {canCloseByRole && (
+                    <button
+                      onClick={() => setShowPoliceConfirm(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
+                    >
+                      <XIcon /> Mark as Police Case
+                    </button>
+                  )}
                 </>
+              )}
+              {caseItem.type === 'type-1' && ['submitted', 'assigned', 'suggested-type-2'].includes(caseItem.status) && canCloseType1 && (
+                <button
+                  onClick={() => handleStatusChange('closed')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-white text-sm hover:bg-gray-900"
+                >
+                  <CheckIcon /> Close Case
+                </button>
               )}
               {canDelete && (
                 <button
@@ -669,7 +738,7 @@ export default function CaseDetail() {
       )}
 
       {/* Role-Based Action Panel */}
-      <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} deputyRemarks={deputyRemarks} setDeputyRemarks={setDeputyRemarks} />
+      {!isType3 && <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} deputyRemarks={deputyRemarks} setDeputyRemarks={setDeputyRemarks} />}
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
@@ -827,7 +896,7 @@ export default function CaseDetail() {
                       <div key={a.id} className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-sm">
                         <p className="font-medium">
                           {a.userName}
-                          {a.isPrimary && <span className="ml-2 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">Primary</span>}
+                          {a.isPrimary && <span className="ml-2 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">Initial responsible</span>}
                         </p>
                         <p className="text-gray-600">{a.userRank || roleLabel(a.userRole)}</p>
                         {a.userContactNumber && (
@@ -863,6 +932,16 @@ export default function CaseDetail() {
               )}
 
               {/* Short Bangla summary — Type-2 only, staff only, not shown to students */}
+              {isConfidential && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  <div className="flex items-center gap-2 font-semibold"><LockIcon /> Explicitly marked confidential</div>
+                  <p className="mt-1 text-xs text-red-700">
+                    {caseItem.submitterGender === 'female' ? 'Female-track complaint' : 'Restricted complaint'}
+                    {confidentialMark?.user ? ` · Marked by ${confidentialMark.user}` : ''}
+                  </p>
+                </div>
+              )}
+
               {caseItem.type !== 'type-1' && currentUser?.role !== 'student' && (caseItem.studentName || (caseItem.complainants?.length || 0) > 0) && (
                 <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-gray-800 leading-relaxed">
                   <span className="text-gray-500">অভিযোগকারী </span>
@@ -878,7 +957,7 @@ export default function CaseDetail() {
               {/* Complainant/Submitter (left) and Accused (right) — submitter and complainant are the same person */}
               {(caseItem.studentSemester != null || caseItem.studentCgpa != null) && (
                 <div className="flex flex-wrap gap-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
-                  {caseItem.studentSemester != null && <span><strong>Semester:</strong> {caseItem.studentSemester}</span>}
+                  {caseItem.studentSemester != null && <span><strong>Semester:</strong> {formatSemester(caseItem.studentSemester)}</span>}
                   {caseItem.studentCgpa != null && <span><strong>CGPA:</strong> {caseItem.studentCgpa.toFixed(2)}</span>}
                 </div>
               )}
@@ -1084,6 +1163,15 @@ export default function CaseDetail() {
                   ))}
                 </div>
               )}
+              {investigationAccess.canView && caseItem.type !== 'type-1' && <section className="mt-8 rounded-xl border border-amber-200 bg-amber-50/40 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><h3 className="font-semibold text-amber-950">Investigation Attachments</h3><p className="mt-1 text-xs text-amber-800">Restricted evidence. Access is controlled from General Settings.</p></div>
+                  {investigationAccess.canUpload && <><input ref={investigationFileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadInvestigationImage} className="hidden"/><button disabled={investigationUploading} onClick={() => investigationFileRef.current?.click()} className="rounded-lg bg-amber-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Upload Image</button></>}
+                </div>
+                {investigationAccess.canUpload && <div className="mt-4 grid gap-2 md:grid-cols-[1fr_2fr_auto]"><input value={driveName} onChange={e => setDriveName(e.target.value)} placeholder="Drive link name" className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"/><input value={driveUrl} onChange={e => setDriveUrl(e.target.value)} placeholder="https://drive.google.com/…" className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"/><button disabled={investigationUploading} onClick={addInvestigationDriveLink} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 disabled:opacity-50">Add Drive Link</button></div>}
+                <div className="mt-4 grid gap-3 md:grid-cols-2">{investigationAttachments.map(attachment => <div key={attachment.id} className="rounded-lg border border-amber-100 bg-white p-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">{attachment.kind === 'image' ? <ImageIcon/> : <FileIcon/>}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{attachment.name}</p><p className="text-xs text-slate-500">{attachment.uploadedByName} · {new Date(attachment.uploadedAt).toLocaleDateString()}</p></div>{attachment.kind === 'drive-link' ? <a href={attachment.externalUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-700">Open</a> : <button onClick={() => openInvestigationImage(attachment)} className="text-xs font-medium text-blue-700">View</button>}</div></div>)}</div>
+                {investigationAttachments.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No investigation attachments added.</p>}
+              </section>}
             </div>
           )}
 
@@ -1732,10 +1820,10 @@ function DisciplinaryCommitteePanel({ actionLoading, withLoading, onStatusChange
 }) {
   const [canClose, setCanClose] = useState(false);
   useEffect(() => {
-    forwardingRulesApi.getSpecial('disciplinary-committee').then(res => {
+    forwardingRulesApi.getSpecial('disciplinary-committee', caseItem.type).then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
-  }, []);
+  }, [caseItem.type]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -1852,10 +1940,10 @@ function SHCommitteePanel({ actionLoading, withLoading, onStatusChange, onForwar
 }) {
   const [canClose, setCanClose] = useState(false);
   useEffect(() => {
-    forwardingRulesApi.getSpecial('sexual-harassment-committee').then(res => {
+    forwardingRulesApi.getSpecial('sexual-harassment-committee', caseItem.type).then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
-  }, []);
+  }, [caseItem.type]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-red-200 mb-6">
@@ -1911,10 +1999,10 @@ function ProctorPanel({ actionLoading, withLoading, onStatusChange, onForward, c
 
   useEffect(() => {
     if (!actingRole) return;
-    forwardingRulesApi.getSpecial(actingRole).then(res => {
+    forwardingRulesApi.getSpecial(actingRole, caseItem.type).then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
-  }, [actingRole]);
+  }, [actingRole, caseItem.type]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -1969,10 +2057,10 @@ function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward,
   const [canClose, setCanClose] = useState(false);
 
   useEffect(() => {
-    forwardingRulesApi.getSpecial('registrar').then(res => {
+    forwardingRulesApi.getSpecial('registrar', caseItem.type).then(res => {
       setCanClose(!!res.data.data?.canClose);
     }).catch(() => {});
-  }, []);
+  }, [caseItem.type]);
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
@@ -2130,6 +2218,7 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
   };
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [forwardOpen, setForwardOpen] = useState(false);
+  const [markAsConfidential, setMarkAsConfidential] = useState(false);
   const [checklistItems, setChecklistItems] = useState<{ id: string; label: string }[]>([]);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [comment, setComment] = useState('');
@@ -2287,12 +2376,32 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
+              {!isConfidential && actingRole === 'female-coordinator' && caseItem.submitterGender === 'female' && (
+                <label className={`mb-4 flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition ${markAsConfidential ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={markAsConfidential}
+                    onChange={event => setMarkAsConfidential(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                  />
+                  <span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-gray-800"><LockIcon /> Mark as confidential</span>
+                    <span className="mt-1 block text-xs leading-5 text-gray-500">Use this only when the case requires restricted access. The selected person will receive the case after it is marked.</span>
+                  </span>
+                </label>
+              )}
+              {isConfidential && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+                  <LockIcon /> This case is confidential.
+                </div>
+              )}
               <UnifiedForwardSection
                 fromRole={coordRole}
                 actionLoading={actionLoading}
                 withLoading={withLoading}
                 title="Accept & Forward to:"
                 onForward={onForward}
+                forwardExtra={{ markAsConfidential }}
               />
             </div>
           </div>
@@ -2514,7 +2623,7 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
 // rules in Settings). Selecting people and clicking Forward assigns the case to
 // each of them, deriving the target role from each person's own role.
 // Renders nothing when the role has no forwarding permission / no eligible users.
-function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward }: {
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra }: {
   fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
@@ -2524,6 +2633,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   // Must not be re-run per recipient, or a one-time transition (submitted→verified)
   // would be attempted again on an already-advanced case and fail.
   beforeForward?: () => Promise<void>;
+  forwardExtra?: Record<string, unknown>;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -2571,7 +2681,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
       const u = users.find(x => x.id === uid);
       if (!u) continue;
       // Target role is derived from the selected person's role.
-      await onForward(u.role, { assignedToUserId: uid });
+      await onForward(u.role, { ...forwardExtra, assignedToUserId: uid });
     }
     setSelectedUsers([]);
     setShowDropdown(false);
@@ -2673,8 +2783,8 @@ function AssignCaseButton({ caseItem, role, onRefresh }: {
 
   useEffect(() => {
     if (!role) return;
-    forwardingRulesApi.getSpecial(role).then(res => setCanAssign(!!res.data.data?.canAssign)).catch(() => {});
-  }, [role]);
+    forwardingRulesApi.getSpecial(role, caseItem.type).then(res => setCanAssign(!!res.data.data?.canAssign)).catch(() => {});
+  }, [role, caseItem.type]);
 
   useEffect(() => {
     if (!open) return;
@@ -2685,10 +2795,10 @@ function AssignCaseButton({ caseItem, role, onRefresh }: {
   }, [open]);
 
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
-  if (!canAssign || isClosed || caseItem.type === 'type-2') return null;
+  if (!canAssign || isClosed) return null;
 
-  // Only handler assignments belong in this dialog — a case auto-routed to an Administrative
-  // Officer also carries their assignment, which must not be pre-selected (or submitted).
+  // Only actual Assistant/Deputy handler assignments belong in this dialog. Intake routing
+  // to an Administrative Officer is a role queue and is never shown as a handler.
   const activeAssignees = (caseItem.assignments || [])
     .filter(a => a.isActive && ASSIGNABLE_HANDLER_ROLES.includes(a.userRole));
 
@@ -2850,8 +2960,8 @@ function RescheduleHearingButton({ caseItem, role, onRefresh }: {
 
   useEffect(() => {
     if (!role) return;
-    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
-  }, [role]);
+    forwardingRulesApi.getSpecial(role, caseItem.type).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role, caseItem.type]);
 
   const hearing = getOpenHearing(caseItem);
   if (!hearing || !canHearing) return null;
@@ -2968,8 +3078,8 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
 
   useEffect(() => {
     if (!role) return;
-    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
-  }, [role]);
+    forwardingRulesApi.getSpecial(role, caseItem.type).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role, caseItem.type]);
 
   const hearing = getOpenHearing(caseItem);
   if (!hearing || !canHearing) return null;
@@ -3083,8 +3193,8 @@ function HearingModuleButton({ caseItem, role, onRefresh }: {
 
   useEffect(() => {
     if (!role) return;
-    forwardingRulesApi.getSpecial(role).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
-  }, [role]);
+    forwardingRulesApi.getSpecial(role, caseItem.type).then(res => setCanHearing(!!res.data.data?.canHearing)).catch(() => {});
+  }, [role, caseItem.type]);
 
   useEffect(() => {
     if (!open) return;

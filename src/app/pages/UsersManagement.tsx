@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { usersApi, ranksApi } from '../services/api';
 import { User, UserRole, Gender } from '../types';
 import { roleLabel } from '../utils/roles';
+import TablePagination from '../components/TablePagination';
 
 const genderBadge = (g?: string) => {
   const v = (g || '').toLowerCase();
@@ -18,7 +19,7 @@ const formatGender = (g?: string) => {
 const allRoles: UserRole[] = [
   'student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor',
   'registrar', 'disciplinary-committee', 'female-coordinator',
-  'sexual-harassment-committee', 'vc', 'super-admin'
+  'sexual-harassment-committee', 'vc', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman', 'super-admin'
 ];
 
 export default function UsersManagement() {
@@ -31,6 +32,8 @@ export default function UsersManagement() {
   const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as UserRole, password: '', rank: '', contactNumber: '', gender: 'unspecified' as Gender });
   const [ranks, setRanks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   const canAccess = currentUser?.role === 'super-admin' || currentUser?.role === 'proctor';
 
@@ -49,6 +52,10 @@ export default function UsersManagement() {
     };
     fetchUsers();
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
+  const paginatedUsers = users.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   if (!canAccess) {
     return (
@@ -137,6 +144,10 @@ export default function UsersManagement() {
     'female-coordinator': 'bg-teal-100 text-teal-700',
     'sexual-harassment-committee': 'bg-amber-100 text-amber-700',
     'vc': 'bg-slate-100 text-slate-700',
+    'dc-chairman': 'bg-fuchsia-100 text-fuchsia-700',
+    'dc-member': 'bg-violet-100 text-violet-700',
+    'dc-secretary': 'bg-indigo-100 text-indigo-700',
+    'chairman': 'bg-rose-100 text-rose-800',
     'super-admin': 'bg-emerald-100 text-emerald-700',
     // Created automatically when someone outside the university is called to a hearing.
     'external': 'bg-gray-100 text-gray-700',
@@ -186,7 +197,7 @@ export default function UsersManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {users.map((user) => (
+                {paginatedUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
@@ -239,6 +250,7 @@ export default function UsersManagement() {
               <p className="text-gray-500">No users found</p>
             </div>
           )}
+          <TablePagination currentPage={page} pageSize={pageSize} totalItems={users.length} onPageChange={setPage} itemLabel="users" />
         </div>
       )}
 

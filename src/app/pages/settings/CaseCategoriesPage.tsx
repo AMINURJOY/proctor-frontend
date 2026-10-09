@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { caseCategoriesApi } from '../../services/api';
 import { roleLabel } from '../../utils/roles';
 
 export default function CaseCategoriesPage() {
@@ -7,8 +8,8 @@ export default function CaseCategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
-    name: '', description: '', isConfidential: false, isActive: true,
-    appliesToType: 'both', sortOrder: 0, subjectId: ''
+    name: '', description: '', isActive: true,
+    appliesToType: 'both', sortOrder: 0
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -27,7 +28,7 @@ export default function CaseCategoriesPage() {
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
-    setForm({ name: '', description: '', isConfidential: false, isActive: true, appliesToType: 'both', sortOrder: 0 });
+    setForm({ name: '', description: '', isActive: true, appliesToType: 'both', sortOrder: 0 });
     setEditingId(null);
     setShowNew(false);
   };
@@ -56,21 +57,19 @@ export default function CaseCategoriesPage() {
     setForm({
       name: item.name,
       description: item.description || '',
-      isConfidential: !!item.isConfidential,
       isActive: !!item.isActive,
       appliesToType: item.appliesToType || 'both',
-      sortOrder: item.sortOrder || 0,
-      subjectId: item.subjectId || ''
+      sortOrder: item.sortOrder || 0
     });
     setEditingId(item.id);
     setShowNew(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Deactivate this category? (Existing cases referencing it will not be affected.)')) return;
+  const handleDelete = async (item: any) => {
+    if (!window.confirm(`Delete "${item.name}" permanently? Existing cases will remain, but their category will be cleared.`)) return;
     try {
-      await caseCategoriesApi.delete(id);
-      toast.success('Category deactivated');
+      await caseCategoriesApi.delete(item.id);
+      toast.success('Category deleted');
       await load();
     } catch (err: any) {
       toast.error('Delete failed', { description: err?.response?.data?.message || '' });
@@ -82,7 +81,7 @@ export default function CaseCategoriesPage() {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Case Categories</h3>
-          <p className="text-sm text-gray-500">Manage the categories students choose when filing a Type-2 case. Categories marked Confidential auto-route the case privately.</p>
+          <p className="text-sm text-gray-500">Manage the categories available when filing a case. Confidentiality is decided by the receiving Assistant Administrative Officer.</p>
         </div>
         <button
           onClick={() => { resetForm(); setShowNew(true); }}
@@ -124,11 +123,6 @@ export default function CaseCategoriesPage() {
             </div>
             <div className="flex items-center gap-4 mt-5">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.isConfidential}
-                  onChange={e => setForm({ ...form, isConfidential: e.target.checked })} />
-                Confidential
-              </label>
-              <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={form.isActive}
                   onChange={e => setForm({ ...form, isActive: e.target.checked })} />
                 Active
@@ -159,11 +153,6 @@ export default function CaseCategoriesPage() {
               <div>
                 <p className="font-medium text-sm">
                   {item.name}
-                  {item.isConfidential && (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-100 text-red-700">
-                      Confidential
-                    </span>
-                  )}
                   {!item.isActive && (
                     <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-200 text-gray-700">
                       Inactive
@@ -180,12 +169,10 @@ export default function CaseCategoriesPage() {
                   className="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50">
                   Edit
                 </button>
-                {item.isActive && (
-                  <button onClick={() => handleDelete(item.id)}
-                    className="px-3 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50">
-                    Deactivate
-                  </button>
-                )}
+                <button onClick={() => handleDelete(item)}
+                  className="px-3 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50">
+                  Delete
+                </button>
               </div>
             </div>
           ))}

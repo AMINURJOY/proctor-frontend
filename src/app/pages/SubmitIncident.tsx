@@ -544,7 +544,7 @@ export default function SubmitIncident() {
               Type-2: Formal Case
             </h3>
             <p className="text-gray-600 mb-4">
-              Detailed formal case submission with documents. Goes through Coordinator verification before being forwarded.
+              Detailed formal case submission with documents. It is routed by the complainant's gender for verification and forwarding.
             </p>
             <div className="flex items-center gap-2 text-purple-600 font-medium">
               <span>File Formal Case</span>
@@ -724,9 +724,9 @@ export default function SubmitIncident() {
                   </div>
                 </div>
 
-                <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700" style={{ display: 'none' }}>
+                <div className="bg-purple-50 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-purple-700">
                   <ArrowRightIcon />
-                  <span>Sent to: Coordinator for verification. Confidential cases are determined by the selected category.</span>
+                  <span>Female complaints go to the female Assistant Administrative Officer; male complaints go to the male Assistant Administrative Officer.</span>
                 </div>
 
                 <div className="space-y-4">
@@ -757,7 +757,7 @@ export default function SubmitIncident() {
                         <span className="text-sm text-gray-700">Female</span>
                       </label>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1" style={{ display: 'none' }}>Female complainants are routed to the Female Coordinator; male to the Coordinator.</p>
+                    <p className="text-xs text-gray-400 mt-1">This determines the receiving Assistant Administrative Officer. It does not make the case confidential.</p>
                   </div>
 
                   <div>

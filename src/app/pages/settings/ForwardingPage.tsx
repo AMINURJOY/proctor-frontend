@@ -1,150 +1,212 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { forwardingRulesApi } from '../../services/api';
 import { toast } from 'sonner';
 import { roleLabel } from '../../utils/roles';
 
+type PermissionType = 'type-1' | 'type-2';
+type ForwardingRule = {
+  id: string;
+  fromRole: string;
+  toRole: string;
+  appliesToType: PermissionType;
+  resultStatus?: string;
+  isActive: boolean;
+};
+
+const staffRoles = [
+  'coordinator', 'female-coordinator', 'proctor', 'assistant-proctor',
+  'deputy-proctor', 'registrar', 'disciplinary-committee',
+  'sexual-harassment-committee', 'vc', 'super-admin',
+];
+
+const permissionGroups = [
+  { key: '__assign__', title: 'Assign case', description: 'Show the Assign Handlers action for this case type.', status: 'assigned' },
+  { key: '__close__', title: 'Close case', description: 'Allow the role to close or resolve this case type.', status: 'closed' },
+  { key: '__hearing__', title: 'Schedule hearing', description: 'Show hearing scheduling actions for this case type.', status: 'hearing-scheduled' },
+  { key: '__draft_report__', title: 'Create draft report', description: 'Optional case-type grant for roles without global Pending Reports → Create permission.', status: 'draft-report' },
+] as const;
+
 export default function ForwardingPage() {
-  const [rules, setRules] = useState<any[]>([]);
+  const [rules, setRules] = useState<ForwardingRule[]>([]);
+  const [selectedType, setSelectedType] = useState<PermissionType>('type-1');
   const [fromRole, setFromRole] = useState('');
   const [toRole, setToRole] = useState('');
   const [resultStatus, setResultStatus] = useState('assigned');
-
-  const allRoles = ['student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'super-admin'];
+  const [saving, setSaving] = useState<string | null>(null);
   const allStatuses = ['assigned', 'forwarded-to-registrar', 'forwarded-to-committee', 'verified', 'hearing-scheduled'];
 
-  useEffect(() => { fetchRules(); }, []);
   const fetchRules = async () => {
-    try { const res = await forwardingRulesApi.getAll(); setRules(res.data.data || []); } catch {}
+    try {
+      const res = await forwardingRulesApi.getAll();
+      setRules(res.data.data || []);
+    } catch {
+      toast.error('Failed to load forwarding settings');
+    }
   };
 
-  const grouped = allRoles.reduce((acc, role) => {
-    acc[role] = rules.filter((r: any) => r.fromRole === role);
+  useEffect(() => { fetchRules(); }, []);
+
+  const forwardingRules = useMemo(
+    () => rules.filter(rule => !rule.toRole.startsWith('__') && rule.appliesToType === selectedType),
+    [rules, selectedType],
+  );
+
+  const grouped = useMemo(() => staffRoles.reduce((acc, role) => {
+    acc[role] = forwardingRules.filter(rule => rule.fromRole === role);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, ForwardingRule[]>), [forwardingRules]);
+
+  const togglePermission = async (role: string, key: string, result: string) => {
+    const operationKey = `${selectedType}:${role}:${key}`;
+    const existing = rules.find(rule =>
+      rule.fromRole === role && rule.toRole === key && rule.appliesToType === selectedType,
+    );
+
+    setSaving(operationKey);
+    try {
+      if (existing) await forwardingRulesApi.delete(existing.id);
+      else await forwardingRulesApi.create({ fromRole: role, toRole: key, resultStatus: result, appliesToType: selectedType });
+      await fetchRules();
+      toast.success(existing ? 'Permission removed' : 'Permission granted');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Could not update permission');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const addForwardingRule = async () => {
+    try {
+      await forwardingRulesApi.create({ fromRole, toRole, resultStatus, appliesToType: selectedType });
+      await fetchRules();
+      setFromRole('');
+      setToRole('');
+      toast.success('Forwarding rule added');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Could not add forwarding rule');
+    }
+  };
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-      <h3 className="text-lg font-semibold mb-4" style={{ color: '#0b2652' }}>Case Forwarding Rules &amp; Permissions</h3>
-      <p className="text-sm text-gray-500 mb-4">
-        These rules are the forwarding permissions. Each rule (<span className="font-medium">From role → To role</span>)
-        grants that role the ability to forward cases — every active member of the allowed target roles
-        will appear in that role's unified <span className="font-medium">Forward</span> dropdown on the case screen.
-      </p>
+    <div className="space-y-5">
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Case Actions &amp; Forwarding</h3>
+        <p className="mt-1 text-sm text-gray-500">Configure each case type independently so users only see actions that apply to that workflow.</p>
 
-      {/* Add new rule */}
-      <div className="bg-blue-50 rounded-lg p-4 mb-6">
-        <p className="text-sm font-medium text-blue-700 mb-2">Add Forwarding Rule</p>
-        <div className="flex gap-2 items-end flex-wrap">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">From Role</label>
-            <select value={fromRole} onChange={e => setFromRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
-              <option value="">Select...</option>
-              {allRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
-            </select>
+        <div className="mt-5 inline-flex rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Case type">
+          {(['type-1', 'type-2'] as PermissionType[]).map(type => (
+            <button
+              key={type}
+              type="button"
+              role="tab"
+              aria-selected={selectedType === type}
+              onClick={() => setSelectedType(type)}
+              className={`rounded-md px-5 py-2 text-sm font-medium transition ${selectedType === type ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+            >
+              {type === 'type-1' ? 'Type-1 Incident' : 'Type-2 Case'}
+            </button>
+          ))}
+        </div>
+
+        {selectedType === 'type-1' && (
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            Initial delivery and notifications still follow the Type-1 Incident Forwarding page. The controls below decide which actions each role can take afterward.
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">To Role</label>
-            <select value={toRole} onChange={e => setToRole(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
-              <option value="">Select...</option>
-              {allRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Result Status</label>
-            <select value={resultStatus} onChange={e => setResultStatus(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-sm">
-              {allStatuses.map(s => <option key={s} value={s}>{s.split('-').join(' ')}</option>)}
-            </select>
-          </div>
-          <button disabled={!fromRole || !toRole}
-            onClick={() => { forwardingRulesApi.create({ fromRole, toRole, resultStatus }).then(() => { fetchRules(); toast.success('Rule added'); setFromRole(''); setToRole(''); }).catch((e: any) => toast.error(e?.response?.data?.message || 'Failed')); }}
-            className="px-4 py-1.5 rounded-lg text-white text-sm disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>Add Rule</button>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4">
+          <h4 className="font-semibold text-gray-900">Action permissions</h4>
+          <p className="text-sm text-gray-500">Changes apply only to {selectedType === 'type-1' ? 'Type-1 incidents' : 'Type-2 and confidential cases'}.</p>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          {permissionGroups.map(permission => (
+            <section key={permission.key} className="rounded-xl border border-gray-200 p-4">
+              <h5 className="text-sm font-semibold text-gray-900">{permission.title}</h5>
+              <p className="mb-4 mt-1 text-xs text-gray-500">{permission.description}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {staffRoles.map(role => {
+                  const operationKey = `${selectedType}:${role}:${permission.key}`;
+                  const alwaysEnabled = role === 'super-admin';
+                  const checked = alwaysEnabled || rules.some(rule =>
+                    rule.fromRole === role && rule.toRole === permission.key
+                    && rule.appliesToType === selectedType && rule.isActive,
+                  );
+                  return (
+                    <label key={role} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${checked ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-gray-200 text-gray-700'} ${alwaysEnabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={alwaysEnabled || saving === operationKey}
+                        onChange={() => togglePermission(role, permission.key, permission.status)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                      />
+                      <span>{roleLabel(role)}</span>
+                      {alwaysEnabled && <span className="ml-auto text-[10px] text-gray-500">Always</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
 
-      {/* Rules grouped by fromRole */}
-      <div className="space-y-3">
-        {allRoles.filter(r => grouped[r]?.length > 0).map(role => (
-          <div key={role} className="border border-gray-200 rounded-lg p-3">
-            <p className="text-sm font-semibold mb-2 capitalize">{role.split('-').join(' ')}</p>
-            <div className="flex flex-wrap gap-2">
-              {grouped[role].map((rule: any) => (
-                <div key={rule.id} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs">
-                  <span className="font-medium">&rarr; {roleLabel(rule.toRole)}</span>
-                  <span className="text-gray-400">({rule.resultStatus})</span>
-                  <button onClick={() => { forwardingRulesApi.delete(rule.id).then(() => { fetchRules(); toast.success('Removed'); }); }}
-                    className="ml-1 text-red-500 hover:text-red-700">&times;</button>
-                </div>
-              ))}
+      {selectedType === 'type-2' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h4 className="font-semibold text-gray-900">Role-to-role forwarding</h4>
+            <p className="text-sm text-gray-500">Type-2 and confidential cases use these destinations. Type-1 initial routing is managed on its dedicated page.</p>
+          </div>
+
+          <div className="mb-6 rounded-lg bg-gray-50 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <SelectField label="From role" value={fromRole} onChange={setFromRole} options={staffRoles} roleOptions />
+              <SelectField label="To role" value={toRole} onChange={setToRole} options={staffRoles} roleOptions />
+              <SelectField label="Result status" value={resultStatus} onChange={setResultStatus} options={allStatuses} />
+              <button type="button" disabled={!fromRole || !toRole} onClick={addForwardingRule} className="rounded-lg bg-[#0b2652] px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Add rule</button>
             </div>
           </div>
-        ))}
-      </div>
-      {/* Case Close Permission */}
-      <div className="mt-6 border border-gray-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Case Close Permission</h4>
-        <p className="text-xs text-gray-500 mb-3">Which roles can close/resolve cases</p>
-        <div className="flex flex-wrap gap-3">
-          {allRoles.map(role => {
-            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__close__' && r.isActive);
-            return (
-              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
-                <input type="checkbox" checked={hasRule} onChange={async () => {
-                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__close__');
-                  if (existing) { await forwardingRulesApi.delete(existing.id); }
-                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__close__', resultStatus: 'closed' }); }
-                  fetchRules();
-                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Hearing Schedule Permission */}
-      <div className="mt-4 border border-gray-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Hearing Schedule Permission</h4>
-        <p className="text-xs text-gray-500 mb-3">Which roles can schedule hearings</p>
-        <div className="flex flex-wrap gap-3">
-          {allRoles.map(role => {
-            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__hearing__' && r.isActive);
-            return (
-              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
-                <input type="checkbox" checked={hasRule} onChange={async () => {
-                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__hearing__');
-                  if (existing) { await forwardingRulesApi.delete(existing.id); }
-                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__hearing__', resultStatus: 'hearing-scheduled' }); }
-                  fetchRules();
-                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
-              </label>
-            );
-          })}
+          <div className="space-y-3">
+            {staffRoles.filter(role => grouped[role]?.length).map(role => (
+              <section key={role} className="rounded-lg border border-gray-200 p-3">
+                <p className="mb-2 text-sm font-semibold text-gray-900">{roleLabel(role)}</p>
+                <div className="flex flex-wrap gap-2">
+                  {grouped[role].map(rule => (
+                    <div key={rule.id} className="flex items-center gap-2 rounded-full bg-gray-100 py-1 pl-3 pr-2 text-xs text-gray-700">
+                      <span>→ {roleLabel(rule.toRole)}</span>
+                      <span className="text-gray-400">{rule.resultStatus?.replaceAll('-', ' ')}</span>
+                      <button type="button" aria-label={`Remove forwarding rule to ${roleLabel(rule.toRole)}`} onClick={async () => { await forwardingRulesApi.delete(rule.id); await fetchRules(); toast.success('Forwarding rule removed'); }} className="flex h-5 w-5 items-center justify-center rounded-full text-red-500 hover:bg-red-100">×</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+            {forwardingRules.length === 0 && <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">No Type-2 forwarding rules configured.</p>}
+          </div>
         </div>
-      </div>
-
-      {/* Draft Report Permission */}
-      <div className="mt-4 border border-gray-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-1" style={{ color: '#0b2652' }}>Draft Report Permission</h4>
-        <p className="text-xs text-gray-500 mb-3">Which roles can create draft reports for cases (a <span className="font-medium">Draft Report</span> button appears on the case for these roles)</p>
-        <div className="flex flex-wrap gap-3">
-          {allRoles.map(role => {
-            const hasRule = rules.some((r: any) => r.fromRole === role && r.toRole === '__draft_report__' && r.isActive);
-            return (
-              <label key={role} className="flex items-center gap-1.5 cursor-pointer">
-                <input type="checkbox" checked={hasRule} onChange={async () => {
-                  const existing = rules.find((r: any) => r.fromRole === role && r.toRole === '__draft_report__');
-                  if (existing) { await forwardingRulesApi.delete(existing.id); }
-                  else { await forwardingRulesApi.create({ fromRole: role, toRole: '__draft_report__', resultStatus: 'draft-report' }); }
-                  fetchRules();
-                }} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
-                <span className="text-xs text-gray-700">{roleLabel(role)}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-
+      )}
     </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options, roleOptions = false }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  roleOptions?: boolean;
+}) {
+  return (
+    <label className="block min-w-48">
+      <span className="mb-1 block text-xs font-medium text-gray-600">{label}</span>
+      <select value={value} onChange={event => onChange(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+        <option value="">Select…</option>
+        {options.map(option => <option key={option} value={option}>{roleOptions ? roleLabel(option) : option.replaceAll('-', ' ')}</option>)}
+      </select>
+    </label>
   );
 }

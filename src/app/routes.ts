@@ -21,6 +21,8 @@ import NotificationsPage from './pages/NotificationsPage';
 import CaseReport from './pages/CaseReport';
 import CaseEdit from './pages/CaseEdit';
 import StudentsList from './pages/StudentsList';
+import Type3WorkflowPage from './pages/Type3WorkflowPage';
+import AuditLogsPage from './pages/AuditLogsPage';
 
 // Students land on /submit instead of /dashboard.
 function StudentDashboardGuard() {
@@ -67,12 +69,20 @@ export const router = createBrowserRouter([
       { path: 'hearings', Component: HearingManagement },
       { path: 'confidential', Component: ConfidentialCases },
       { path: 'monitoring', Component: VCMonitoring },
-      { path: 'reports', Component: ReportsPage },
+      { path: 'reports', element: React.createElement(ReportsPage, { mode: 'pending' }) },
+      { path: 'completed-reports', element: React.createElement(ReportsPage, { mode: 'completed' }) },
+      { path: 'registrar-reports', Component: Type3WorkflowPage },
+      { path: 'vc-reports', Component: Type3WorkflowPage },
+      { path: 'dc-reports', Component: Type3WorkflowPage },
+      { path: 'dc-member-reports', Component: Type3WorkflowPage },
+      { path: 'dcs-reports', Component: Type3WorkflowPage },
+      { path: 'chairman-reports', Component: Type3WorkflowPage },
       { path: 'reports/:caseId/edit', Component: ReportEditorPage },
       { path: 'reports/:id/view', Component: CaseReport },
       { path: 'draft-reports', Component: DraftReportsPage },
       { path: 'users', Component: UsersManagement },
       { path: 'students', Component: StudentsList },
+      { path: 'audit-logs', Component: AuditLogsPage },
       { path: 'settings', children: [
         { index: true, element: React.createElement(Navigate, { to: '/settings/profile', replace: true }) },
         { path: 'profile', lazy: async () => ({ Component: (await import('./pages/settings/ProfilePage')).default }) },

@@ -10,9 +10,13 @@ export type UserRole =
   | 'sexual-harassment-committee'
   | 'vc'
   | 'super-admin'
+  | 'dc-chairman'
+  | 'dc-member'
+  | 'dc-secretary'
+  | 'chairman'
   | 'external';
 
-export type CaseType = 'type-1' | 'type-2' | 'confidential';
+export type CaseType = 'type-1' | 'type-2' | 'type-3' | 'confidential';
 
 export type CaseStatus =
   | 'submitted'
@@ -51,11 +55,9 @@ export interface CaseCategory {
   id: string;
   name: string;
   description?: string;
-  isConfidential: boolean;
   isActive: boolean;
   appliesToType: 'type-1' | 'type-2' | 'both';
   sortOrder: number;
-  subjectId?: string;
 }
 
 export interface CaseAssignment {
@@ -121,6 +123,9 @@ export interface Case {
   studentName: string;
   studentId: string;
   type: CaseType;
+  isConfidential?: boolean;
+  type3Stage?: string;
+  workflowStatusLabel?: string;
   subject?: string;
   status: CaseStatus;
   priority: Priority;
@@ -133,6 +138,7 @@ export interface Case {
   recommendation?: string;
   forwardedToRole?: string;
   submittedByUserId?: string;
+  submitterGender?: 'male' | 'female' | 'other' | 'unspecified';
   // Type-2 form fields
   studentDepartment?: string;
   studentSemester?: number;
@@ -161,7 +167,6 @@ export interface Case {
   // Category
   categoryId?: string;
   categoryName?: string;
-  categoryIsConfidential?: boolean;
 
   // Acknowledgment (Type-1)
   isAcknowledged?: boolean;
@@ -212,6 +217,19 @@ export interface Document {
   uploadedBy: string;
   uploadedByRole?: string;
   uploadedDate: string;
+}
+
+export interface InvestigationAttachment {
+  id: string;
+  name: string;
+  kind: 'image' | 'drive-link';
+  externalUrl?: string;
+  contentUrl?: string;
+  contentType?: string;
+  fileSize?: number;
+  uploadedByName: string;
+  uploadedByRole: string;
+  uploadedAt: string;
 }
 
 export interface Note {

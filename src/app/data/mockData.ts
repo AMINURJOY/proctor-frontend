@@ -12,6 +12,15 @@ export const users: User[] = [
   { id: '9', name: 'Committee SH', email: 'shc@university.edu', role: 'sexual-harassment-committee' },
   { id: '10', name: 'Vice Chancellor', email: 'vc@university.edu', role: 'vc' },
   { id: '11', name: 'System Administrator', email: 'admin@university.edu', role: 'super-admin' },
+  { id: '12', name: 'Prof. Rahman DC Chairman', email: 'dc.chairman@university.edu', role: 'dc-chairman' },
+  { id: '13', name: 'DC Member One', email: 'dc.member1@university.edu', role: 'dc-member' },
+  { id: '14', name: 'DC Member Two', email: 'dc.member2@university.edu', role: 'dc-member' },
+  { id: '15', name: 'DC Member Three', email: 'dc.member3@university.edu', role: 'dc-member' },
+  { id: '16', name: 'DC Member Four', email: 'dc.member4@university.edu', role: 'dc-member' },
+  { id: '17', name: 'DC Member Five', email: 'dc.member5@university.edu', role: 'dc-member' },
+  { id: '18', name: 'DC Member Six', email: 'dc.member6@university.edu', role: 'dc-member' },
+  { id: '19', name: 'DC Secretary', email: 'dc.secretary@university.edu', role: 'dc-secretary' },
+  { id: '20', name: 'Chairman', email: 'chairman@university.edu', role: 'chairman' },
 ];
 
 // Real DIU Proctorial Body. The `coordinator` role is presented as

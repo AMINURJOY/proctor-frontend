@@ -117,7 +117,6 @@ export default function IncidentsList() {
                     {incident.categoryName && (
                       <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
                         {incident.categoryName}
-                        {incident.categoryIsConfidential && ' (Confidential)'}
                       </span>
                     )}
                     {incident.isAcknowledged && (

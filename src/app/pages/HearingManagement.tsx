@@ -104,15 +104,24 @@ export default function HearingManagement() {
   const completed = allHearings.filter(h => h.status === 'completed').filter(matchesEmailFilter);
 
   const [canSchedule, setCanSchedule] = useState(false);
+  const [hearingCaseTypes, setHearingCaseTypes] = useState<string[]>([]);
 
   useEffect(() => {
     const role = currentUser?.role || '';
-    if (!role) { setCanSchedule(false); return; }
+    if (!role) { setCanSchedule(false); setHearingCaseTypes([]); return; }
     // Use the special-permissions endpoint (returns canHearing). The role-rules endpoint
     // deliberately strips the internal __hearing__ rule, so it can never report this.
-    forwardingRulesApi.getSpecial(role).then(res => {
-      setCanSchedule(!!res.data.data?.canHearing);
-    }).catch(() => setCanSchedule(false));
+    Promise.all([
+      forwardingRulesApi.getSpecial(role, 'type-1'),
+      forwardingRulesApi.getSpecial(role, 'type-2'),
+    ]).then(([type1, type2]) => {
+      const allowed = [
+        ...(type1.data.data?.canHearing ? ['type-1'] : []),
+        ...(type2.data.data?.canHearing ? ['type-2', 'confidential'] : []),
+      ];
+      setHearingCaseTypes(allowed);
+      setCanSchedule(allowed.length > 0);
+    }).catch(() => { setCanSchedule(false); setHearingCaseTypes([]); });
   }, [currentUser?.role]);
 
   const trackerTotal = tracker ? tracker.today.length + tracker.tomorrow.length + tracker.thisWeek.length + tracker.later.length : 0;
@@ -450,7 +459,7 @@ export default function HearingManagement() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select a case...</option>
-                    {cases.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected').map(c => (
+                    {cases.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected' && hearingCaseTypes.includes(c.type)).map(c => (
                       <option key={c.id} value={c.id}>{c.caseNumber} - {c.studentName}</option>
                     ))}
                   </select>

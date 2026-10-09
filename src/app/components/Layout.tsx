@@ -17,6 +17,7 @@ import {
   BarChartIcon,
   PlusIcon
 } from './Icons';
+import { ScrollText } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { notificationsApi, casesApi } from '../services/api';
@@ -165,9 +166,17 @@ export default function Layout() {
     { path: '/monitoring', label: 'VC Monitoring', icon: BarChartIcon, menuKey: 'monitoring' },
     { path: '/my-cases', label: 'My Cases', icon: CasesIcon, menuKey: 'my-cases' },
     { path: '/notifications', label: 'Notifications', icon: BellIcon, menuKey: 'notifications' },
-    { path: '/reports', label: 'Reports', icon: ReportIcon, menuKey: 'reports' },
+    { path: '/reports', label: 'Pending Reports', icon: ReportIcon, menuKey: 'reports' },
+    { path: '/completed-reports', label: 'Completed Reports', icon: ReportIcon, menuKey: 'completed-reports' },
+    { path: '/registrar-reports', label: 'Registrar Reports', icon: ReportIcon, menuKey: 'registrar-reports' },
+    { path: '/vc-reports', label: 'VC Reports', icon: ReportIcon, menuKey: 'vc-reports' },
+    { path: '/dc-reports', label: 'DC Reports', icon: ReportIcon, menuKey: 'dc-reports' },
+    { path: '/dc-member-reports', label: 'DC Members Reports', icon: ReportIcon, menuKey: 'dc-member-reports' },
+    { path: '/dcs-reports', label: 'DCS Reports', icon: ReportIcon, menuKey: 'dcs-reports' },
+    { path: '/chairman-reports', label: 'Chairman Reports', icon: ReportIcon, menuKey: 'chairman-reports' },
     { path: '/users', label: 'Users / Roles', icon: UsersIcon, menuKey: 'users' },
     { path: '/students', label: 'Students', icon: UsersIcon, menuKey: 'students' },
+    { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText, menuKey: 'audit-logs' },
   ];
 
   const menuItems = allMenuItems.filter(item => {
@@ -210,6 +219,10 @@ export default function Layout() {
     'sexual-harassment-committee': '#be123c',
     'vc': '#ca8a04',
     'super-admin': '#059669',
+    'dc-chairman': '#9333ea',
+    'dc-member': '#7c3aed',
+    'dc-secretary': '#4f46e5',
+    'chairman': '#9f1239',
   };
 
   const sidebarContent = (

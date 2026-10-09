@@ -8,6 +8,7 @@ import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import { roleLabel } from '../utils/roles';
+import TablePagination from '../components/TablePagination';
 
 export default function CasesList() {
   const navigate = useNavigate();
@@ -20,6 +21,8 @@ export default function CasesList() {
   const [loading, setLoading] = useState(true);
   const [allowedTypes, setAllowedTypes] = useState<string[]>(['type-1', 'type-2', 'confidential']);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
 
@@ -28,6 +31,7 @@ export default function CasesList() {
       setLoading(true);
       try {
         const params: any = {};
+        params.pageSize = 1000;
         if (filterStatus !== 'all') params.status = filterStatus;
         if (filterType !== 'all') params.type = filterType;
         if (filterPriority !== 'all') params.priority = filterPriority;
@@ -109,6 +113,10 @@ export default function CasesList() {
   const canViewConfidential = allowedTypes.includes('confidential');
 
   const displayedCases = filteredCases.filter(c => allowedTypes.includes(c.type));
+  const totalPages = Math.max(1, Math.ceil(displayedCases.length / pageSize));
+  const paginatedCases = displayedCases.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { setPage(1); }, [filterStatus, filterType, filterPriority, searchQuery]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   return (
     <div>
@@ -212,7 +220,7 @@ export default function CasesList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {displayedCases.map((caseItem) => {
+                {paginatedCases.map((caseItem) => {
                   const accusedList = caseItem.accusedPersons && caseItem.accusedPersons.length > 0
                     ? caseItem.accusedPersons
                     : (caseItem.accusedName ? [{ id: 'legacy', name: caseItem.accusedName, accusedStudentId: caseItem.accusedId || '', department: caseItem.accusedDepartment, contact: caseItem.accusedContact, guardianContact: caseItem.accusedGuardianContact }] : []);
@@ -269,9 +277,6 @@ export default function CasesList() {
                       {caseItem.categoryName && (
                         <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">
                           {caseItem.categoryName}
-                          {caseItem.categoryIsConfidential && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">Confidential</span>
-                          )}
                         </div>
                       )}
                     </td>
@@ -367,6 +372,7 @@ export default function CasesList() {
               <p className="text-gray-500">No cases found matching your filters</p>
             </div>
           )}
+          <TablePagination currentPage={page} pageSize={pageSize} totalItems={displayedCases.length} onPageChange={setPage} itemLabel="cases" />
         </div>
       )}
       {/* Delete Confirmation Modal */}

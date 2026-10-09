@@ -2,42 +2,50 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useReactToPrint } from 'react-to-print';
 import * as XLSX from 'xlsx';
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { caseCategoriesApi, dashboardApi } from '../services/api';
 import { CaseCategory } from '../types';
 import { roleLabel } from '../utils/roles';
 import { statusLabel } from '../utils/status';
+import TablePagination from '../components/TablePagination';
 
 type Group = { name: string; count: number };
 type Person = { id: string; name: string; role: string };
-type CaseRow = { id: string; caseNumber: string; studentName: string; studentId: string; department?: string; categoryName?: string; status: string; type: string; assignedTo?: string; createdAt: string; accusedName?: string; complainantName?: string; punishment?: string; semester?: number; cgpa?: number; collaborators?: string };
+type CaseRow = { id: string; caseNumber: string; studentName: string; studentId: string; department?: string; batch?: string; categoryName?: string; status: string; type: string; assignedTo?: string; createdAt: string; accusedName?: string; complainantName?: string; punishment?: string; semester?: number; cgpa?: number; collaborators?: string };
 type Activity = { caseId: string; caseNumber: string; action: string; user: string; timestamp: string };
-type Analytics = { totalCases: number; openCases: number; resolvedCases: number; pendingCases: number; underReview: number; type1Pending: number; type2Pending: number; monthlyTrend: Group[]; yearlyTrend: Group[]; semesters: Group[]; caseTypes: Group[]; categories: Group[]; cgpaRanges: Group[]; workload: Group[]; roleWorkload: Group[]; departments: string[]; people: Person[]; cases: CaseRow[]; activity: Activity[]; page: number; pageSize: number };
-type Filters = { search: string; status: string; type: string; categoryId: string; department: string; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number };
-const emptyFilters: Filters = { search: '', status: '', type: '', categoryId: '', department: '', responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1 };
+type Analytics = { totalCases: number; openCases: number; resolvedCases: number; pendingCases: number; underReview: number; type1Pending: number; type2Pending: number; monthlyTrend: Group[]; yearlyTrend: Group[]; semesters: Group[]; caseTypes: Group[]; categories: Group[]; cgpaRanges: Group[]; workload: Group[]; roleWorkload: Group[]; departments: string[]; batches: string[]; people: Person[]; cases: CaseRow[]; activity: Activity[]; page: number; pageSize: number };
+type Filters = { search: string; status: string; type: string; categoryId: string; department: string; batch: string; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number };
+const emptyFilters: Filters = { search: '', status: '', type: '', categoryId: '', department: '', batch: '', responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1 };
 const colors = ['#173b70', '#377cb2', '#57a5b5', '#95c6a5', '#e7a85a', '#a98ec0'];
 const statuses = ['submitted', 'pending', 'under-review', 'verified', 'assigned', 'hearing-scheduled', 'hearing-completed', 'resolved', 'closed', 'rejected', 'on-hold', 'suggested-type-2', 'police-case', 'forwarded-to-registrar', 'forwarded-to-committee', 'resubmission-requested'];
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-600 focus:outline-none';
 
-function ChartCard({ title, data, kind = 'bar' }: { title: string; data: Group[]; kind?: 'bar' | 'line' | 'pie' }) {
+function ChartCard({ title, data, kind = 'bar', namesAboveBars = false }: { title: string; data: Group[]; kind?: 'bar' | 'line' | 'pie'; namesAboveBars?: boolean }) {
+  const chartWidth = namesAboveBars ? Math.max(680, data.length * 105) : undefined;
+  const shortName = (value: string) => value.length > 17 ? `${value.slice(0, 17)}…` : value;
   return <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <h2 className="mb-4 font-semibold text-slate-800">{title}</h2>
     {!data.length ? <div className="flex h-56 items-center justify-center text-sm text-slate-500">No data for these filters</div> :
-      <ResponsiveContainer width="100%" height={240}>
+      <div className={namesAboveBars ? 'overflow-x-auto pb-1' : ''}>
+        <div style={chartWidth ? { width: chartWidth } : undefined} className="h-[240px]">
+        <ResponsiveContainer width="100%" height="100%">
         {kind === 'pie' ? <PieChart><Pie data={data} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={82} label={({ name, value }) => `${name}: ${value}`}>
           {data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
         </Pie><Tooltip /></PieChart> : kind === 'line' ? <LineChart data={data} margin={{ top: 5, right: 12, bottom: 12, left: -20 }}>
           <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} /><Tooltip />
           <Line dataKey="count" name="Cases" stroke="#173b70" strokeWidth={2} dot={{ r: 3 }} />
-        </LineChart> : <BarChart data={data} margin={{ top: 5, right: 12, bottom: 12, left: -20 }}>
-          <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} /><YAxis allowDecimals={false} /><Tooltip />
+        </LineChart> : <BarChart data={data} margin={{ top: namesAboveBars ? 35 : 5, right: 12, bottom: namesAboveBars ? 0 : 12, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" tick={namesAboveBars ? false : { fontSize: 11 }} axisLine={!namesAboveBars} tickLine={!namesAboveBars} interval={0} /><YAxis allowDecimals={false} /><Tooltip />
           <Bar dataKey="count" name="Cases" radius={[4, 4, 0, 0]} maxBarSize={48}>
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
             ))}
+            {namesAboveBars && <LabelList dataKey="name" position="top" formatter={shortName} className="fill-slate-700 text-[10px]" />}
           </Bar>
         </BarChart>}
-      </ResponsiveContainer>}
+        </ResponsiveContainer>
+        </div>
+      </div>}
   </section>;
 }
 
@@ -103,6 +111,7 @@ export default function AdvancedSearch() {
       'Student ID': c.studentId,
       'Complainant Name': c.complainantName || '—',
       'Department': c.department || '—',
+      'Batch': c.batch || '—',
       'Category': c.categoryName || '—',
       'Type': c.type,
       'Status': statusLabel(c.status),
@@ -145,11 +154,12 @@ export default function AdvancedSearch() {
         <label className="text-xs font-medium text-slate-600">From date<input className={field} type="date" value={filters.from} onChange={e => update('from', e.target.value)} /></label>
         <label className="text-xs font-medium text-slate-600">To date<input className={field} type="date" value={filters.to} onChange={e => update('to', e.target.value)} /></label>
         <label className="text-xs font-medium text-slate-600">Status<select className={field} value={filters.status} onChange={e => update('status', e.target.value)}><option value="">All statuses</option>{statuses.map(x => <option key={x} value={x}>{statusLabel(x)}</option>)}</select></label>
-        <label className="text-xs font-medium text-slate-600">Case type<select className={field} value={filters.type} onChange={e => update('type', e.target.value)}><option value="">All types</option><option value="type-1">Type 1</option><option value="type-2">Type 2</option><option value="confidential">Confidential</option></select></label>
+        <label className="text-xs font-medium text-slate-600">Case type<select className={field} value={filters.type} onChange={e => update('type', e.target.value)}><option value="">All types</option><option value="type-1">Type 1</option><option value="type-2">Type 2</option><option value="type-3">Type 3</option><option value="confidential">Confidential</option></select></label>
         <label className="text-xs font-medium text-slate-600">Category<select className={field} value={filters.categoryId} onChange={e => update('categoryId', e.target.value)}><option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}{c.isActive ? '' : ' (inactive)'}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">Year<input className={field} type="number" min="2000" max="2100" value={filters.year} onChange={e => update('year', e.target.value)} placeholder="All years" /></label>
         <label className="text-xs font-medium text-slate-600">Semester<select className={field} value={filters.semester} onChange={e => update('semester', e.target.value)}><option value="">All semesters</option>{data?.semesters?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">Department<select className={field} value={filters.department} onChange={e => update('department', e.target.value)}><option value="">All departments</option>{data?.departments?.map(x => <option key={x}>{x}</option>)}</select></label>
+        <label className="text-xs font-medium text-slate-600">Batch<select className={field} value={filters.batch} onChange={e => update('batch', e.target.value)}><option value="">All batches</option>{data?.batches?.map(x => <option key={x} value={x}>{x}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">CGPA minimum<input className={field} type="number" min="0" max="4" step="0.01" value={filters.minCgpa} onChange={e => update('minCgpa', e.target.value)} placeholder="0.00" /></label>
         <label className="text-xs font-medium text-slate-600">CGPA maximum<input className={field} type="number" min="0" max="4" step="0.01" value={filters.maxCgpa} onChange={e => update('maxCgpa', e.target.value)} placeholder="4.00" /></label>
         <label className="text-xs font-medium text-slate-600">Responsible person<select className={field} value={filters.responsiblePersonId} onChange={e => update('responsiblePersonId', e.target.value)}><option value="">All people</option>{people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
@@ -165,18 +175,18 @@ export default function AdvancedSearch() {
       <div ref={chartsRef} id="charts-section" className="grid gap-4 lg:grid-cols-2">
         <ChartCard title={`${trend === 'month' ? 'Monthly' : 'Yearly'} case trend`} data={(trend === 'month' ? data.monthlyTrend : data.yearlyTrend) || []} kind="line" />
         <ChartCard title="Semester-wise cases" data={data.semesters || []} />
-        <ChartCard title="Category distribution" data={data.categories || []} />
+        <ChartCard title="Category distribution" data={data.categories || []} namesAboveBars />
         <ChartCard title="CGPA distribution" data={data.cgpaRanges || []} />
         <ChartCard title="Assigned Proctorial Member Workload" data={data.workload || []} />
       </div>
       <div>
         <section id="report-section" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5"><h2 className="font-semibold text-slate-800">Cases ({data.totalCases})</h2><p className="text-xs text-slate-500">Select a case to see student details, investigation, action, outcome, and timeline.</p></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Case', 'Accused', 'Complainant', 'Department', 'Category', 'Type', 'Status', 'Punishment', 'Responsible', 'Collaborators', 'Opened'].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>
-          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{c.type}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
-          {!(data.cases?.length) && <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-500">No cases match these filters.</td></tr>}
+        <div className="overflow-x-auto"><table className="w-full min-w-[950px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Case', 'Accused', 'Complainant', 'Department', 'Batch', 'Category', 'Type', 'Status', 'Punishment', 'Responsible', 'Collaborators', 'Opened'].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>
+          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3 font-mono">{c.batch || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{c.type}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
+          {!(data.cases?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-slate-500">No cases match these filters.</td></tr>}
         </tbody></table></div>
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 p-4 text-sm"><button disabled={filters.page <= 1} onClick={() => update('page', filters.page - 1)} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><span>Page {data.page} of {Math.max(1, Math.ceil(data.totalCases / data.pageSize))}</span><button disabled={data.page * data.pageSize >= data.totalCases} onClick={() => update('page', filters.page + 1)} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div>
+        <TablePagination currentPage={data.page} pageSize={data.pageSize} totalItems={data.totalCases} onPageChange={page => update('page', page)} itemLabel="cases" />
       </section>
       </div>
 

@@ -6,12 +6,15 @@ import { EyeIcon, LockIcon } from '../components/Icons';
 import { Case, CaseStatus, Priority } from '../types';
 import { dashboardApi, casesApi } from '../services/api';
 import { statusLabel } from '../utils/status';
+import TablePagination from '../components/TablePagination';
 
 export default function VCMonitoring() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -19,7 +22,7 @@ export default function VCMonitoring() {
       try {
         const [statsRes, casesRes] = await Promise.allSettled([
           dashboardApi.getStats(),
-          casesApi.getAll(),
+          casesApi.getAll({ pageSize: 1000 }),
         ]);
         if (casesRes.status === 'fulfilled') {
           setCases(casesRes.value.data.data?.items || []);
@@ -32,6 +35,10 @@ export default function VCMonitoring() {
     };
     fetchData();
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(cases.length / pageSize));
+  const paginatedCases = cases.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   if (currentUser?.role !== 'vc' && currentUser?.role !== 'super-admin') {
     return (
@@ -202,7 +209,7 @@ export default function VCMonitoring() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {cases.map(c => (
+              {paginatedCases.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
@@ -240,6 +247,7 @@ export default function VCMonitoring() {
             </tbody>
           </table>
         </div>
+        <TablePagination currentPage={page} pageSize={pageSize} totalItems={cases.length} onPageChange={setPage} itemLabel="cases" />
       </div>
     </div>
   );

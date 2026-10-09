@@ -7,6 +7,7 @@ interface MenuPermission {
   canRead: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  canSend: boolean;
 }
 
 type PermissionsMap = Record<string, MenuPermission>;
@@ -30,6 +31,7 @@ export function usePermissions() {
               canRead: mp.canRead ?? false,
               canUpdate: mp.canUpdate ?? false,
               canDelete: mp.canDelete ?? false,
+              canSend: mp.canSend ?? false,
             };
           }
           setPermissions(permMap);

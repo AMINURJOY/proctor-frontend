@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { authApi } from '../services/api';
+import { normalizeRoleKey } from '../utils/roles';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -21,7 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userData = localStorage.getItem('userData');
     if (token && userData) {
       try {
-        setCurrentUser(JSON.parse(userData));
+        const storedUser = JSON.parse(userData) as User;
+        const normalizedUser: User = { ...storedUser, role: normalizeRoleKey(storedUser.role) as User['role'] };
+        if (normalizedUser.role !== storedUser.role) localStorage.setItem('userData', JSON.stringify(normalizedUser));
+        setCurrentUser(normalizedUser);
       } catch {
         localStorage.clear();
       }
@@ -35,9 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { token, refreshToken, user } = response.data.data;
       localStorage.setItem('accessToken', token);
       localStorage.setItem('refreshToken', refreshToken);
-      localStorage.setItem('userData', JSON.stringify(user));
-      setCurrentUser(user);
-      return user;
+      const normalizedUser: User = { ...user, role: normalizeRoleKey(user.role) as User['role'] };
+      localStorage.setItem('userData', JSON.stringify(normalizedUser));
+      setCurrentUser(normalizedUser);
+      return normalizedUser;
     } catch {
       return null;
     }
