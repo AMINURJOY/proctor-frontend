@@ -15,7 +15,8 @@ import {
   ArrowRightIcon,
   MailIcon,
   RefreshIcon,
-  UserIcon
+  UserIcon,
+  PlusIcon
 } from '../components/Icons';
 import { Case, CaseStatus, Hearing, User, InvestigationAttachment } from '../types';
 import api, { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, API_BASE_URL } from '../services/api';
@@ -96,7 +97,7 @@ type CloseExtra = { verdict?: string; recommendation?: string; note?: string; cl
 // The "we are coming" note a Fast (Type-1) case opens with. The Control Room number is
 // appended so the complainant always has a live 24/7 contact.
 function defaultAckMessage(controlRoomNumber: string) {
-  const base = 'Received — we are coming. Please standby for further updates.';
+  const base = 'The Proctor Office is already working on this.';
   return controlRoomNumber
     ? `${base}\n\nControl Room (24/7): ${controlRoomNumber}`
     : base;
@@ -118,11 +119,12 @@ export default function CaseDetail() {
   const [proctorMsgSeen, setProctorMsgSeen] = useState(true);
   const [hearingSeen, setHearingSeen] = useState(true);
   const [newNote, setNewNote] = useState('');
-  const [newInfo, setNewInfo] = useState('');
-  const [addingInfo, setAddingInfo] = useState(false);
+  const [showAddAccused, setShowAddAccused] = useState(false);
+  const [addingAccused, setAddingAccused] = useState(false);
+  const [accusedForm, setAccusedForm] = useState({ name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '', cgpa: '' });
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
-  // Per-case notifications shown to the student in the "Message from Administrative" tab.
+  // Per-case notifications shown to the student in the "Message from Proctor Office" tab.
   const [caseNotifications, setCaseNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingNote, setAddingNote] = useState(false);
@@ -166,31 +168,15 @@ export default function CaseDetail() {
   // button and the inline remarks textarea share the same state).
   const [deputyRemarks, setDeputyRemarks] = useState('');
 
-  // The current user's role is needed for the draft-report permission effect AND
-  // the header action row, so it's lifted to the top alongside other state.
+  // The current user's role is used by the header action row.
   const role = currentUser?.role || '';
 
-  // Report creation can be granted globally from menu permissions or narrowly for one
-  // case type from Case Forwarding. This mirrors the API authorization rule.
-  // NOTE: this state and its effect MUST be declared BEFORE any early `return`
-  // so the hook count stays stable across renders (otherwise React throws
-  // "Rendered more hooks than during the previous render").
-  const [canDraftForCaseType, setCanDraftForCaseType] = useState(false);
   const [canCloseByRole, setCanCloseByRole] = useState(false);
-  const isReportableType = caseItem?.type === 'type-2' || caseItem?.type === 'confidential';
-  const canDraftReport = isReportableType && (
-    role === 'super-admin'
-    || !!permissions.reports?.canCreate
-    || canDraftForCaseType
-  );
   useEffect(() => {
-    if (!role) { setCanDraftForCaseType(false); setCanCloseByRole(false); return; }
+    if (!role) { setCanCloseByRole(false); return; }
     forwardingRulesApi.getSpecial(role, caseItem?.type || 'type-2')
-      .then(res => {
-        setCanDraftForCaseType(!!res.data?.data?.canDraftReport);
-        setCanCloseByRole(!!res.data?.data?.canClose);
-      })
-      .catch(() => { setCanDraftForCaseType(false); setCanCloseByRole(false); });
+      .then(res => setCanCloseByRole(!!res.data?.data?.canClose))
+      .catch(() => setCanCloseByRole(false));
   }, [role, caseItem?.type]);
 
   // Escape closes the document viewer, matching the other modals on this page.
@@ -201,7 +187,7 @@ export default function CaseDetail() {
     return () => window.removeEventListener('keydown', onKey);
   }, [previewDoc]);
 
-  // Student "Message from Administrative" unread badge: compare the latest acknowledgment timestamp
+  // Student "Message from Proctor Office" unread badge: compare the latest acknowledgment timestamp
   // against what the student has already seen (stored locally).
   useEffect(() => {
     if (currentUser?.role !== 'student' || !caseItem?.id) return;
@@ -261,7 +247,7 @@ export default function CaseDetail() {
           const vRes = await checklistApi.getVerifications(id!);
           setVerifications(vRes.data.data || []);
         } catch { setVerifications([]); }
-        // Per-case notifications feed the student's "Message from Administrative" tab.
+        // Per-case notifications feed the student's "Message from Proctor Office" tab.
         try {
           const nRes = await notificationsApi.getByCase(id!);
           setCaseNotifications(nRes.data.data || []);
@@ -299,19 +285,27 @@ export default function CaseDetail() {
     }
   };
 
-  const handleAddInfo = async () => {
-    if (!newInfo.trim() || !caseItem) return;
-    setAddingInfo(true);
+  const handleAddAccused = async () => {
+    if (!accusedForm.name.trim() || !caseItem) return;
+    setAddingAccused(true);
     try {
-      await casesApi.addAdditionalInfo(caseItem.id, newInfo.trim());
+      await casesApi.addAccusedPerson(caseItem.id, {
+        name: accusedForm.name.trim(),
+        accusedStudentId: accusedForm.accusedStudentId.trim(),
+        department: accusedForm.department.trim() || undefined,
+        contact: accusedForm.contact.trim() || undefined,
+        guardianContact: accusedForm.guardianContact.trim() || undefined,
+        cgpa: accusedForm.cgpa ? Number(accusedForm.cgpa) : undefined,
+      });
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
-      setNewInfo('');
-      toast.success('Additional information added');
+      setAccusedForm({ name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '', cgpa: '' });
+      setShowAddAccused(false);
+      toast.success('Accused person added');
     } catch (err: any) {
-      toast.error('Could not add information', { description: err?.response?.data?.message || 'Try again' });
+      toast.error('Could not add accused person', { description: err?.response?.data?.message || 'Try again' });
     } finally {
-      setAddingInfo(false);
+      setAddingAccused(false);
     }
   };
 
@@ -459,12 +453,9 @@ export default function CaseDetail() {
   const isActiveAssignee = (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
   const acknowledgedByMe = !!currentUser?.id && caseItem.isAcknowledged && caseItem.acknowledgedById === currentUser.id;
   const canCloseType1 = canCloseByRole || acknowledgedByMe || (!!caseItem.isAcknowledged && isActiveAssignee);
-  // Associated staff (not the student/VC) may append additional information to the case.
-  // The Proctor oversees every case, so they never need a forward to add information.
-  const canAddInfo = !!currentUser?.role
-    && currentUser.role !== 'student' && currentUser.role !== 'vc'
-    && (isAssignedToMe || isInMyRoleQueue || isActiveAssignee
-        || currentUser.role === 'proctor' || currentUser.role === 'super-admin');
+  const canAddAccused = !!currentUser?.role
+    && currentUser.role !== 'student'
+    && currentUser.role !== 'external';
   // Verify / forward actions live as header buttons (popups). Show them when the acting user
   // can work the case: coordinators in their gender-routed queue (or un-routed/assigned), and
   // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
@@ -478,7 +469,7 @@ export default function CaseDetail() {
     (currentUser?.role === 'female-coordinator' && (!caseItem.forwardedToRole || caseItem.forwardedToRole === 'female-coordinator')) ||
     (currentUser?.role === 'female-coordinator' && isActiveAssignee)
   );
-  // Assistant proctor actions (Draft Report / Forward) also live as header buttons.
+  // Assistant proctor forwarding also lives as a header button.
   const assistantProctorCanAct = !caseClosedish && !isType3 && caseItem.type !== 'type-1' && currentUser?.role === 'assistant-proctor'
     && (caseItem.forwardedToRole === 'assistant-proctor' || isActiveAssignee);
   const hasConfidentialMenu = permissions['confidential']?.canRead === true;
@@ -527,10 +518,10 @@ export default function CaseDetail() {
     { id: 'overview' as const, label: 'Overview' },
     { id: 'documents' as const, label: 'Documents' },
     { id: 'hearing' as const, label: 'Hearing' },
-    // Students never see internal Notes; they get "Message from Administrative" instead.
+    // Students never see internal Notes; they get "Message from Proctor Office" instead.
     isStudentView
-      ? { id: 'message' as const, label: 'Message from Administrative' }
-      : { id: 'notes' as const, label: 'Notes' },
+      ? { id: 'message' as const, label: 'Message from Proctor Office' }
+      : { id: 'notes' as const, label: 'Case Notes & Remarks' },
     { id: 'timeline' as const, label: 'Activity Timeline' },
   ];
   // Type-1 (instant incident) cases have no hearings, so hide that tab.
@@ -604,14 +595,6 @@ export default function CaseDetail() {
             <div className="flex flex-wrap gap-2 justify-end">
               {coordinatorCanAct && (
                 <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} actingRole={role} onStatusChange={handleStatusChange} onForward={handleForward} />
-              )}
-              {canDraftReport && (
-                <button
-                  onClick={() => navigate(`/draft-reports?caseId=${caseItem.id}`)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-sm hover:bg-purple-100"
-                >
-                  <FileIcon /> Draft Report
-                </button>
               )}
               {assistantProctorCanAct && (
                 <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
@@ -910,14 +893,14 @@ export default function CaseDetail() {
                 </div>
               )}
 
-              {/* Students see this only in the "Message from Administrative" tab, not in the overview. */}
+              {/* Students see this only in the "Message from Proctor Office" tab, not in the overview. */}
               {caseItem.isAcknowledged && currentUser?.role !== 'student' && (
                 <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Administrative</h3>
+                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
                     <div className="flex items-center gap-2 text-emerald-700">
                       <CheckIcon />
-                      <span className="text-sm font-semibold">Acknowledged — taking action shortly.</span>
+                      <span className="text-sm font-semibold">The Proctor Office is already working on this.</span>
                     </div>
                     {caseItem.acknowledgmentComment && (
                       <div className="bg-white border border-emerald-100 rounded-lg p-3">
@@ -959,6 +942,17 @@ export default function CaseDetail() {
                 <div className="flex flex-wrap gap-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
                   {caseItem.studentSemester != null && <span><strong>Semester:</strong> {formatSemester(caseItem.studentSemester)}</span>}
                   {caseItem.studentCgpa != null && <span><strong>CGPA:</strong> {caseItem.studentCgpa.toFixed(2)}</span>}
+                </div>
+              )}
+              {canAddAccused && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAccused(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
+                  >
+                    <PlusIcon /> Add Accused Person
+                  </button>
                 </div>
               )}
               {((caseItem.complainants?.length || 0) > 0 || caseItem.studentName || (caseItem.accusedPersons?.length || 0) > 0 || caseItem.accusedName) && (
@@ -1016,53 +1010,6 @@ export default function CaseDetail() {
                 <div>
                   <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Description</h3>
                   <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{caseItem.description}</p>
-                </div>
-              )}
-
-              {/* Additional Information — appended by associated staff after submission */}
-              {currentUser?.role !== 'student' && (canAddInfo || (caseItem.additionalInfos?.length || 0) > 0) && (
-                <div>
-                  <h3 className="text-lg font-medium mb-2" style={{ color: '#0b2652' }}>Additional Information</h3>
-
-                  {canAddInfo && (
-                    <div className="border border-gray-200 rounded-lg p-4 mb-3">
-                      <textarea
-                        value={newInfo}
-                        onChange={(e) => setNewInfo(e.target.value)}
-                        placeholder="Add new information to this case…"
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-                      />
-                      <button
-                        onClick={handleAddInfo}
-                        disabled={addingInfo || !newInfo.trim()}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
-                        style={{ backgroundColor: '#0b2652' }}
-                      >
-                        <SendIcon />
-                        {addingInfo ? 'Adding…' : 'Add Information'}
-                      </button>
-                    </div>
-                  )}
-
-                  {(caseItem.additionalInfos?.length || 0) === 0 ? (
-                    <p className="text-sm text-gray-400">No additional information added yet.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {caseItem.additionalInfos!.map((info) => (
-                        <div key={info.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                          <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="font-medium text-gray-800">
-                              {info.author}
-                              {info.authorRole && <span className="ml-2 text-xs text-gray-500 capitalize">{info.authorRole.split('-').join(' ')}</span>}
-                            </p>
-                            <p className="text-xs text-gray-500">{new Date(info.createdDate).toLocaleString()}</p>
-                          </div>
-                          <p className="text-gray-700 whitespace-pre-wrap">{info.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1258,16 +1205,16 @@ export default function CaseDetail() {
             </div>
           )}
 
-          {/* Message from Administrative Tab (students) */}
+          {/* Message from Proctor Office Tab (students) */}
           {activeTab === 'message' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Administrative</h3>
+              <h3 className="text-lg font-medium mb-4" style={{ color: '#0b2652' }}>Message from Proctor Office</h3>
 
               {caseItem.isAcknowledged && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">
                   <div className="flex items-center gap-2 text-emerald-700">
                     <CheckIcon />
-                    <span className="text-sm font-semibold">Acknowledged — taking action shortly.</span>
+                    <span className="text-sm font-semibold">The Proctor Office is already working on this.</span>
                   </div>
                   {caseItem.acknowledgmentComment && (
                     <div className="bg-white border border-emerald-100 rounded-lg p-3">
@@ -1294,7 +1241,7 @@ export default function CaseDetail() {
                 </div>
               ) : (
                 !caseItem.isAcknowledged && (
-                  <p className="text-gray-500 text-center py-8">No messages from the administrative office yet.</p>
+                  <p className="text-gray-500 text-center py-8">No messages from the Proctor Office yet.</p>
                 )
               )}
             </div>
@@ -1522,13 +1469,51 @@ export default function CaseDetail() {
         </>
       )}
 
+      {showAddAccused && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => !addingAccused && setShowAddAccused(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Add Accused Person</h3>
+              <p className="mt-1 text-sm text-gray-500">This person will become part of the permanent case details.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-gray-700 sm:col-span-2">Name <span className="text-red-500">*</span>
+                  <input autoFocus value={accusedForm.name} onChange={e => setAccusedForm(v => ({ ...v, name: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-medium text-gray-700">Student ID
+                  <input value={accusedForm.accusedStudentId} onChange={e => setAccusedForm(v => ({ ...v, accusedStudentId: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-medium text-gray-700">Department
+                  <input value={accusedForm.department} onChange={e => setAccusedForm(v => ({ ...v, department: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-medium text-gray-700">Contact
+                  <input value={accusedForm.contact} onChange={e => setAccusedForm(v => ({ ...v, contact: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-medium text-gray-700">Guardian Contact
+                  <input value={accusedForm.guardianContact} onChange={e => setAccusedForm(v => ({ ...v, guardianContact: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-medium text-gray-700">CGPA
+                  <input type="number" min="0" max="4" step="0.01" value={accusedForm.cgpa} onChange={e => setAccusedForm(v => ({ ...v, cgpa: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </label>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button disabled={addingAccused} onClick={() => setShowAddAccused(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+                <button disabled={addingAccused || !accusedForm.name.trim()} onClick={handleAddAccused} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  {addingAccused ? 'Adding…' : 'Add Accused Person'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {showAckDialog && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowAckDialog(false)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Acknowledge Incident</h3>
-              <p className="text-sm text-gray-600 mb-4">Send a quick "received — taking action shortly" note to the student.</p>
+              <p className="text-sm text-gray-600 mb-4">Notify the student that the Proctor Office is working on the incident.</p>
               {controlRoomNumber && (
                 <p className="text-xs text-gray-500 mb-3 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
                   The 24/7 Control Room number (<span className="font-medium">{controlRoomNumber}</span>) is added to
@@ -1539,7 +1524,7 @@ export default function CaseDetail() {
                 value={ackComment}
                 onChange={(e) => setAckComment(e.target.value)}
                 rows={3}
-                placeholder="Received — taking action shortly. Please standby for further updates."
+                placeholder="The Proctor Office is already working on this."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
               />
               <div className="flex gap-3 justify-end">
@@ -1722,7 +1707,7 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     );
   }
 
-  // Assistant proctor actions are rendered as header buttons (Draft Report / Forward),
+  // Assistant proctor forwarding is rendered as a header button,
   // so there is no inline body panel.
   if (role === 'assistant-proctor') {
     return null;
@@ -2101,49 +2086,6 @@ function RegistrarPanel({ actionLoading, withLoading, onStatusChange, onForward,
         onForward={(r: string, ex?: any) => onForward(r, { ...ex, recommendation })}
       />
     </div>
-  );
-}
-
-// Reusable "Draft Report" header button + popup.
-function DraftReportButton({ caseItem, onRefresh }: { caseItem: Case; onRefresh: () => Promise<void>; }) {
-  const [open, setOpen] = useState(false);
-  const [content, setContent] = useState('');
-  const [busy, setBusy] = useState(false);
-  const handleCreate = async () => {
-    if (!content.trim()) return;
-    setBusy(true);
-    try {
-      await casesApi.createReport(caseItem.id, { content, isDraft: true });
-      await onRefresh();
-      toast.success('Draft report created');
-      setContent(''); setOpen(false);
-    } catch (err: any) {
-      toast.error('Failed to create report', { description: err?.response?.data?.message || '' });
-    } finally { setBusy(false); }
-  };
-  return (
-    <>
-      <button onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-sm hover:bg-purple-100">
-        <FileIcon /> Draft Report
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !busy && setOpen(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-              <h3 className="text-lg font-semibold mb-3" style={{ color: '#0b2652' }}>Draft Report — {caseItem.caseNumber}</h3>
-              <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Write your investigation report..." rows={6}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3" />
-              <div className="flex justify-end gap-2">
-                <button disabled={busy} onClick={() => setOpen(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-                <button disabled={busy || !content.trim()} onClick={handleCreate} className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">{busy ? 'Creating…' : 'Create Draft Report'}</button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </>
   );
 }
 

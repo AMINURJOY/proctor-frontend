@@ -10,7 +10,7 @@ import TablePagination from '../components/TablePagination';
 
 type SortKey = 'caseNumber' | 'studentName' | 'type' | 'status' | 'createdDate' | 'updatedDate';
 type SortDir = 'asc' | 'desc';
-type ReportFilter = 'all' | 'none' | 'draft' | 'final';
+type ReportFilter = 'all' | 'none' | 'draft';
 type ReportsPageMode = 'pending' | 'completed';
 
 const titleCase = (s: string) => s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -85,7 +85,9 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
   // Pending Reports is exclusively a Type-2 work queue. Confidential cases remain eligible
   // because confidentiality is a flag on Type-2 (the legacy API label is still supported).
   const optionCases = useMemo(
-    () => mode === 'pending' ? cases.filter(isType2Case) : cases,
+    () => mode === 'pending'
+      ? cases.filter(c => isType2Case(c) && !c.reports?.some(r => r.isFinal))
+      : cases,
     [cases, mode]);
   const typeOptions = useMemo(
     () => Array.from(new Set(optionCases.map(c => c.type).filter(Boolean))).sort(),
@@ -105,9 +107,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
     const term = search.trim().toLowerCase();
     const filtered = cases.filter(c => {
       const hasFinal = !!c.reports?.some(r => r.isFinal);
-      if (mode === 'pending' && !isType2Case(c)) return false;
-      // Completed Reports is a finalized-only archive. Pending Reports remains the main
-      // report tracker, so completed rows stay visible there with a Completed status.
+      if (mode === 'pending' && (!isType2Case(c) || hasFinal)) return false;
       if (mode === 'completed' && !hasFinal) return false;
       if (term &&
         !c.caseNumber.toLowerCase().includes(term) &&
@@ -119,7 +119,6 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
         const count = c.reports?.length || 0;
         if (reportFilter === 'none' && count !== 0) return false;
         if (reportFilter === 'draft' && (count === 0 || hasFinal)) return false;
-        if (reportFilter === 'final' && !hasFinal) return false;
       }
       return true;
     });
@@ -140,7 +139,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
 
   const queueCount = useMemo(() => cases.filter(c => {
     const hasFinal = !!c.reports?.some(r => r.isFinal);
-    return mode === 'pending' ? isType2Case(c) : hasFinal;
+    return mode === 'pending' ? isType2Case(c) && !hasFinal : hasFinal;
   }).length, [cases, mode]);
   const totalPages = Math.max(1, Math.ceil(visibleCases.length / pageSize));
   const paginatedCases = useMemo(() => visibleCases.slice((page - 1) * pageSize, page * pageSize), [visibleCases, page]);
@@ -271,7 +270,6 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                 <option value="all">All reports</option>
                 <option value="none">Not started</option>
                 <option value="draft">Draft started</option>
-                <option value="final">Completed</option>
               </select>
             </div>
           )}

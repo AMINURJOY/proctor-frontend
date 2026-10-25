@@ -14,6 +14,13 @@ interface Student {
   email?: string;
   gender: string;
   cgpa?: number | null;
+  outstandingDues?: number | null;
+  completedCredits?: number | null;
+  expectedCredits?: number | null;
+  currentSemester?: number | null;
+  registrationStatus?: string | null;
+  unregistrationReason?: string | null;
+  riskDataAsOf?: string | null;
   advisorName?: string;
   fatherName?: string;
   fatherContact?: string;
@@ -21,7 +28,7 @@ interface Student {
   isActive: boolean;
 }
 
-const emptyForm = { studentId: '', name: '', department: '', batch: '', contact: '', email: '', gender: 'male', cgpa: '', fatherName: '', fatherContact: '', advisorName: '' };
+const emptyForm = { studentId: '', name: '', department: '', batch: '', contact: '', email: '', gender: 'male', cgpa: '', outstandingDues: '', completedCredits: '', expectedCredits: '', currentSemester: '', registrationStatus: 'registered', unregistrationReason: '', fatherName: '', fatherContact: '', advisorName: '' };
 
 const genderBadge = (g: string) => {
   const v = (g || '').toLowerCase();
@@ -63,9 +70,25 @@ export default function StudentsList() {
       toast.error('CGPA must be between 0 and 4');
       return;
     }
+    if ([form.outstandingDues, form.completedCredits, form.expectedCredits].some(value => value !== '' && Number(value) < 0)) {
+      toast.error('Dues and credits cannot be negative');
+      return;
+    }
+    if (form.completedCredits !== '' && form.expectedCredits !== '' && Number(form.completedCredits) > Number(form.expectedCredits)) {
+      toast.error('Completed credits cannot exceed expected credits');
+      return;
+    }
     setSaving(true);
     try {
-      await studentsApi.create({ ...form, cgpa: form.cgpa === '' ? null : Number(form.cgpa) });
+      await studentsApi.create({
+        ...form,
+        cgpa: form.cgpa === '' ? null : Number(form.cgpa),
+        outstandingDues: form.outstandingDues === '' ? null : Number(form.outstandingDues),
+        completedCredits: form.completedCredits === '' ? null : Number(form.completedCredits),
+        expectedCredits: form.expectedCredits === '' ? null : Number(form.expectedCredits),
+        currentSemester: form.currentSemester === '' ? null : Number(form.currentSemester),
+        unregistrationReason: form.registrationStatus === 'unregistered' ? form.unregistrationReason || null : null,
+      });
       toast.success('Student added');
       setForm(emptyForm);
       setShowNew(false);
@@ -120,6 +143,17 @@ export default function StudentsList() {
             <input type="number" min="0" max="4" step="0.01" placeholder="CGPA (out of 4)" value={form.cgpa} onChange={e => setForm({ ...form, cgpa: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Batch (e.g. CSE_231)" value={form.batch} onChange={e => setForm({ ...form, batch: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="number" min="0" step="0.01" placeholder="Outstanding dues (৳)" value={form.outstandingDues} onChange={e => setForm({ ...form, outstandingDues: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="number" min="0" step="0.5" placeholder="Completed credits" value={form.completedCredits} onChange={e => setForm({ ...form, completedCredits: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="number" min="0" step="0.5" placeholder="Expected credits" value={form.expectedCredits} onChange={e => setForm({ ...form, expectedCredits: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="number" min="1" max="12" placeholder="Current semester" value={form.currentSemester} onChange={e => setForm({ ...form, currentSemester: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <select value={form.registrationStatus} onChange={e => setForm({ ...form, registrationStatus: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="registered">Registered</option>
+              <option value="unregistered">Unregistered</option>
+              <option value="withdrawn">Withdrawn</option>
+              <option value="graduated">Graduated</option>
+            </select>
+            {form.registrationStatus === 'unregistered' && <input placeholder="Unregistration reason" value={form.unregistrationReason} onChange={e => setForm({ ...form, unregistrationReason: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />}
             <input placeholder="Contact / Phone" value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Father's Name" value={form.fatherName} onChange={e => setForm({ ...form, fatherName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -161,6 +195,9 @@ export default function StudentsList() {
                   <th className="px-4 py-3 font-medium">CGPA</th>
                   <th className="px-4 py-3 font-medium">Department</th>
                   <th className="px-4 py-3 font-medium">Batch</th>
+                  <th className="px-4 py-3 font-medium">Registration</th>
+                  <th className="px-4 py-3 font-medium">Dues</th>
+                  <th className="px-4 py-3 font-medium">CCR</th>
                   <th className="px-4 py-3 font-medium">Contact</th>
                   <th className="px-4 py-3 font-medium">Father</th>
                 </tr>
@@ -176,6 +213,9 @@ export default function StudentsList() {
                     <td className="px-4 py-3 text-gray-600">{s.cgpa == null ? '—' : Number(s.cgpa).toFixed(2)}</td>
                     <td className="px-4 py-3 text-gray-600">{s.department || '—'}</td>
                     <td className="px-4 py-3 font-mono text-gray-700">{s.batch || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 capitalize">{s.registrationStatus || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.outstandingDues == null ? '—' : `৳${Number(s.outstandingDues).toLocaleString()}`}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.completedCredits == null || !s.expectedCredits ? '—' : `${Math.round(Number(s.completedCredits) / Number(s.expectedCredits) * 100)}%`}</td>
                     <td className="px-4 py-3 text-gray-600">{s.contact || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.fatherName ? `${s.fatherName}${s.fatherContact ? ` (${s.fatherContact})` : ''}` : '—'}</td>
                   </tr>

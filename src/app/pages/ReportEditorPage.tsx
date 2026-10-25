@@ -119,8 +119,7 @@ export default function ReportEditorPage() {
         setCaseItem(c); setArticles(arts);
         const reportsRes = await casesApi.getReports(caseId!);
         const reports = reportsRes.data.data || [];
-        // Open the report named in ?reportId= (from the Draft Reports list); otherwise fall
-        // back to the most recent one, which is what the plain /edit link has always shown.
+        // Open the report named in ?reportId=; otherwise use the most recent report.
         const target = (targetReportId && reports.find((r: any) => r.id === targetReportId))
           || (reports.length > 0 ? reports[reports.length - 1] : null);
         if (target) {

@@ -57,6 +57,7 @@ export interface CaseCategory {
   description?: string;
   isActive: boolean;
   appliesToType: 'type-1' | 'type-2' | 'both';
+  riskSeverity: 'low' | 'moderate' | 'high';
   sortOrder: number;
 }
 
@@ -70,6 +71,9 @@ export interface CaseAssignment {
   assignedAt: string;
   isPrimary: boolean;
   isActive: boolean;
+  status: 'pending' | 'completed' | 'cancelled';
+  completedAt?: string;
+  completionAction?: string;
 }
 
 export interface Rank {
@@ -161,7 +165,6 @@ export interface Case {
   hearings: Hearing[];
   timeline: TimelineEvent[];
   reports?: Report[];
-  additionalInfos?: AdditionalInfo[];
   hearingPersons?: HearingPerson[];
 
   // Category
@@ -188,6 +191,7 @@ export interface Case {
   // Multi-assignment
   assignedToId?: string;
   assignments?: CaseAssignment[];
+  taskStatus?: 'pending' | 'completed' | 'cancelled';
 }
 
 export interface UpcomingHearings {
@@ -236,14 +240,6 @@ export interface Note {
   id: string;
   content: string;
   author: string;
-  createdDate: string;
-}
-
-export interface AdditionalInfo {
-  id: string;
-  content: string;
-  author: string;
-  authorRole?: string;
   createdDate: string;
 }
 

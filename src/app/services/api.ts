@@ -125,7 +125,8 @@ export const casesApi = {
   update: (id: string, data: any) => api.put(`/cases/${id}`, data),
   updateStatus: (id: string, data: any) => api.patch(`/cases/${id}/status`, data),
   addNote: (caseId: string, data: any) => api.post(`/cases/${caseId}/notes`, data),
-  addAdditionalInfo: (caseId: string, content: string) => api.post(`/cases/${caseId}/additional-info`, { content }),
+  addAccusedPerson: (caseId: string, data: { name: string; accusedStudentId?: string; department?: string; contact?: string; guardianContact?: string; cgpa?: number }) =>
+    api.post(`/cases/${caseId}/accused-persons`, data),
   addInternalHearingPerson: (caseId: string, userId: string) => api.post(`/cases/${caseId}/hearing-persons/internal`, { userId }),
   addExternalHearingPerson: (caseId: string, data: { emails: string[]; name?: string; subject?: string; message: string }) =>
     api.post(`/cases/${caseId}/hearing-persons/external`, data),
@@ -193,7 +194,7 @@ export const studentsApi = {
 export const caseCategoriesApi = {
   getAll: (includeInactive = false) => api.get('/case-categories', { params: { includeInactive } }),
   getById: (id: string) => api.get(`/case-categories/${id}`),
-  create: (data: { name: string; description?: string; isActive?: boolean; appliesToType?: string; sortOrder?: number }) =>
+  create: (data: { name: string; description?: string; isActive?: boolean; appliesToType?: string; riskSeverity?: string; sortOrder?: number }) =>
     api.post('/case-categories', data),
   update: (id: string, data: any) => api.put(`/case-categories/${id}`, data),
   delete: (id: string) => api.delete(`/case-categories/${id}`),
@@ -218,6 +219,12 @@ export const dashboardApi = {
   getAnalytics: (params?: Record<string, string | number | undefined>) => api.get('/dashboard/analytics', { params }),
   getStats: () => api.get('/dashboard/stats'),
   getRecentActivity: () => api.get('/dashboard/recent-activity'),
+  getReportCounts: () => api.get('/dashboard/report-counts'),
+  getAssignmentWorkload: () => api.get('/dashboard/assignment-workload'),
+};
+
+export const accusedStatisticsApi = {
+  get: (params?: Record<string, string | undefined>) => api.get('/accused-statistics', { params }),
 };
 
 // Roles & Permissions

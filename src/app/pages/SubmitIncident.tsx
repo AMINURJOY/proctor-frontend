@@ -158,6 +158,7 @@ export default function SubmitIncident() {
         department: s.department || a.department,
         contact: s.contact || a.contact,
         guardianContact: s.guardianContact || a.guardianContact,
+        cgpa: s.cgpa ?? a.cgpa,
       }));
       toast.success(`Loaded details for ${s.name}`);
     } catch {
@@ -335,7 +336,8 @@ export default function SubmitIncident() {
         }));
         data.accusedPersons = accusedPersons.filter(a => a.name.trim()).map(a => ({
           name: a.name, accusedStudentId: a.accusedStudentId, department: a.department || undefined,
-          contact: a.contact || undefined, guardianContact: a.guardianContact || undefined
+          contact: a.contact || undefined, guardianContact: a.guardianContact || undefined,
+          cgpa: a.cgpa
         }));
       }
 

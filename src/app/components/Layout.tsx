@@ -20,7 +20,7 @@ import {
 import { ScrollText } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { notificationsApi, casesApi } from '../services/api';
+import { notificationsApi, casesApi, dashboardApi } from '../services/api';
 import { AppNotification } from '../types';
 import { roleLabel } from '../utils/roles';
 
@@ -38,6 +38,8 @@ export default function Layout() {
   const [myCasesCount, setMyCasesCount] = useState(0);
   const [type1Count, setType1Count] = useState(0);
   const [confidentialCount, setConfidentialCount] = useState(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState(0);
+  const [completedReportsCount, setCompletedReportsCount] = useState(0);
   const permissions = usePermissions();
 
   const handleLogout = () => {
@@ -80,6 +82,15 @@ export default function Layout() {
     } catch { /* silent */ }
   }, []);
 
+  const fetchReportCounts = useCallback(async () => {
+    try {
+      const res = await dashboardApi.getReportCounts();
+      const data = res.data.data ?? res.data;
+      setPendingReportsCount(data?.pending ?? 0);
+      setCompletedReportsCount(data?.completed ?? 0);
+    } catch { /* silent */ }
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getAll();
@@ -113,11 +124,12 @@ export default function Layout() {
     fetchUnreadCount();
     fetchMyCasesCount();
     fetchCategoryCounts();
-    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); }, 30000);
-    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); } };
+    fetchReportCounts();
+    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); }, 30000);
+    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); } };
     document.addEventListener('visibilitychange', onFocus);
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onFocus); };
-  }, [fetchUnreadCount, fetchMyCasesCount, fetchCategoryCounts]);
+  }, [fetchUnreadCount, fetchMyCasesCount, fetchCategoryCounts, fetchReportCounts]);
 
   const handleBellClick = () => {
     setShowNotifications(!showNotifications);
@@ -158,6 +170,7 @@ export default function Layout() {
   const allMenuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: DashboardIcon, menuKey: 'dashboard' },
     { path: '/advanced-search', label: 'Advanced Search', icon: SearchIcon, menuKey: 'advanced-search' },
+    { path: '/accused-statistics', label: 'Accused Statistics', icon: BarChartIcon, menuKey: 'accused-statistics' },
     { path: '/submit', label: 'Submit Incident', icon: PlusIcon, menuKey: 'submit' },
     { path: '/incidents', label: 'Incidents (Type-1)', icon: IncidentIcon, menuKey: 'incidents' },
     { path: '/cases', label: 'Cases', icon: CasesIcon, menuKey: 'cases' },
@@ -275,6 +288,12 @@ export default function Layout() {
               )}
               {item.menuKey === 'confidential' && confidentialCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{confidentialCount > 99 ? '99+' : confidentialCount}</span>
+              )}
+              {item.menuKey === 'reports' && pendingReportsCount > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{pendingReportsCount > 99 ? '99+' : pendingReportsCount}</span>
+              )}
+              {item.menuKey === 'completed-reports' && completedReportsCount > 0 && (
+                <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{completedReportsCount > 99 ? '99+' : completedReportsCount}</span>
               )}
             </button>
           );

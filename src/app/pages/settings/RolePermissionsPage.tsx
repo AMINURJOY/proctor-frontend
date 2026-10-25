@@ -24,6 +24,7 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
     items: [
       { key: 'dashboard', label: 'Dashboard', description: 'System overview and summary information.' },
       { key: 'advanced-search', label: 'Advanced Search', description: 'Search records using advanced filters.' },
+      { key: 'accused-statistics', label: 'Accused Statistics', description: 'View accused-student risk analytics and data coverage.' },
     ],
   },
   {
@@ -65,7 +66,7 @@ const actions: { key: keyof Flags; label: string; description: string }[] = [
   { key: 'delete', label: 'Delete', description: 'Permanently remove records in this area.' },
   { key: 'send', label: 'Send', description: 'Forward records from this menu into the next workflow.' },
 ];
-const actionsForMenu = (menuKey: string) => menuKey === 'audit-logs'
+const actionsForMenu = (menuKey: string) => menuKey === 'audit-logs' || menuKey === 'accused-statistics'
   ? actions.filter(action => action.key === 'read')
   : actions;
 

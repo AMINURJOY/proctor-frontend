@@ -23,7 +23,6 @@ const permissionGroups = [
   { key: '__assign__', title: 'Assign case', description: 'Show the Assign Handlers action for this case type.', status: 'assigned' },
   { key: '__close__', title: 'Close case', description: 'Allow the role to close or resolve this case type.', status: 'closed' },
   { key: '__hearing__', title: 'Schedule hearing', description: 'Show hearing scheduling actions for this case type.', status: 'hearing-scheduled' },
-  { key: '__draft_report__', title: 'Create draft report', description: 'Optional case-type grant for roles without global Pending Reports → Create permission.', status: 'draft-report' },
 ] as const;
 
 export default function ForwardingPage() {

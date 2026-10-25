@@ -49,9 +49,6 @@ export default function MyCases() {
     else setSearchParams({ filter: next });
   };
 
-  const isClosedLike = (status: string) =>
-    status === 'closed' || status === 'resolved' || status === 'rejected';
-
   const fetchMyCases = useCallback(async () => {
     setLoading(true);
     try {
@@ -91,17 +88,16 @@ export default function MyCases() {
   // dashboard stat cards so clicking a card lands you on a matching list.
   const filteredCases = (() => {
     if (activeFilter === 'all') return cases;
-    if (activeFilter === 'completed') return cases.filter(c => isClosedLike(c.status));
-    if (activeFilter === 'pending') return cases.filter(c => !isClosedLike(c.status));
-    // my-tasks: every still-open case the user can act on (their queue).
-    return cases.filter(c => !isClosedLike(c.status));
+    if (activeFilter === 'completed') return cases.filter(c => c.taskStatus === 'completed');
+    if (activeFilter === 'pending') return cases.filter(c => c.taskStatus === 'pending');
+    return cases.filter(c => c.taskStatus === 'pending');
   })();
 
   const filterChips: { id: 'all' | 'my-tasks' | 'pending' | 'completed'; label: string }[] = [
     { id: 'all', label: `All (${cases.length})` },
-    { id: 'my-tasks', label: `My Tasks (${cases.filter(c => !isClosedLike(c.status)).length})` },
-    { id: 'pending', label: `Pending (${cases.filter(c => !isClosedLike(c.status)).length})` },
-    { id: 'completed', label: `Completed (${cases.filter(c => isClosedLike(c.status)).length})` },
+    { id: 'my-tasks', label: `My Tasks (${cases.filter(c => c.taskStatus === 'pending').length})` },
+    { id: 'pending', label: `Pending (${cases.filter(c => c.taskStatus === 'pending').length})` },
+    { id: 'completed', label: `Completed (${cases.filter(c => c.taskStatus === 'completed').length})` },
   ];
 
   return (
@@ -210,6 +206,11 @@ export default function MyCases() {
                         <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[c.status] || 'bg-gray-100 text-gray-700'}`}>
                           {statusLabel(c.status)}
                         </span>
+                        {c.taskStatus && (
+                          <div className={`mt-1 w-fit rounded-full px-2 py-0.5 text-xs font-medium ${c.taskStatus === 'completed' ? 'bg-green-100 text-green-700' : c.taskStatus === 'cancelled' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
+                            Task: {c.taskStatus[0].toUpperCase() + c.taskStatus.slice(1)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
                         {(() => {

@@ -14,7 +14,6 @@ import ConfidentialCases from './pages/ConfidentialCases';
 import VCMonitoring from './pages/VCMonitoring';
 import ReportsPage from './pages/ReportsPage';
 import ReportEditorPage from './pages/ReportEditorPage';
-import DraftReportsPage from './pages/DraftReportsPage';
 import UsersManagement from './pages/UsersManagement';
 import MyCases from './pages/MyCases';
 import NotificationsPage from './pages/NotificationsPage';
@@ -23,6 +22,7 @@ import CaseEdit from './pages/CaseEdit';
 import StudentsList from './pages/StudentsList';
 import Type3WorkflowPage from './pages/Type3WorkflowPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import AccusedStatisticsPage from './pages/AccusedStatisticsPage';
 
 // Students land on /submit instead of /dashboard.
 function StudentDashboardGuard() {
@@ -59,6 +59,7 @@ export const router = createBrowserRouter([
     children: [
       { path: 'dashboard', Component: StudentDashboardGuard },
       { path: 'advanced-search', Component: AdvancedSearch },
+      { path: 'accused-statistics', Component: AccusedStatisticsPage },
       { path: 'submit', Component: SubmitIncident },
       { path: 'incidents', Component: IncidentsList },
       { path: 'cases', Component: CasesList },
@@ -79,7 +80,6 @@ export const router = createBrowserRouter([
       { path: 'chairman-reports', Component: Type3WorkflowPage },
       { path: 'reports/:caseId/edit', Component: ReportEditorPage },
       { path: 'reports/:id/view', Component: CaseReport },
-      { path: 'draft-reports', Component: DraftReportsPage },
       { path: 'users', Component: UsersManagement },
       { path: 'students', Component: StudentsList },
       { path: 'audit-logs', Component: AuditLogsPage },

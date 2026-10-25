@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { CasesIcon, ClockIcon, CheckIcon, EyeIcon } from '../components/Icons';
 import { useNavigate } from 'react-router';
@@ -14,20 +14,25 @@ export default function Dashboard() {
   const [cases, setCases] = useState<Case[]>([]);
   const [dashboardStats, setDashboardStats] = useState({ totalCases: 0, pendingCases: 0, underReview: 0, resolvedCases: 0 });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [workload, setWorkload] = useState<Array<{ userId: string; name: string; role: string; totalAssigned: number; totalCompleted: number; pending: number }>>([]);
+  const [taskStatusByCase, setTaskStatusByCase] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const role = currentUser?.role || '';
+  const isProctorWorkloadView = role === 'proctor';
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [statsRes, activityRes, casesRes] = await Promise.allSettled([
+        const [statsRes, activityRes, casesRes, workloadRes, myCasesRes] = await Promise.allSettled([
           dashboardApi.getStats(),
           dashboardApi.getRecentActivity(),
           // The list endpoint defaults to pageSize 10; the dashboard derives all its
           // stats/charts from this set, so request a large page to avoid truncated counts.
           casesApi.getAll({ pageSize: 1000 }),
+          dashboardApi.getAssignmentWorkload(),
+          casesApi.getMyCases({ pageSize: 1000 }),
         ]);
 
         if (statsRes.status === 'fulfilled') {
@@ -38,6 +43,13 @@ export default function Dashboard() {
         }
         if (casesRes.status === 'fulfilled') {
           setCases(casesRes.value.data.data?.items || []);
+        }
+        if (workloadRes.status === 'fulfilled') {
+          setWorkload(workloadRes.value.data.data?.people || []);
+        }
+        if (myCasesRes.status === 'fulfilled') {
+          const items = myCasesRes.value.data.data?.items || [];
+          setTaskStatusByCase(Object.fromEntries(items.filter((c: Case) => c.taskStatus).map((c: Case) => [c.id, c.taskStatus])));
         }
       } catch {
         // API unavailable - empty state shown
@@ -83,6 +95,7 @@ export default function Dashboard() {
   // Filter cases based on role - uses forwardedToRole for accurate matching
   const getMyTasks = () => {
     return visibleCases.filter(c => {
+      if (role !== 'student' && role !== 'super-admin') return taskStatusByCase[c.id] === 'pending';
       if (c.status === 'closed' || c.status === 'resolved' || c.status === 'rejected') return false;
       switch (role) {
         case 'student': return true; // any open case they submitted
@@ -212,6 +225,11 @@ export default function Dashboard() {
           <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[c.status]}`}>
             {statusLabel(c.status)}
           </span>
+          {taskStatusByCase[c.id] && (
+            <span className={`px-2 py-0.5 text-xs rounded-full ${taskStatusByCase[c.id] === 'completed' ? 'bg-green-100 text-green-700' : taskStatusByCase[c.id] === 'cancelled' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
+              Task: {taskStatusByCase[c.id][0].toUpperCase() + taskStatusByCase[c.id].slice(1)}
+            </span>
+          )}
         </div>
         <p className="text-sm text-gray-600 truncate">{c.studentName} - {c.description}</p>
       </div>
@@ -323,6 +341,46 @@ export default function Dashboard() {
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div>
+              {role !== 'external' && workload.length > 0 && (
+                <div className="mb-8 rounded-xl border border-gray-100 bg-white p-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>
+                      {isProctorWorkloadView ? 'Assignment Completion by Person' : 'My Assignment Completion'}
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      {isProctorWorkloadView
+                        ? 'All-time assignment periods for the proctorial team.'
+                        : 'Your all-time assigned and completed work.'}
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <div style={{ minWidth: Math.max(560, workload.length * 110) }}>
+                      <ResponsiveContainer width="100%" height={340}>
+                        <BarChart data={workload} margin={{ top: 5, right: 20, left: 0, bottom: workload.length > 4 ? 75 : 25 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="name"
+                            interval={0}
+                            angle={workload.length > 4 ? -30 : 0}
+                            textAnchor={workload.length > 4 ? 'end' : 'middle'}
+                            height={workload.length > 4 ? 80 : 35}
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload ? `${payload[0].payload.name} (${payload[0].payload.role.split('-').join(' ')})` : ''} />
+                          <Legend />
+                          <Bar dataKey="totalAssigned" name="Total Assigned" radius={[4, 4, 0, 0]}>
+                            {workload.map(person => <Cell key={`assigned-${person.userId}`} fill={person.userId === currentUser?.id ? '#0b2652' : '#60a5fa'} />)}
+                          </Bar>
+                          <Bar dataKey="totalCompleted" name="Total Completed" radius={[4, 4, 0, 0]}>
+                            {workload.map(person => <Cell key={`completed-${person.userId}`} fill={person.userId === currentUser?.id ? '#15803d' : '#4ade80'} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Charts — students only see status distribution, no monthly trends */}
               <div className={`grid grid-cols-1 ${isStudent ? '' : 'lg:grid-cols-2'} gap-6 mb-6`}>
                 <div>

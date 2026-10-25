@@ -9,7 +9,7 @@ export default function CaseCategoriesPage() {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
     name: '', description: '', isActive: true,
-    appliesToType: 'both', sortOrder: 0
+    appliesToType: 'both', riskSeverity: 'moderate', sortOrder: 0
   });
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -28,7 +28,7 @@ export default function CaseCategoriesPage() {
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
-    setForm({ name: '', description: '', isActive: true, appliesToType: 'both', sortOrder: 0 });
+    setForm({ name: '', description: '', isActive: true, appliesToType: 'both', riskSeverity: 'moderate', sortOrder: 0 });
     setEditingId(null);
     setShowNew(false);
   };
@@ -59,6 +59,7 @@ export default function CaseCategoriesPage() {
       description: item.description || '',
       isActive: !!item.isActive,
       appliesToType: item.appliesToType || 'both',
+      riskSeverity: item.riskSeverity || 'moderate',
       sortOrder: item.sortOrder || 0
     });
     setEditingId(item.id);
@@ -121,6 +122,15 @@ export default function CaseCategoriesPage() {
               <input type="number" value={form.sortOrder} onChange={e => setForm({ ...form, sortOrder: parseInt(e.target.value || '0', 10) })}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Risk Severity</label>
+              <select value={form.riskSeverity} onChange={e => setForm({ ...form, riskSeverity: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+                <option value="low">Low</option>
+                <option value="moderate">Moderate</option>
+                <option value="high">High</option>
+              </select>
+            </div>
             <div className="flex items-center gap-4 mt-5">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={form.isActive}
@@ -161,7 +171,7 @@ export default function CaseCategoriesPage() {
                 </p>
                 {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
                 <p className="text-xs text-gray-400">
-                  Applies to: {roleLabel(item.appliesToType)} · Order {item.sortOrder}
+                  Applies to: {roleLabel(item.appliesToType)} · Risk: {roleLabel(item.riskSeverity || 'moderate')} · Order {item.sortOrder}
                 </p>
               </div>
               <div className="flex gap-2">
