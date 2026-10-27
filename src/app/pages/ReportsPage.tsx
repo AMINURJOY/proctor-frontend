@@ -348,7 +348,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                           </button>
                         )}
                         {mode === 'completed' && hasFinal && !c.type3Stage && (c.type === 'type-2' || c.type === 'confidential') && (currentUser?.role === 'super-admin' || permissions['completed-reports']?.canSend) && (
-                          <button type="button" onClick={() => { setSendCase(c); setSendRemarks(''); }} className="rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-800">Send to Registrar</button>
+                          <button type="button" onClick={() => { setSendCase(c); setSendRemarks(''); }} className="rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-800">Forward to Registrar</button>
                         )}
                         {mode === 'pending' && !hasFinal && canWorkOnReport && (
                           <button

@@ -2344,6 +2344,7 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
                 title="Accept & Forward to:"
                 onForward={onForward}
                 forwardExtra={{ markAsConfidential }}
+                requireNote={caseItem.status !== 'verified'}
               />
             </div>
           </div>
@@ -2561,10 +2562,10 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
   );
 }
 
-// Unified two-step forward control: select one permitted recipient, then add the
-// required Case Notes & Remarks entry before confirming the hand-off.
+// Unified forward control. Intake roles can perform the first verified hand-off by selecting
+// a recipient only; all subsequent stages require a Case Notes & Remarks entry.
 // Renders nothing when the role has no forwarding permission / no eligible users.
-function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra, initialNote = '' }: {
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra, initialNote = '', requireNote = true }: {
   fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
@@ -2574,6 +2575,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   beforeForward?: () => Promise<void>;
   forwardExtra?: Record<string, unknown>;
   initialNote?: string;
+  requireNote?: boolean;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -2618,15 +2620,19 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   };
 
   const handleForwardSelected = async () => {
-    if (selectedUsers.length !== 1 || !forwardNote.trim()) return;
+    if (selectedUsers.length !== 1 || (requireNote && !forwardNote.trim())) return;
     // One-time pre-step (e.g. coordinator verification) before forwarding.
     if (beforeForward) await beforeForward();
     const uid = selectedUsers[0];
     const u = users.find(x => x.id === uid);
     if (!u) return;
-    // Target role is derived from the selected person's role. The required note is
+    // Target role is derived from the selected person's role. Later-stage notes are
     // persisted by the API into Case Notes & Remarks as part of the same transaction.
-    await onForward(u.role, { ...forwardExtra, assignedToUserId: uid, note: forwardNote.trim() });
+    await onForward(u.role, {
+      ...forwardExtra,
+      assignedToUserId: uid,
+      ...(forwardNote.trim() ? { note: forwardNote.trim() } : {}),
+    });
     setSelectedUsers([]);
     setForwardNote('');
     setShowNoteStep(false);
@@ -2636,7 +2642,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   return (
     <div className="bg-gray-50 rounded-lg p-4 mb-4">
       {!showNoteStep ? <>
-      <p className="text-sm font-medium text-gray-700 mb-2">1. {title || 'Forward to:'}</p>
+      <p className="text-sm font-medium text-gray-700 mb-2">{requireNote ? '1. ' : ''}{title || 'Forward to:'}</p>
 
       {/* One searchable person selector across all permitted roles. */}
       <div className="relative mb-3" ref={dropdownRef}>
@@ -2697,10 +2703,18 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
 
       <button
         disabled={actionLoading || selectedUsers.length === 0}
-        onClick={() => { setForwardNote(note => note || initialNote); setShowDropdown(false); setShowNoteStep(true); }}
+        onClick={() => {
+          if (requireNote) {
+            setForwardNote(note => note || initialNote);
+            setShowDropdown(false);
+            setShowNoteStep(true);
+            return;
+          }
+          void withLoading(handleForwardSelected);
+        }}
         className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        Continue to Notes
+        {requireNote ? 'Continue to Notes' : 'Confirm & Forward'}
       </button>
       </> : <>
         <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
