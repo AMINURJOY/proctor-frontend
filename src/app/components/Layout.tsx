@@ -172,7 +172,7 @@ export default function Layout() {
     { path: '/advanced-search', label: 'Advanced Search', icon: SearchIcon, menuKey: 'advanced-search' },
     { path: '/accused-statistics', label: 'Accused Statistics', icon: BarChartIcon, menuKey: 'accused-statistics' },
     { path: '/submit', label: 'Submit Incident', icon: PlusIcon, menuKey: 'submit' },
-    { path: '/incidents', label: 'Incidents (Type-1)', icon: IncidentIcon, menuKey: 'incidents' },
+    { path: '/incidents', label: 'Message to Proctor', icon: IncidentIcon, menuKey: 'incidents' },
     { path: '/cases', label: 'Cases', icon: CasesIcon, menuKey: 'cases' },
     { path: '/hearings', label: 'Hearing Management', icon: HearingIcon, menuKey: 'hearings' },
     { path: '/confidential', label: 'Confidential Cases', icon: ShieldIcon, menuKey: 'confidential' },

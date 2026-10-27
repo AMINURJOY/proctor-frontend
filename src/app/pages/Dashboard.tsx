@@ -19,7 +19,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const role = currentUser?.role || '';
-  const isProctorWorkloadView = role === 'proctor';
+  const isTeamWorkloadView = role === 'proctor' || role === 'coordinator';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -159,8 +159,8 @@ export default function Dashboard() {
   const pendingType1 = pendingCases.filter(c => c.type === 'type-1').length;
   const pendingType2 = pendingCases.filter(c => c.type === 'type-2' || c.type === 'confidential').length;
   const typeBreakdownCards = [
-    { label: 'Type-1 Pending', value: pendingType1, icon: ClockIcon, color: '#0ea5e9', bgColor: '#e0f2fe' },
-    { label: 'Type-2 Pending', value: pendingType2, icon: ClockIcon, color: '#a855f7', bgColor: '#f3e8ff' },
+    { label: 'Message to Proctor Pending', value: pendingType1, icon: ClockIcon, color: '#0ea5e9', bgColor: '#e0f2fe' },
+    { label: 'Complain to Proctor Pending', value: pendingType2, icon: ClockIcon, color: '#a855f7', bgColor: '#f3e8ff' },
   ];
 
   // Clicking My Cases / Pending / My Tasks jumps to the dedicated /my-cases page
@@ -290,7 +290,7 @@ export default function Dashboard() {
       </div>
 
       {/* Type breakdown — a second row showing how the "Pending" count splits
-          between Type-1 (instant incidents) and Type-2 (formal cases, incl. confidential).
+          between Message to Proctor and Complain to Proctor submissions (including confidential complaints).
           Hidden for students since they don't triage. */}
       {!isStudent && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -345,10 +345,10 @@ export default function Dashboard() {
                 <div className="mb-8 rounded-xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>
-                      {isProctorWorkloadView ? 'Assignment Completion by Person' : 'My Assignment Completion'}
+                      {isTeamWorkloadView ? 'Assignment Completion by Person' : 'My Assignment Completion'}
                     </h3>
                     <p className="text-xs text-gray-500">
-                      {isProctorWorkloadView
+                      {isTeamWorkloadView
                         ? 'All-time assignment periods for the proctorial team.'
                         : 'Your all-time assigned and completed work.'}
                     </p>

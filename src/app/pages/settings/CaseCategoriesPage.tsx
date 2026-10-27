@@ -106,9 +106,9 @@ export default function CaseCategoriesPage() {
               <label className="block text-xs text-gray-500 mb-1">Applies To</label>
               <select value={form.appliesToType} onChange={e => setForm({ ...form, appliesToType: e.target.value })}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
-                <option value="both">Both Type-1 and Type-2</option>
-                <option value="type-1">Type-1 only</option>
-                <option value="type-2">Type-2 only</option>
+                <option value="both">Both Message to Proctor and Complain to Proctor</option>
+                <option value="type-1">Message to Proctor only</option>
+                <option value="type-2">Complain to Proctor only</option>
               </select>
             </div>
 
@@ -155,7 +155,7 @@ export default function CaseCategoriesPage() {
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-gray-500">No categories yet. Add one to enable the category dropdown for Type-2 case submissions.</p>
+        <p className="text-sm text-gray-500">No categories yet. Add one to enable the category dropdown for Complain to Proctor submissions.</p>
       ) : (
         <div className="space-y-2">
           {items.map(item => (

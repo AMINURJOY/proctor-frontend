@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { Case, Article } from '../types';
 import { toast } from 'sonner';
 import { exportReportToPdf, inlineImagesAsBase64, BANGLA_FONT_STACK, generateReportHTML } from '../utils/pdfExport';
+import { caseTypeLabel } from '../utils/caseTypes';
 // Toolbar button component
 const Btn = ({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title?: string }) => (
   <button type="button" onClick={onClick} title={title}
@@ -112,7 +113,7 @@ export default function ReportEditorPage() {
         const c = caseRes.data.data || caseRes.data;
         const arts = articlesRes.data.data || [];
         if (c.type !== 'type-2' && c.type !== 'confidential') {
-          toast.error('Only Type-2 cases can have investigation reports.');
+          toast.error('Only Complain to Proctor cases can have investigation reports.');
           navigate('/reports', { replace: true });
           return;
         }
@@ -504,7 +505,7 @@ export default function ReportEditorPage() {
             <div className="px-4 py-3 space-y-4 text-sm">
               <InfoSection title="Overview">
                 <InfoRow label="Case #" value={caseItem.caseNumber} k="caseNumber" copiedKey={copiedKey} onCopy={copyToClipboard} />
-                <InfoRow label="Type" value={caseItem.type} k="type" copiedKey={copiedKey} onCopy={copyToClipboard} />
+                <InfoRow label="Type" value={caseTypeLabel(caseItem.type)} k="type" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 <InfoRow label="Status" value={caseItem.status} k="status" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 <InfoRow label="Filed" value={caseItem.createdDate ? new Date(caseItem.createdDate).toLocaleDateString() : ''} k="createdDate" copiedKey={copiedKey} onCopy={copyToClipboard} />
                 {caseItem.incidentDate && <InfoRow label="Incident" value={new Date(caseItem.incidentDate).toLocaleDateString()} k="incidentDate" copiedKey={copiedKey} onCopy={copyToClipboard} />}

@@ -7,6 +7,7 @@ import { Case, CaseStatus, Priority } from '../types';
 import { dashboardApi, casesApi } from '../services/api';
 import { statusLabel } from '../utils/status';
 import TablePagination from '../components/TablePagination';
+import { caseTypeLabel } from '../utils/caseTypes';
 
 export default function VCMonitoring() {
   const { currentUser } = useAuth();
@@ -224,7 +225,7 @@ export default function VCMonitoring() {
                       c.type === 'type-2' ? 'bg-purple-100 text-purple-700' :
                       'bg-red-100 text-red-700'
                     }`}>
-                      {c.type === 'type-1' ? 'Type-1' : c.type === 'type-2' ? 'Type-2' : 'Confidential'}
+                      {caseTypeLabel(c.type)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

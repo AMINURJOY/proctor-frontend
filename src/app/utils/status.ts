@@ -6,6 +6,7 @@ const STATUS_LABELS: Record<string, string> = {
   submitted: 'Pending',
   verified: 'In Progress',
   closed: 'Report Incomplete',
+  'suggested-type-2': 'Suggested as Complain to Proctor',
 };
 
 export function statusLabel(status?: string | null): string {

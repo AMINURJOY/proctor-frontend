@@ -8,6 +8,7 @@ import { CaseCategory } from '../types';
 import { roleLabel } from '../utils/roles';
 import { statusLabel } from '../utils/status';
 import TablePagination from '../components/TablePagination';
+import { caseTypeLabel } from '../utils/caseTypes';
 
 type Group = { name: string; count: number };
 type Person = { id: string; name: string; role: string };
@@ -93,7 +94,7 @@ export default function AdvancedSearch() {
   const cards = data ? [
     ['Total cases', data.totalCases], ['Open cases', data.openCases], ['Awaiting action', data.pendingCases],
     ['Under review', data.underReview], ['Resolved / closed', data.resolvedCases],
-    ['Type 1 open', data.type1Pending], ['Type 2 open', data.type2Pending]
+    ['Message to Proctor open', data.type1Pending], ['Complain to Proctor open', data.type2Pending]
   ] : [];
 
   const chartsRef = useRef<HTMLDivElement>(null);
@@ -113,7 +114,7 @@ export default function AdvancedSearch() {
       'Department': c.department || '—',
       'Batch': c.batch || '—',
       'Category': c.categoryName || '—',
-      'Type': c.type,
+      'Type': caseTypeLabel(c.type),
       'Status': statusLabel(c.status),
       'Punishment': c.punishment || '—',
       'Responsible': c.assignedTo || 'Unassigned',
@@ -154,7 +155,7 @@ export default function AdvancedSearch() {
         <label className="text-xs font-medium text-slate-600">From date<input className={field} type="date" value={filters.from} onChange={e => update('from', e.target.value)} /></label>
         <label className="text-xs font-medium text-slate-600">To date<input className={field} type="date" value={filters.to} onChange={e => update('to', e.target.value)} /></label>
         <label className="text-xs font-medium text-slate-600">Status<select className={field} value={filters.status} onChange={e => update('status', e.target.value)}><option value="">All statuses</option>{statuses.map(x => <option key={x} value={x}>{statusLabel(x)}</option>)}</select></label>
-        <label className="text-xs font-medium text-slate-600">Case type<select className={field} value={filters.type} onChange={e => update('type', e.target.value)}><option value="">All types</option><option value="type-1">Type 1</option><option value="type-2">Type 2</option><option value="type-3">Type 3</option><option value="confidential">Confidential</option></select></label>
+        <label className="text-xs font-medium text-slate-600">Case type<select className={field} value={filters.type} onChange={e => update('type', e.target.value)}><option value="">All types</option><option value="type-1">Message to Proctor</option><option value="type-2">Complain to Proctor</option><option value="type-3">Type 3</option><option value="confidential">Confidential</option></select></label>
         <label className="text-xs font-medium text-slate-600">Category<select className={field} value={filters.categoryId} onChange={e => update('categoryId', e.target.value)}><option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}{c.isActive ? '' : ' (inactive)'}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">Year<input className={field} type="number" min="2000" max="2100" value={filters.year} onChange={e => update('year', e.target.value)} placeholder="All years" /></label>
         <label className="text-xs font-medium text-slate-600">Semester<select className={field} value={filters.semester} onChange={e => update('semester', e.target.value)}><option value="">All semesters</option>{data?.semesters?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
@@ -183,7 +184,7 @@ export default function AdvancedSearch() {
         <section id="report-section" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5"><h2 className="font-semibold text-slate-800">Cases ({data.totalCases})</h2><p className="text-xs text-slate-500">Select a case to see student details, investigation, action, outcome, and timeline.</p></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[950px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Case', 'Accused', 'Complainant', 'Department', 'Batch', 'Category', 'Type', 'Status', 'Punishment', 'Responsible', 'Collaborators', 'Opened'].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>
-          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3 font-mono">{c.batch || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{c.type}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
+          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3 font-mono">{c.batch || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{caseTypeLabel(c.type)}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
           {!(data.cases?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-slate-500">No cases match these filters.</td></tr>}
         </tbody></table></div>
         <TablePagination currentPage={data.page} pageSize={data.pageSize} totalItems={data.totalCases} onPageChange={page => update('page', page)} itemLabel="cases" />

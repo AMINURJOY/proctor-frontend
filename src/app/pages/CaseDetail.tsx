@@ -50,7 +50,7 @@ const workflowSteps = [
 const type1Steps = [
   { key: 'submitted', label: 'Submitted' },
   { key: 'acknowledged', label: 'Acknowledged' },
-  { key: 'closed', label: 'Closed / Type-2 / Police' },
+  { key: 'closed', label: 'Closed / Complain to Proctor / Police' },
 ];
 
 function getType1StepIndex(status: CaseStatus, acknowledged: boolean): number {
@@ -623,7 +623,7 @@ export default function CaseDetail() {
                     onClick={() => handleStatusChange('suggested-type-2')}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-violet-300 bg-violet-50 text-violet-700 text-sm hover:bg-violet-100"
                   >
-                    <ArrowRightIcon /> Suggest to Type-2
+                    <ArrowRightIcon /> Suggest as Complain to Proctor
                   </button>
                   {canCloseByRole && (
                     <button
@@ -2402,7 +2402,8 @@ function DeputyProctorPanel({ caseItem, remarks, onForward }: {
                 actionLoading={actionLoading}
                 withLoading={withLoading}
                 title="Accept & Forward to:"
-                onForward={(r: string, ex?: any) => onForward(r, { ...ex, note: remarks })}
+                initialNote={remarks}
+                onForward={onForward}
               />
             </div>
           </div>
@@ -2560,27 +2561,26 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
   );
 }
 
-// Unified forward control: ONE searchable people dropdown that aggregates every
-// user the current role is permitted to forward to (derived from the forwarding
-// rules in Settings). Selecting people and clicking Forward assigns the case to
-// each of them, deriving the target role from each person's own role.
+// Unified two-step forward control: select one permitted recipient, then add the
+// required Case Notes & Remarks entry before confirming the hand-off.
 // Renders nothing when the role has no forwarding permission / no eligible users.
-function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra }: {
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra, initialNote = '' }: {
   fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   title?: string;
-  // Runs ONCE before forwarding to the selected users (e.g. verify the case).
-  // Must not be re-run per recipient, or a one-time transition (submitted→verified)
-  // would be attempted again on an already-advanced case and fail.
+  // Runs once before forwarding (for example, verifying the case).
   beforeForward?: () => Promise<void>;
   forwardExtra?: Record<string, unknown>;
+  initialNote?: string;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showNoteStep, setShowNoteStep] = useState(false);
+  const [forwardNote, setForwardNote] = useState(initialNote);
   const [loaded, setLoaded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -2612,28 +2612,33 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   );
 
   const toggleUser = (userId: string) => {
-    setSelectedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
+    // A forwarding action has one accountable recipient. Selecting another person
+    // replaces the previous choice and avoids duplicate forwarding notes.
+    setSelectedUsers(prev => prev.includes(userId) ? [] : [userId]);
   };
 
   const handleForwardSelected = async () => {
-    if (selectedUsers.length === 0) return;
-    // One-time pre-step (e.g. coordinator verification) before forwarding to everyone.
+    if (selectedUsers.length !== 1 || !forwardNote.trim()) return;
+    // One-time pre-step (e.g. coordinator verification) before forwarding.
     if (beforeForward) await beforeForward();
-    for (const uid of selectedUsers) {
-      const u = users.find(x => x.id === uid);
-      if (!u) continue;
-      // Target role is derived from the selected person's role.
-      await onForward(u.role, { ...forwardExtra, assignedToUserId: uid });
-    }
+    const uid = selectedUsers[0];
+    const u = users.find(x => x.id === uid);
+    if (!u) return;
+    // Target role is derived from the selected person's role. The required note is
+    // persisted by the API into Case Notes & Remarks as part of the same transaction.
+    await onForward(u.role, { ...forwardExtra, assignedToUserId: uid, note: forwardNote.trim() });
     setSelectedUsers([]);
+    setForwardNote('');
+    setShowNoteStep(false);
     setShowDropdown(false);
   };
 
   return (
     <div className="bg-gray-50 rounded-lg p-4 mb-4">
-      <p className="text-sm font-medium text-gray-700 mb-2">{title || 'Forward to:'}</p>
+      {!showNoteStep ? <>
+      <p className="text-sm font-medium text-gray-700 mb-2">1. {title || 'Forward to:'}</p>
 
-      {/* Single searchable multi-select people dropdown across all permitted roles */}
+      {/* One searchable person selector across all permitted roles. */}
       <div className="relative mb-3" ref={dropdownRef}>
         <div
           onClick={() => setShowDropdown(!showDropdown)}
@@ -2641,7 +2646,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
         >
           <div className="flex flex-wrap gap-1 flex-1">
             {selectedUsers.length === 0 ? (
-              <span className="text-gray-400">Search and select people to forward to...</span>
+              <span className="text-gray-400">Search and select a person to forward to...</span>
             ) : (
               selectedUsers.map(uid => {
                 const u = users.find(x => x.id === uid);
@@ -2692,11 +2697,42 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
 
       <button
         disabled={actionLoading || selectedUsers.length === 0}
-        onClick={() => withLoading(handleForwardSelected)}
+        onClick={() => { setForwardNote(note => note || initialNote); setShowDropdown(false); setShowNoteStep(true); }}
         className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        <ForwardIcon /> Forward{selectedUsers.length > 0 ? ` (${selectedUsers.length})` : ''}
+        Continue to Notes
       </button>
+      </> : <>
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Selected recipient</p>
+          <p className="mt-1 text-sm font-medium text-blue-950">
+            {users.find(user => user.id === selectedUsers[0])?.name || 'Unknown'}
+            <span className="ml-1 font-normal text-blue-700">· {roleLabel(users.find(user => user.id === selectedUsers[0])?.role || '')}</span>
+          </p>
+        </div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">2. Forwarding note <span className="text-red-600">*</span></label>
+        <textarea
+          value={forwardNote}
+          onChange={event => setForwardNote(event.target.value)}
+          placeholder="Explain the work completed, findings, or instructions for the next person..."
+          rows={4}
+          className="mb-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p className="mb-3 text-xs text-gray-500">This note will appear in the Case Notes &amp; Remarks tab.</p>
+        <div className="flex gap-2">
+          <button type="button" disabled={actionLoading} onClick={() => setShowNoteStep(false)}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50">
+            Back
+          </button>
+          <button
+            disabled={actionLoading || !forwardNote.trim()}
+            onClick={() => withLoading(handleForwardSelected)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <ForwardIcon /> Confirm &amp; Forward
+          </button>
+        </div>
+      </>}
     </div>
   );
 }
@@ -2737,7 +2773,9 @@ function AssignCaseButton({ caseItem, role, onRefresh }: {
   }, [open]);
 
   const isClosed = ['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status);
-  if (!canAssign || isClosed) return null;
+  // Handler assignment belongs only to the short Type-1 incident workflow. Type-2 and
+  // confidential cases move through the role-to-role Accept & Forward workflow instead.
+  if (caseItem.type !== 'type-1' || !canAssign || isClosed) return null;
 
   // Only actual Assistant/Deputy handler assignments belong in this dialog. Intake routing
   // to an Administrative Officer is a role queue and is never shown as a handler.

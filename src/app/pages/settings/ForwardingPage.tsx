@@ -55,6 +55,10 @@ export default function ForwardingPage() {
     return acc;
   }, {} as Record<string, ForwardingRule[]>), [forwardingRules]);
 
+  const visiblePermissionGroups = permissionGroups.filter(permission =>
+    selectedType === 'type-1' ? permission.key !== '__hearing__' : permission.key !== '__assign__',
+  );
+
   const togglePermission = async (role: string, key: string, result: string) => {
     const operationKey = `${selectedType}:${role}:${key}`;
     const existing = rules.find(rule =>
@@ -102,14 +106,19 @@ export default function ForwardingPage() {
               onClick={() => setSelectedType(type)}
               className={`rounded-md px-5 py-2 text-sm font-medium transition ${selectedType === type ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
             >
-              {type === 'type-1' ? 'Type-1 Incident' : 'Type-2 Case'}
+              {type === 'type-1' ? 'Message to Proctor' : 'Complain to Proctor'}
             </button>
           ))}
         </div>
 
         {selectedType === 'type-1' && (
           <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            Initial delivery and notifications still follow the Type-1 Incident Forwarding page. The controls below decide which actions each role can take afterward.
+            Message to Proctor uses Assign Handlers for Assistant and Deputy Proctors. Initial delivery and notifications still follow the Message to Proctor routing page.
+          </div>
+        )}
+        {selectedType === 'type-2' && (
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            Complain to Proctor and confidential cases use Accept &amp; Forward. Handler assignment is available only for Message to Proctor submissions.
           </div>
         )}
       </div>
@@ -117,11 +126,11 @@ export default function ForwardingPage() {
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-4">
           <h4 className="font-semibold text-gray-900">Action permissions</h4>
-          <p className="text-sm text-gray-500">Changes apply only to {selectedType === 'type-1' ? 'Type-1 incidents' : 'Type-2 and confidential cases'}.</p>
+          <p className="text-sm text-gray-500">Changes apply only to {selectedType === 'type-1' ? 'Message to Proctor submissions' : 'Complain to Proctor and confidential cases'}.</p>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          {permissionGroups.map(permission => (
+          {visiblePermissionGroups.map(permission => (
             <section key={permission.key} className="rounded-xl border border-gray-200 p-4">
               <h5 className="text-sm font-semibold text-gray-900">{permission.title}</h5>
               <p className="mb-4 mt-1 text-xs text-gray-500">{permission.description}</p>
@@ -157,7 +166,7 @@ export default function ForwardingPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
             <h4 className="font-semibold text-gray-900">Role-to-role forwarding</h4>
-            <p className="text-sm text-gray-500">Type-2 and confidential cases use these destinations. Type-1 initial routing is managed on its dedicated page.</p>
+            <p className="text-sm text-gray-500">Complain to Proctor and confidential cases use these destinations. Message to Proctor initial routing is managed on its dedicated page.</p>
           </div>
 
           <div className="mb-6 rounded-lg bg-gray-50 p-4">
@@ -184,7 +193,7 @@ export default function ForwardingPage() {
                 </div>
               </section>
             ))}
-            {forwardingRules.length === 0 && <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">No Type-2 forwarding rules configured.</p>}
+            {forwardingRules.length === 0 && <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">No Complain to Proctor forwarding rules configured.</p>}
           </div>
         </div>
       )}

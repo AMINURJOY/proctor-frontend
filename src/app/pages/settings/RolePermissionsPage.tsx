@@ -31,7 +31,7 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
     label: 'Cases & incidents',
     items: [
       { key: 'submit', label: 'Submit Incident', description: 'Create and submit a new incident.' },
-      { key: 'incidents', label: 'Incidents (Type-1)', description: 'Review and manage Type-1 incidents.' },
+      { key: 'incidents', label: 'Message to Proctor', description: 'Review and manage Message to Proctor submissions.' },
       { key: 'cases', label: 'Cases', description: 'Access and manage disciplinary cases.' },
       { key: 'my-cases', label: 'My Cases', description: 'Access cases assigned to the current user.' },
       { key: 'confidential', label: 'Confidential Cases', description: 'Access restricted and confidential cases.' },
@@ -43,7 +43,7 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
     label: 'Workspace',
     items: [
       { key: 'notifications', label: 'Notifications', description: 'Access system notifications and updates.' },
-      { key: 'reports', label: 'Pending Reports', description: 'Create and update investigation reports for Type-2 cases.' },
+      { key: 'reports', label: 'Pending Reports', description: 'Create and update investigation reports for Complain to Proctor cases.' },
       { key: 'completed-reports', label: 'Completed Reports', description: 'View reports after they have been finalized.' },
       { key: 'registrar-reports', label: 'Registrar Reports', description: 'Review Type-3 cases awaiting Registrar action.' },
       { key: 'vc-reports', label: 'VC Reports', description: 'Review Type-3 cases awaiting VC action.' },

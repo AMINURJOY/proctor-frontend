@@ -4,8 +4,8 @@ import { roleLabel } from '../../utils/roles';
 
 type CaseTrack = 'type1' | 'type2' | 'confidential';
 const tracks: { key: CaseTrack; label: string; setting: string }[] = [
-  { key: 'type1', label: 'Type-1 (Instant Incidents)', setting: 'case_viewing_type1' },
-  { key: 'type2', label: 'Type-2 (Formal Cases)', setting: 'case_viewing_type2' },
+  { key: 'type1', label: 'Message to Proctor', setting: 'case_viewing_type1' },
+  { key: 'type2', label: 'Complain to Proctor', setting: 'case_viewing_type2' },
   { key: 'confidential', label: 'Confidential Cases', setting: 'case_viewing_confidential' },
 ];
 const roles = ['student', 'coordinator', 'proctor', 'assistant-proctor', 'deputy-proctor', 'registrar', 'disciplinary-committee', 'female-coordinator', 'sexual-harassment-committee', 'vc', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman', 'super-admin'];
@@ -71,7 +71,7 @@ export default function CaseViewingPage() {
         </label>)}</div>
       </section>)}
       <section className="rounded-xl border border-amber-200 bg-white p-6 shadow-md">
-        <h2 className="text-lg font-semibold text-[#0b2652]">Type-2 / Type-3 Investigation Attachments</h2>
+        <h2 className="text-lg font-semibold text-[#0b2652]">Complain to Proctor / Type-3 Investigation Attachments</h2>
         <p className="mb-5 mt-1 text-sm text-slate-500">These permissions are enforced by the API for protected images and Google Drive links.</p>
         {(['view', 'upload'] as const).map(kind => <div key={kind} className="mb-5 last:mb-0">
           <h3 className="mb-2 text-sm font-semibold text-slate-700">Roles allowed to {kind}</h3>

@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { exportReportToPdf } from '../utils/pdfExport';
 import TablePagination from '../components/TablePagination';
+import { caseTypeLabel } from '../utils/caseTypes';
 
 type SortKey = 'caseNumber' | 'studentName' | 'type' | 'status' | 'createdDate' | 'updatedDate';
 type SortDir = 'asc' | 'desc';
@@ -205,7 +206,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
           </h1>
           <p className="text-sm text-gray-500">
             {mode === 'pending'
-              ? 'Create and track investigation reports for Type-2 cases'
+              ? 'Create and track investigation reports for Complain to Proctor cases'
               : 'View reports that have been finalized'}
           </p>
         </div>
@@ -312,7 +313,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                     <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: '#0b2652' }}>{c.caseNumber}</td>
                     <td className="px-4 py-3 text-sm">{c.studentName}</td>
                     <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 capitalize">{c.type.replace('-', ' ')}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{caseTypeLabel(c.type)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 capitalize">{c.workflowStatusLabel || c.status.split('-').join(' ')}</span>

@@ -54,7 +54,7 @@ export default function Type3WorkflowPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const availableForBatch = useMemo(() => rows.filter(row => row.stage === 'dc-secretary-review' && !row.resolution), [rows]);
+  const availableForBatch = useMemo(() => rows.filter(row => ['dc-member-review', 'dc-secretary-review'].includes(row.stage) && !row.resolution), [rows]);
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return rows;
@@ -149,7 +149,7 @@ export default function Type3WorkflowPage() {
     </header>
 
     {role === 'dc-secretary' && availableForBatch.length > 0 && <section className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
-      <div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-indigo-950">Create Resolution</h2><p className="text-xs text-indigo-700">Select one or more fully reviewed cases.</p></div><button onClick={createResolution} disabled={busy === 'resolution'} className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create Resolution</button></div>
+      <div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-indigo-950">Create Resolution</h2><p className="text-xs text-indigo-700">Select one or more cases. DC Member comments are optional and do not block completion.</p></div><button onClick={createResolution} disabled={busy === 'resolution'} className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create Resolution</button></div>
       <div className="space-y-3">{availableForBatch.map(row => {
         const checked = selected.includes(row.caseId);
         return <div key={row.caseId} className="rounded-lg border border-indigo-100 bg-white p-3">
@@ -193,7 +193,7 @@ export default function Type3WorkflowPage() {
 
           <section><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800"><MessageSquareText size={16}/> Forwarding history</div><div className="space-y-3">{selectedRow.transitions.map((item, index) => <div key={`${item.createdAt}-${index}`} className="rounded-lg border border-amber-100 bg-amber-50/60 p-3"><div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500"><b className="text-slate-800">{item.actorName}</b><span>({roleLabel(item.actorRole)})</span><span aria-hidden="true">→</span><span>{roleLabel(item.targetRole)}</span><span>· {new Date(item.createdAt).toLocaleString()}</span></div><p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-700">{item.remarks}</p></div>)}</div></section>
 
-          {selectedRow.stage === 'dc-member-review' && <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">DC Member remarks submitted: {selectedRow.submittedRemarks}/{selectedRow.requiredRemarks}</div>}
+          {['dc-member-review', 'dc-secretary-review'].includes(selectedRow.stage) && <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">Optional DC Member comments received: {selectedRow.submittedRemarks} of {selectedRow.requiredRemarks} invited members. The DC Secretary may continue at any time.</div>}
           {!!selectedRow.remarks?.length && <section className="rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800"><MessageSquareText size={16}/> DC Member remarks</div><div className="space-y-3">{selectedRow.remarks.map((item, index) => <div key={index}><p className="text-xs font-semibold text-slate-700">{item.memberName}</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{item.content}</p></div>)}</div></section>}
 
           {selectedRow.resolution && <section className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm"><FileCheck2 size={17} className="text-emerald-700"/><b>{selectedRow.resolution.number}</b><span className="capitalize text-emerald-700">{selectedRow.resolution.status.replaceAll('-', ' ')}</span><button type="button" onClick={() => download(selectedRow)} className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2.5 py-1.5 text-xs text-emerald-800"><Download size={13}/> DOCX</button></section>}

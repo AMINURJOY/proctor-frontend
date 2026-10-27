@@ -6,6 +6,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { toast } from 'sonner';
 import { roleLabel } from '../utils/roles';
 import TablePagination from '../components/TablePagination';
+import { caseTypeLabel } from '../utils/caseTypes';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -194,7 +195,7 @@ export default function MyCases() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                          {c.type === 'type-1' ? 'Type-1' : c.type === 'type-2' ? 'Type-2' : 'Confidential'}
+                          {caseTypeLabel(c.type)}
                         </span>
                         {c.categoryName && (
                           <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">

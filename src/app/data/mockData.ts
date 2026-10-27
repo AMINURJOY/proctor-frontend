@@ -218,7 +218,7 @@ export const mockCases: Case[] = [
     hearings: [],
     timeline: [
       { id: 't9', action: 'Case Submitted', description: 'Instant incident reported', user: 'John Student', timestamp: '2026-02-10T11:00:00Z' },
-      { id: 't10', action: 'Forwarded to Proctor', description: 'Type-1 incident sent to proctor', user: 'System', timestamp: '2026-02-10T11:05:00Z' },
+      { id: 't10', action: 'Forwarded to Proctor', description: 'Message to Proctor submission sent to the Proctor Office', user: 'System', timestamp: '2026-02-10T11:05:00Z' },
       { id: 't11', action: 'Case Resolved', description: 'Resolved with official warning', user: 'Dr. Michael Proctor', timestamp: '2026-03-15T16:45:00Z' },
       { id: 't12', action: 'Case Closed', description: 'Case closed after resolution', user: 'Dr. Michael Proctor', timestamp: '2026-03-15T17:00:00Z' }
     ]
@@ -329,7 +329,7 @@ export const mockCases: Case[] = [
     ],
     timeline: [
       { id: 't19', action: 'Case Submitted', description: 'Incident reported by hostel warden', user: 'Hostel Warden', timestamp: '2026-03-30T10:00:00Z' },
-      { id: 't20', action: 'Forwarded to Proctor', description: 'Type-1 incident sent to proctor', user: 'System', timestamp: '2026-03-30T10:05:00Z' },
+      { id: 't20', action: 'Forwarded to Proctor', description: 'Message to Proctor submission sent to the Proctor Office', user: 'System', timestamp: '2026-03-30T10:05:00Z' },
       { id: 't21', action: 'Assigned to Deputy Proctor', description: 'Proctor assigned to deputy for review', user: 'Dr. Michael Proctor', timestamp: '2026-03-31T09:00:00Z' },
       { id: 't22', action: 'Hearing Completed', description: 'Initial hearing held', user: 'Dr. Robert Deputy', timestamp: '2026-04-05T12:00:00Z' },
       { id: 't23', action: 'Case On Hold', description: 'Additional evidence required', user: 'Dr. Robert Deputy', timestamp: '2026-04-02T15:00:00Z' }

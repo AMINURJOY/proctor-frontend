@@ -87,7 +87,7 @@ export default function IncidentsList() {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl mb-2" style={{ color: '#0b2652' }}>Access Restricted</h2>
-        <p className="text-gray-600">You don't have permission to view Type-1 incidents.</p>
+        <p className="text-gray-600">You don't have permission to view Message to Proctor submissions.</p>
       </div>
     );
   }
@@ -95,8 +95,8 @@ export default function IncidentsList() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>Incidents (Type-1)</h1>
-        <p className="text-gray-600">Instant incidents with image/video evidence</p>
+        <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>Message to Proctor</h1>
+        <p className="text-gray-600">Messages submitted with image or video evidence</p>
       </div>
 
       {/* Incident Cards */}
@@ -228,7 +228,7 @@ export default function IncidentsList() {
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                     >
                       <ArrowRightIcon />
-                      Suggest to Type-2
+                      Suggest as Complain to Proctor
                     </button>
                     <button
                       onClick={() => setShowCloseModal(incident.id)}
@@ -256,7 +256,7 @@ export default function IncidentsList() {
 
       {type1Cases.length === 0 && (
         <div className="text-center py-12 bg-white rounded-xl shadow-md">
-          <p className="text-gray-500">No Type-1 incidents found</p>
+          <p className="text-gray-500">No Message to Proctor submissions found</p>
         </div>
       )}
 
@@ -266,16 +266,16 @@ export default function IncidentsList() {
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { setShowSuggestModal(null); setSuggestReason(''); }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Suggest as Type-2 Case</h3>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: '#0b2652' }}>Suggest as Complain to Proctor</h3>
               <p className="text-sm text-gray-600 mb-4">
-                This will suggest that this incident should be handled as a Type-2 case. The suggestion will be reviewed before any conversion.
+                This will suggest that this message should be handled as a formal complaint. The suggestion will be reviewed before any conversion.
               </p>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reason for suggestion</label>
                 <textarea
                   value={suggestReason}
                   onChange={(e) => setSuggestReason(e.target.value)}
-                  placeholder="Explain why this incident should be handled as Type-2..."
+                  placeholder="Explain why this message should be handled as a formal complaint..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />
@@ -292,7 +292,7 @@ export default function IncidentsList() {
                     try {
                       await casesApi.updateStatus(showSuggestModal, { status: 'suggested-type-2', note: suggestReason });
                       setCases(prev => prev.map(c => c.id === showSuggestModal ? { ...c, status: 'suggested-type-2' as const } : c));
-                      toast.success('Case marked as Suggested Type-2');
+                      toast.success('Case marked as Suggested as Complain to Proctor');
                     } catch (err: any) {
                       toast.error('Action failed', { description: err?.response?.data?.message || 'Could not update status' });
                     }

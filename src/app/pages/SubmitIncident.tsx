@@ -377,12 +377,12 @@ export default function SubmitIncident() {
             </svg>
           </div>
           <h2 className="text-2xl font-semibold mb-2" style={{ color: '#0b2652' }}>
-            {selectedType === 'type-1' ? 'Incident Submitted' : 'Case Submitted'}
+            {selectedType === 'type-1' ? 'Message Sent' : 'Complaint Submitted'}
           </h2>
           <p className="text-gray-600 mb-2">
             {selectedType === 'type-1'
-              ? 'Your instant incident has been submitted and forwarded to the Proctor Office.'
-              : 'Your formal case has been submitted and sent to the Coordinator for review.'
+              ? 'Your message has been submitted and forwarded to the Proctor Office.'
+              : 'Your complaint has been submitted and sent to the Coordinator for review.'
             }
           </p>
           {caseNumber && (
@@ -501,7 +501,7 @@ export default function SubmitIncident() {
     <div>
       <div className="mb-6">
         <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>Submit Incident</h1>
-        <p className="text-gray-600">Report an incident or file a formal case</p>
+        <p className="text-gray-600">Send a message or submit a complaint to the Proctor Office</p>
       </div>
 
       {/* Type Selection */}
@@ -519,7 +519,7 @@ export default function SubmitIncident() {
               </svg>
             </div>
             <h3 className="text-xl font-semibold mb-2" style={{ color: '#0b2652' }}>
-              Type-1: Instant Incident
+              Message to Proctor
             </h3>
             <p className="text-gray-600 mb-4">
               Quick submission with image/video evidence. Goes directly to the Proctor or Deputy Proctor for immediate action.
@@ -543,13 +543,13 @@ export default function SubmitIncident() {
               </svg>
             </div>
             <h3 className="text-xl font-semibold mb-2" style={{ color: '#0b2652' }}>
-              Type-2: Formal Case
+              Complain to Proctor
             </h3>
             <p className="text-gray-600 mb-4">
-              Detailed formal case submission with documents. It is routed by the complainant's gender for verification and forwarding.
+              Detailed complaint submission with documents. It is routed by the complainant's gender for verification and forwarding.
             </p>
             <div className="flex items-center gap-2 text-purple-600 font-medium">
-              <span>File Formal Case</span>
+              <span>Submit Complaint</span>
               <ArrowRightIcon />
             </div>
           </button>
@@ -576,7 +576,7 @@ export default function SubmitIncident() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Type-1: Instant Incident</h2>
+                <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Message to Proctor</h2>
                 <p className="text-sm text-gray-500">Upload evidence and submit quickly</p>
               </div>
             </div>
@@ -684,7 +684,7 @@ export default function SubmitIncident() {
                 className="w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60"
                 style={{ backgroundColor: '#0b2652' }}
               >
-                {submitting ? 'Submitting...' : 'Submit Instant Incident'}
+                {submitting ? 'Submitting...' : 'Send Message to Proctor'}
               </button>
             </div>
           </div>
@@ -721,7 +721,7 @@ export default function SubmitIncident() {
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Type-2: Formal Case</h2>
+                    <h2 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Complain to Proctor</h2>
                     <p className="text-sm text-gray-500">Detailed case submission with documentation</p>
                   </div>
                 </div>
@@ -893,7 +893,7 @@ export default function SubmitIncident() {
               <button onClick={openConfirmSubmit} disabled={submitting || !t2Description.trim() || !t2CategoryId}
                 className="w-full py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90 disabled:opacity-60"
                 style={{ backgroundColor: '#0b2652' }}>
-                {submitting ? 'Submitting...' : 'Submit Formal Case'}
+                {submitting ? 'Submitting...' : 'Submit Complaint to Proctor'}
               </button>
             </div>
           </div>

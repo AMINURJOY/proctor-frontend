@@ -37,17 +37,17 @@ export default function IncidentRoutingPage() {
   };
 
   return <div className="max-w-3xl space-y-6">
-    <header><h1 className="text-3xl text-[#0b2652]">Incident Routing</h1><p className="text-gray-600">Configure Type-1 incident contacts and forwarding.</p></header>
+    <header><h1 className="text-3xl text-[#0b2652]">Message Routing</h1><p className="text-gray-600">Configure Message to Proctor contacts and forwarding.</p></header>
     {loading ? <p className="text-sm text-gray-500">Loading settings…</p> : <>
       <section className="rounded-xl border border-gray-100 bg-white p-6 shadow-md">
         <h2 className="text-lg font-semibold text-[#0b2652]">24/7 Control Room Number</h2>
-        <p className="mb-4 text-sm text-gray-500">Included in acknowledgments for Fast (Type-1) incidents.</p>
+        <p className="mb-4 text-sm text-gray-500">Included in acknowledgments for Message to Proctor submissions.</p>
         <input type="tel" value={number} onChange={e => setNumber(e.target.value)} placeholder="+880 1XXX XXXXXX" className="w-full rounded-lg border border-gray-300 px-3 py-2" />
         <p className="mt-2 text-xs text-gray-500">Leave blank to omit the contact line.</p>
         <button onClick={() => save('number')} disabled={saving !== null} className="mt-4 rounded-lg bg-[#0b2652] px-4 py-2 text-sm text-white disabled:opacity-50">{saving === 'number' ? 'Saving…' : 'Save Number'}</button>
       </section>
       <section className="rounded-xl border border-gray-100 bg-white p-6 shadow-md">
-        <h2 className="text-lg font-semibold text-[#0b2652]">Type-1 Incident Forwarding</h2>
+        <h2 className="text-lg font-semibold text-[#0b2652]">Message to Proctor Forwarding</h2>
         <p className="mb-4 text-sm text-gray-500">Select the roles that receive new instant incidents.</p>
         <div className="space-y-2">{forwardingChoices.map(role => <label key={role} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm">
           <input type="checkbox" checked={roles.includes(role)} onChange={() => setRoles(prev => prev.includes(role) ? prev.filter(x => x !== role) : [...prev, role])} />{roleLabel(role)}

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import { roleLabel } from '../utils/roles';
 import TablePagination from '../components/TablePagination';
+import { caseTypeLabel } from '../utils/caseTypes';
 
 export default function CasesList() {
   const navigate = useNavigate();
@@ -187,8 +188,8 @@ export default function CasesList() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Types</option>
-              <option value="type-1">Type-1</option>
-              <option value="type-2">Type-2</option>
+              <option value="type-1">Message to Proctor</option>
+              <option value="type-2">Complain to Proctor</option>
               {canViewConfidential && <option value="confidential">Confidential</option>}
             </select>
           </div>
@@ -272,7 +273,7 @@ export default function CasesList() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${typeColors[caseItem.type]}`}>
-                        {caseItem.type === 'type-1' ? 'Type-1' : caseItem.type === 'type-2' ? 'Type-2' : 'Confidential'}
+                        {caseTypeLabel(caseItem.type)}
                       </span>
                       {caseItem.categoryName && (
                         <div className="text-xs text-gray-600 mt-1 flex items-center gap-1">
