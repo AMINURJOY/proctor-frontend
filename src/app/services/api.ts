@@ -163,6 +163,7 @@ export const type3Api = {
   saveRemark: (caseId: string, remarks: string) => api.put(`/type3/cases/${caseId}/remark`, { remarks }),
   createResolution: (cases: Array<{ caseId: string; shortDescription: string; secretaryRemarks: string }>) =>
     api.post('/type3/resolutions', { cases }),
+  getResolution: (resolutionId: string) => api.get(`/type3/resolutions/${resolutionId}`),
   forwardResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/forward`, { remarks }),
   approveResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/approve`, { remarks }),
   downloadResolutionUrl: (resolutionId: string) => `${API_BASE_URL}/api/type3/resolutions/${resolutionId}/docx`,
