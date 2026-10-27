@@ -12,14 +12,54 @@ import { caseTypeLabel } from '../utils/caseTypes';
 
 type Group = { name: string; count: number };
 type Person = { id: string; name: string; role: string };
+type DepartmentBatch = { department: string; batchId: string; batch: string };
 type CaseRow = { id: string; caseNumber: string; studentName: string; studentId: string; department?: string; batch?: string; categoryName?: string; status: string; type: string; assignedTo?: string; createdAt: string; accusedName?: string; complainantName?: string; punishment?: string; semester?: number; cgpa?: number; collaborators?: string };
 type Activity = { caseId: string; caseNumber: string; action: string; user: string; timestamp: string };
-type Analytics = { totalCases: number; openCases: number; resolvedCases: number; pendingCases: number; underReview: number; type1Pending: number; type2Pending: number; monthlyTrend: Group[]; yearlyTrend: Group[]; semesters: Group[]; caseTypes: Group[]; categories: Group[]; cgpaRanges: Group[]; workload: Group[]; roleWorkload: Group[]; departments: string[]; batches: string[]; people: Person[]; cases: CaseRow[]; activity: Activity[]; page: number; pageSize: number };
-type Filters = { search: string; status: string; type: string; categoryId: string; department: string; batch: string; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number };
-const emptyFilters: Filters = { search: '', status: '', type: '', categoryId: '', department: '', batch: '', responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1 };
+type Analytics = { totalCases: number; openCases: number; resolvedCases: number; pendingCases: number; underReview: number; type1Pending: number; type2Pending: number; monthlyTrend: Group[]; yearlyTrend: Group[]; semesters: Group[]; caseTypes: Group[]; categories: Group[]; cgpaRanges: Group[]; workload: Group[]; roleWorkload: Group[]; departments: string[]; batches: string[]; departmentBatches: DepartmentBatch[]; people: Person[]; cases: CaseRow[]; activity: Activity[]; page: number; pageSize: number };
+type Filters = { search: string; status: string; type: string; categoryId: string; departments: string[]; batchIds: string[]; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number };
+const emptyFilters: Filters = { search: '', status: '', type: '', categoryId: '', departments: [], batchIds: [], responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1 };
 const colors = ['#173b70', '#377cb2', '#57a5b5', '#95c6a5', '#e7a85a', '#a98ec0'];
 const statuses = ['submitted', 'pending', 'under-review', 'verified', 'assigned', 'hearing-scheduled', 'hearing-completed', 'resolved', 'closed', 'rejected', 'on-hold', 'suggested-type-2', 'police-case', 'forwarded-to-registrar', 'forwarded-to-committee', 'resubmission-requested'];
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-600 focus:outline-none';
+
+function MultiSelectFilter({ label, options, selected, onChange, emptyText, allOptionLabel }: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  emptyText: string;
+  allOptionLabel?: string;
+}) {
+  const toggle = (value: string) => onChange(selected.includes(value)
+    ? selected.filter(item => item !== value)
+    : [...selected, value]);
+
+  return <div className="text-xs font-medium text-slate-600">
+    <span>{label}</span>
+    <details className="relative">
+      <summary className={`${field} cursor-pointer list-none pr-8`}>
+        {selected.length ? `${selected.length} selected` : emptyText}
+        <span aria-hidden="true" className="pointer-events-none absolute right-3 top-2.5 text-slate-400">▾</span>
+      </summary>
+      <div className="absolute z-30 mt-1 max-h-64 w-full min-w-[220px] overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+        {allOptionLabel && <>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50">
+            <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} className="h-4 w-4 rounded border-slate-300 text-blue-700" />
+            <span>{allOptionLabel}</span>
+          </label>
+          <div className="my-1 border-t border-slate-100" />
+        </>}
+        {options.length ? options.map(option => <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm font-normal text-slate-700 hover:bg-blue-50">
+          <input type="checkbox" checked={selected.includes(option.value)} onChange={() => toggle(option.value)} className="h-4 w-4 rounded border-slate-300 text-blue-700" />
+          <span>{option.label}</span>
+        </label>) : <p className="px-2 py-3 text-sm font-normal text-slate-500">No options available</p>}
+      </div>
+    </details>
+    {selected.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">
+      {selected.map(value => <button key={value} type="button" onClick={() => toggle(value)} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700" title={`Remove ${value}`}>{value} ×</button>)}
+    </div>}
+  </div>;
+}
 
 function ChartCard({ title, data, kind = 'bar', namesAboveBars = false }: { title: string; data: Group[]; kind?: 'bar' | 'line' | 'pie'; namesAboveBars?: boolean }) {
   const chartWidth = namesAboveBars ? Math.max(680, data.length * 105) : undefined;
@@ -81,7 +121,20 @@ export default function AdvancedSearch() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    dashboardApi.getAnalytics({ ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')), pageSize: 10 })
+    const departmentBatches = data?.departmentBatches || [];
+    const exactBatches = filters.batchIds.length
+      ? departmentBatches
+          .filter(option => !filters.departments.length || filters.departments.includes(option.department))
+          .filter(option => filters.batchIds.includes(option.batchId))
+          .map(option => option.batch)
+      : [];
+    const { departments, batchIds, ...scalarFilters } = filters;
+    dashboardApi.getAnalytics({
+      ...Object.fromEntries(Object.entries(scalarFilters).filter(([, value]) => value !== '')),
+      department: departments.length ? departments.join(',') : undefined,
+      batch: batchIds.length ? [...new Set(exactBatches)].join(',') : undefined,
+      pageSize: 10
+    })
       .then(res => { if (active) { setData(res.data.data); setError(''); } })
       .catch(() => { if (active) setError('Unable to load dashboard data.'); })
       .finally(() => { if (active) setLoading(false); });
@@ -89,6 +142,24 @@ export default function AdvancedSearch() {
   }, [filters]);
 
   const update = (key: keyof Filters, value: string | number) => setFilters(f => ({ ...f, [key]: value, page: key === 'page' ? Number(value) : 1 }));
+  const departmentOptions = (data?.departments || []).map(value => ({ value, label: value }));
+  const availableDepartmentBatches = (data?.departmentBatches || [])
+    .filter(option => !filters.departments.length || filters.departments.includes(option.department));
+  const batchOptions = [...new Set(availableDepartmentBatches.map(option => option.batchId))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(value => ({ value, label: `Batch ${value}` }));
+  const updateDepartments = (departments: string[]) => {
+    const validBatchIds = new Set((data?.departmentBatches || [])
+      .filter(option => !departments.length || departments.includes(option.department))
+      .map(option => option.batchId));
+    setFilters(current => ({
+      ...current,
+      departments,
+      batchIds: current.batchIds.filter(batchId => validBatchIds.has(batchId)),
+      page: 1
+    }));
+  };
+  const updateBatchIds = (batchIds: string[]) => setFilters(current => ({ ...current, batchIds, page: 1 }));
   const people = data?.people || [];
   const roles = [...new Set(people.map(p => p.role))];
   const cards = data ? [
@@ -159,8 +230,8 @@ export default function AdvancedSearch() {
         <label className="text-xs font-medium text-slate-600">Category<select className={field} value={filters.categoryId} onChange={e => update('categoryId', e.target.value)}><option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}{c.isActive ? '' : ' (inactive)'}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">Year<input className={field} type="number" min="2000" max="2100" value={filters.year} onChange={e => update('year', e.target.value)} placeholder="All years" /></label>
         <label className="text-xs font-medium text-slate-600">Semester<select className={field} value={filters.semester} onChange={e => update('semester', e.target.value)}><option value="">All semesters</option>{data?.semesters?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
-        <label className="text-xs font-medium text-slate-600">Department<select className={field} value={filters.department} onChange={e => update('department', e.target.value)}><option value="">All departments</option>{data?.departments?.map(x => <option key={x}>{x}</option>)}</select></label>
-        <label className="text-xs font-medium text-slate-600">Batch<select className={field} value={filters.batch} onChange={e => update('batch', e.target.value)}><option value="">All batches</option>{data?.batches?.map(x => <option key={x} value={x}>{x}</option>)}</select></label>
+        <MultiSelectFilter label="Departments" options={departmentOptions} selected={filters.departments} onChange={updateDepartments} emptyText="All departments" allOptionLabel="All departments" />
+        <MultiSelectFilter label="Batch IDs" options={batchOptions} selected={filters.batchIds} onChange={updateBatchIds} emptyText={filters.departments.length ? 'All batches in selected departments' : 'All batch IDs'} />
         <label className="text-xs font-medium text-slate-600">CGPA minimum<input className={field} type="number" min="0" max="4" step="0.01" value={filters.minCgpa} onChange={e => update('minCgpa', e.target.value)} placeholder="0.00" /></label>
         <label className="text-xs font-medium text-slate-600">CGPA maximum<input className={field} type="number" min="0" max="4" step="0.01" value={filters.maxCgpa} onChange={e => update('maxCgpa', e.target.value)} placeholder="4.00" /></label>
         <label className="text-xs font-medium text-slate-600">Responsible person<select className={field} value={filters.responsiblePersonId} onChange={e => update('responsiblePersonId', e.target.value)}><option value="">All people</option>{people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
