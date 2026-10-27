@@ -12,7 +12,11 @@ type QueueRow = {
   submittedRemarks: number; requiredRemarks: number; ownRemark?: string; ownRemarkLocked: boolean;
   remarks?: Array<{ memberName: string; content: string; submittedAt: string }>;
   transitions: Array<{ from: string; to: string; actorName: string; actorRole: string; targetRole: string; remarks: string; createdAt: string }>;
-  resolution?: { id: string; number: string; status: string };
+  resolution?: {
+    id: string; number: string; status: string; createdByName: string; createdAt: string;
+    forwardRemarks?: string; approvedByName?: string; approvedAt?: string;
+    cases: Array<{ serial: number; caseId: string; accusedInformation: string; punishment: string }>;
+  };
 };
 
 const titles: Record<string, string> = {
@@ -35,6 +39,7 @@ export default function Type3WorkflowPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [resolutionFields, setResolutionFields] = useState<Record<string, { shortDescription: string; secretaryRemarks: string }>>({});
   const [viewReport, setViewReport] = useState<QueueRow | null>(null);
+  const [viewResolution, setViewResolution] = useState<QueueRow | null>(null);
   const [selectedRow, setSelectedRow] = useState<QueueRow | null>(null);
   const [reportZoom, setReportZoom] = useState(100);
   const [search, setSearch] = useState('');
@@ -110,7 +115,7 @@ export default function Type3WorkflowPage() {
   const createResolution = async () => {
     if (!selected.length) return toast.error('Select at least one case.');
     const cases = selected.map(caseId => ({ caseId, ...(resolutionFields[caseId] || { shortDescription: '', secretaryRemarks: '' }) }));
-    if (cases.some(item => !item.shortDescription.trim() || !item.secretaryRemarks.trim())) return toast.error('Complete both resolution fields for every selected case.');
+    if (cases.some(item => !item.shortDescription.trim() || !item.secretaryRemarks.trim())) return toast.error('Add a short description and punishment / Secretary remarks for every selected case.');
     setBusy('resolution');
     try { await type3Api.createResolution(cases); toast.success('Resolution draft created.'); setSelected([]); await load(); }
     catch (error: any) { toast.error(error.response?.data?.message || 'Could not create the resolution.'); }
@@ -154,7 +159,7 @@ export default function Type3WorkflowPage() {
         const checked = selected.includes(row.caseId);
         return <div key={row.caseId} className="rounded-lg border border-indigo-100 bg-white p-3">
           <label className="flex items-center gap-2 font-medium text-slate-800"><input type="checkbox" checked={checked} onChange={() => setSelected(value => checked ? value.filter(id => id !== row.caseId) : [...value, row.caseId])} /> {row.caseNumber}</label>
-          {checked && <div className="mt-3 grid gap-2 md:grid-cols-2"><input className="rounded-lg border px-3 py-2 text-sm" placeholder="Short description" value={resolutionFields[row.caseId]?.shortDescription || ''} onChange={e => setResolutionFields(v => ({ ...v, [row.caseId]: { shortDescription: e.target.value, secretaryRemarks: v[row.caseId]?.secretaryRemarks || '' } }))} /><textarea className="rounded-lg border px-3 py-2 text-sm" placeholder="Secretary resolution / remarks" value={resolutionFields[row.caseId]?.secretaryRemarks || ''} onChange={e => setResolutionFields(v => ({ ...v, [row.caseId]: { shortDescription: v[row.caseId]?.shortDescription || '', secretaryRemarks: e.target.value } }))} /></div>}
+          {checked && <div className="mt-3 grid gap-2 md:grid-cols-2"><input className="rounded-lg border px-3 py-2 text-sm" placeholder="Short description" value={resolutionFields[row.caseId]?.shortDescription || ''} onChange={e => setResolutionFields(v => ({ ...v, [row.caseId]: { shortDescription: e.target.value, secretaryRemarks: v[row.caseId]?.secretaryRemarks || '' } }))} /><textarea className="rounded-lg border px-3 py-2 text-sm" placeholder="Punishment / Secretary remarks" value={resolutionFields[row.caseId]?.secretaryRemarks || ''} onChange={e => setResolutionFields(v => ({ ...v, [row.caseId]: { shortDescription: v[row.caseId]?.shortDescription || '', secretaryRemarks: e.target.value } }))} /></div>}
         </div>;
       })}</div>
     </section>}
@@ -196,7 +201,7 @@ export default function Type3WorkflowPage() {
           {['dc-member-review', 'dc-secretary-review'].includes(selectedRow.stage) && <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">Optional DC Member comments received: {selectedRow.submittedRemarks} of {selectedRow.requiredRemarks} invited members. The DC Secretary may continue at any time.</div>}
           {!!selectedRow.remarks?.length && <section className="rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800"><MessageSquareText size={16}/> DC Member remarks</div><div className="space-y-3">{selectedRow.remarks.map((item, index) => <div key={index}><p className="text-xs font-semibold text-slate-700">{item.memberName}</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{item.content}</p></div>)}</div></section>}
 
-          {selectedRow.resolution && <section className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm"><FileCheck2 size={17} className="text-emerald-700"/><b>{selectedRow.resolution.number}</b><span className="capitalize text-emerald-700">{selectedRow.resolution.status.replaceAll('-', ' ')}</span><button type="button" onClick={() => download(selectedRow)} className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2.5 py-1.5 text-xs text-emerald-800"><Download size={13}/> DOCX</button></section>}
+          {selectedRow.resolution && <section className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm"><FileCheck2 size={17} className="text-emerald-700"/><b>{selectedRow.resolution.number}</b><span className="capitalize text-emerald-700">{selectedRow.resolution.status.replaceAll('-', ' ')}</span><div className="ml-auto flex gap-2"><button type="button" onClick={() => setViewResolution(selectedRow)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-800"><Eye size={13}/> View Resolution</button><button type="button" onClick={() => download(selectedRow)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-800"><Download size={13}/> Download DOCX</button></div></section>}
 
           {canAct(selectedRow) && <section className="rounded-lg border border-blue-100 bg-blue-50/40 p-4"><label className="text-sm font-semibold text-slate-800">{canMemberRemark(selectedRow) ? 'Your DC Member remark' : canApprove(selectedRow) ? 'Approval remarks' : 'Forwarding remarks'} <span className="text-red-500">*</span></label><textarea className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder={canMemberRemark(selectedRow) ? 'Write your DC Member remark…' : 'Enter the mandatory remarks…'} value={remarks[selectedRow.resolution?.id || selectedRow.caseId] ?? (canMemberRemark(selectedRow) ? selectedRow.ownRemark || '' : '')} onChange={event => setRemarks(value => ({ ...value, [selectedRow.resolution?.id || selectedRow.caseId]: event.target.value }))} disabled={selectedRow.ownRemarkLocked} /></section>}
         </div>
@@ -229,6 +234,34 @@ export default function Type3WorkflowPage() {
               />
             </div>
           </div>
+        </div>
+      </div>
+    </>}
+
+    {viewResolution?.resolution && <>
+      <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setViewResolution(null)} />
+      <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6">
+        <div role="dialog" aria-modal="true" aria-label={`Resolution ${viewResolution.resolution.number}`} className="pointer-events-auto flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-bold text-[#0b2652]">Disciplinary Committee Resolution</h2><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium capitalize text-emerald-800">{viewResolution.resolution.status.replaceAll('-', ' ')}</span></div>
+              <p className="mt-1 text-sm font-medium text-slate-700">{viewResolution.resolution.number}</p>
+              <p className="mt-1 text-xs text-slate-500">Created by {viewResolution.resolution.createdByName} · {new Date(viewResolution.resolution.createdAt).toLocaleString()}</p>
+            </div>
+            <button type="button" aria-label="Close resolution preview" onClick={() => setViewResolution(null)} className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={19}/></button>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4 sm:p-6">
+            <div className="overflow-x-auto rounded-lg border border-slate-300">
+              <table className="w-full min-w-[800px] border-collapse text-left text-sm">
+                <thead className="bg-[#e8f0f8] text-[#0b2652]"><tr><th className="w-20 border-b border-r border-slate-300 px-3 py-3 text-center">Serial</th><th className="w-44 border-b border-r border-slate-300 px-3 py-3">Case ID</th><th className="border-b border-r border-slate-300 px-3 py-3">Accused Information</th><th className="border-b border-slate-300 px-3 py-3">Punishment</th></tr></thead>
+                <tbody>{viewResolution.resolution.cases.map(item => <tr key={`${item.serial}-${item.caseId}`} className="align-top odd:bg-white even:bg-slate-50/70"><td className="border-r border-t border-slate-200 px-3 py-3 text-center font-medium">{item.serial}</td><td className="border-r border-t border-slate-200 px-3 py-3 font-semibold text-[#0b2652]">{item.caseId}</td><td className="whitespace-pre-line border-r border-t border-slate-200 px-3 py-3 text-slate-700">{item.accusedInformation}</td><td className="whitespace-pre-wrap border-t border-slate-200 px-3 py-3 text-slate-700">{item.punishment}</td></tr>)}</tbody>
+              </table>
+            </div>
+            {viewResolution.resolution.approvedAt && <p className="mt-4 text-sm font-medium text-emerald-800">Approved by {viewResolution.resolution.approvedByName} on {new Date(viewResolution.resolution.approvedAt).toLocaleString()}</p>}
+          </div>
+
+          <div className="flex justify-end gap-2 border-t bg-slate-50 px-5 py-4"><button type="button" onClick={() => setViewResolution(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Close</button><button type="button" onClick={() => download(viewResolution)} className="inline-flex items-center gap-2 rounded-lg bg-[#0b2652] px-4 py-2 text-sm font-medium text-white"><Download size={16}/> Download DOCX</button></div>
         </div>
       </div>
     </>}
