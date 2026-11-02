@@ -23,7 +23,7 @@ export default function CasesList() {
   const [allowedTypes, setAllowedTypes] = useState<string[]>(['type-1', 'type-2', 'confidential']);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(50);
   const permissions = usePermissions();
   const canDelete = permissions['cases']?.canDelete ?? false;
 
@@ -373,7 +373,7 @@ export default function CasesList() {
               <p className="text-gray-500">No cases found matching your filters</p>
             </div>
           )}
-          <TablePagination currentPage={page} pageSize={pageSize} totalItems={displayedCases.length} onPageChange={setPage} itemLabel="cases" />
+          <TablePagination currentPage={page} pageSize={pageSize} totalItems={displayedCases.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="cases" />
         </div>
       )}
       {/* Delete Confirmation Modal */}

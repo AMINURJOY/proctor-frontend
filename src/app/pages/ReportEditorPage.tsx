@@ -13,7 +13,7 @@ import { casesApi, articlesApi, aiApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Case, Article } from '../types';
 import { toast } from 'sonner';
-import { exportReportToPdf, inlineImagesAsBase64, BANGLA_FONT_STACK, generateReportHTML } from '../utils/pdfExport';
+import { arrangeReportImagesAtEnd, exportReportToPdf, inlineImagesAsBase64, BANGLA_FONT_STACK, generateReportHTML } from '../utils/pdfExport';
 import { caseTypeLabel } from '../utils/caseTypes';
 // Toolbar button component
 const Btn = ({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title?: string }) => (
@@ -131,7 +131,7 @@ export default function ReportEditorPage() {
             : target.createdByName === currentUser?.name;
           setCanEditReport(mine);
           setReportAuthor(target.createdByName || '');
-          editor?.commands.setContent(target.content || generateReportHTML(c));
+          editor?.commands.setContent(arrangeReportImagesAtEnd(target.content || generateReportHTML(c), c.documents || []));
         } else {
           setCanEditReport(true);
           editor?.commands.setContent(generateReportHTML(c));
@@ -154,14 +154,16 @@ export default function ReportEditorPage() {
     }
     setSaving(true);
     try {
-      const data = { content: editor.getHTML(), isDraft, isFinal };
+      const content = arrangeReportImagesAtEnd(editor.getHTML(), caseItem?.documents || []);
+      const data = { content, isDraft, isFinal };
       if (existingReportId) { await casesApi.updateReport(caseId, existingReportId, data); }
       else { const res = await casesApi.createReport(caseId, data); setExistingReportId(res.data.data?.id || null); }
+      editor.commands.setContent(content);
       toast.success(isDraft ? 'Draft saved' : 'Report finalized');
       if (isFinal) navigate('/completed-reports');
     } catch (err: any) { toast.error('Save failed', { description: err?.response?.data?.message || 'Error' }); }
     finally { setSaving(false); }
-  }, [editor, caseId, existingReportId, canEditReport, reportAuthor, navigate]);
+  }, [editor, caseId, existingReportId, canEditReport, reportAuthor, navigate, caseItem]);
 
   // Ask Gemini to draft the report from the case record, then drop the HTML into the editor.
   // Nothing is saved automatically — the officer reviews and edits before hitting Save Draft.
@@ -175,7 +177,7 @@ export default function ReportEditorPage() {
       });
       const html = res.data.data?.html || '';
       if (!html) { toast.error('The AI returned an empty report'); return; }
-      editor.commands.setContent(html);
+      editor.commands.setContent(arrangeReportImagesAtEnd(html, caseItem?.documents || []));
 
       // If the report on screen belonged to someone else, the generated text becomes a brand new
       // report owned by the current user — dropping existingReportId makes Save create rather
@@ -196,16 +198,16 @@ export default function ReportEditorPage() {
     } catch (err: any) {
       toast.error('AI generation failed', { description: err?.response?.data?.message || 'Check Settings → AI Integration.' });
     } finally { setAiBusy(false); }
-  }, [editor, caseId, aiLanguage, aiInstructions, canEditReport]);
+  }, [editor, caseId, aiLanguage, aiInstructions, canEditReport, caseItem]);
 
 
 
   const handleExportDocx = useCallback(async () => {
     if (!editor) return;
     try {
-      const inlined = await inlineImagesAsBase64(editor.getHTML());
+      const inlined = await inlineImagesAsBase64(arrangeReportImagesAtEnd(editor.getHTML(), caseItem?.documents || []));
       const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><style>body{font-family:'July','Noto Sans Bengali',Arial;font-size:14px;max-width:850px;margin:0 auto}table{border-collapse:collapse;width:100%;margin-bottom:16px}th,td{border:1px solid #000;padding:8px}th{background:#f2f2f2}h3{font-size:16px;border-bottom:1px solid #000;padding-bottom:4px;margin-top:20px}img{width:80px;height:auto;display:block;margin:0 auto}ul{list-style:disc outside;padding-left:28px;margin:8px 0}ol{list-style:decimal outside;padding-left:28px;margin:8px 0}li{margin:2px 0}</style></head><body>${inlined}</body></html>`;
+<head><meta charset="utf-8"><style>body{font-family:'July','Noto Sans Bengali',Arial;font-size:14px;max-width:850px;margin:0 auto}table{border-collapse:collapse;width:100%;margin-bottom:16px}th,td{border:1px solid #000;padding:8px}th{background:#f2f2f2}h3{font-size:16px;border-bottom:1px solid #000;padding-bottom:4px;margin-top:20px}img{width:80px;height:auto;display:block;margin:0 auto}.report-image-grid{table-layout:fixed}.report-image-grid td{width:25%;padding:5px;text-align:center;vertical-align:top}.report-image-grid img{width:90px;height:68px;object-fit:cover}.report-image-grid p{margin:2px 0 0;font-size:9px}ul{list-style:disc outside;padding-left:28px;margin:8px 0}ol{list-style:decimal outside;padding-left:28px;margin:8px 0}li{margin:2px 0}</style></head><body>${inlined}</body></html>`;
       const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
       a.download = `report-${caseItem?.caseNumber || 'case'}.doc`; a.click();
@@ -229,6 +231,7 @@ export default function ReportEditorPage() {
           </div>`;
       }
     }
+    html = arrangeReportImagesAtEnd(html, caseItem?.documents || []);
     await exportReportToPdf(html, caseItem?.caseNumber || 'case');
   }, [editor, caseItem]);
 
@@ -272,6 +275,8 @@ export default function ReportEditorPage() {
         .report-tiptap-editor h2 { font-size: 22px; margin: 8px 0; }
         .report-tiptap-editor h3 { font-size: 16px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 4px; margin: 20px 0 10px; }
         .report-tiptap-editor img { max-width: 100px; cursor: grab; display: block; margin: 0 auto; }
+        .report-tiptap-editor table img { width: 90px; height: 68px; object-fit: cover; }
+        .report-tiptap-editor table img + p { margin: 2px 0 0; text-align: center; font-size: 9px; line-height: 1.2; }
         .report-tiptap-editor img:active { cursor: grabbing; }
         .report-tiptap-editor img.ProseMirror-selectednode { outline: 3px solid #3b82f6; border-radius: 4px; }
         .report-tiptap-editor .tableWrapper { overflow-x: auto; margin: 12px 0; position: relative; }
@@ -440,7 +445,10 @@ export default function ReportEditorPage() {
           <Sep />
           <Btn onClick={() => {
             const url = prompt('Image URL:', '/report_logo.png');
-            if (url) editor.chain().focus().setImage({ src: url }).run();
+            if (url) {
+              editor.chain().focus().setImage({ src: url }).run();
+              editor.commands.setContent(arrangeReportImagesAtEnd(editor.getHTML(), caseItem?.documents || []));
+            }
           }} title="Insert Image">Img+</Btn>
           <Btn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal Rule">HR</Btn>
           <Sep />
@@ -730,7 +738,7 @@ export default function ReportEditorPage() {
                           </div>`;
                       }
                     }
-                    exportReportToPdf(html, caseItem?.caseNumber || 'case');
+                    exportReportToPdf(arrangeReportImagesAtEnd(html, caseItem?.documents || []), caseItem?.caseNumber || 'case');
                   }} className="px-3 py-1.5 text-sm rounded-lg text-white" style={{ backgroundColor: '#0b2652' }}>Print</button>
                   <button onClick={() => setShowPreview(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">&times;</button>
                 </div>
@@ -738,11 +746,11 @@ export default function ReportEditorPage() {
               <style>{`
                 .rp table{border-collapse:collapse;width:100%;margin:12px 0} .rp th,.rp td{border:1px solid #000;padding:8px;text-align:left;font-size:14px} .rp th{background:#f2f2f2}
                 .rp h2{font-size:22px;margin:8px 0} .rp h3{font-size:16px;font-weight:bold;border-bottom:1px solid #000;padding-bottom:4px;margin:20px 0 10px}
-                .rp img{max-width:80px;display:block;margin:0 auto} .rp p{margin:4px 0;line-height:1.6} .rp ul,.rp ol{padding-left:24px}
+                .rp img{max-width:80px;display:block;margin:0 auto} .rp .report-image-grid{table-layout:fixed} .rp .report-image-grid td{width:25%;padding:5px;text-align:center;vertical-align:top} .rp .report-image-grid img{width:90px;height:68px;object-fit:cover} .rp .report-image-grid p{margin:2px 0 0;font-size:9px;line-height:1.2} .rp p{margin:4px 0;line-height:1.6} .rp ul,.rp ol{padding-left:24px}
               `}</style>
               <div className="rp p-8 pb-0" style={{ fontFamily: BANGLA_FONT_STACK, color: '#000', maxWidth: 850, margin: '0 auto' }}
                 dangerouslySetInnerHTML={{
-                  __html: caseItem?.verdict
+                  __html: arrangeReportImagesAtEnd(caseItem?.verdict
                     ? (editor.getHTML().includes('[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]')
                         ? editor.getHTML().replace('[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]', caseItem.verdict.replace(/\n/g, '<br>'))
                         : editor.getHTML() + `
@@ -750,7 +758,7 @@ export default function ReportEditorPage() {
                             <h3 style="font-weight: bold; font-size: 18px; margin-bottom: 12px; color: #0b2652;">চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
                             <p style="white-space: pre-wrap; color: #1f2937; line-height: 1.6; font-size: 16px;">${caseItem.verdict}</p>
                           </div>`)
-                    : editor.getHTML()
+                    : editor.getHTML(), caseItem?.documents || [])
                 }}
               />
             </div>

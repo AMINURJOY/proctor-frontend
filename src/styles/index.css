@@ -22,3 +22,30 @@
   max-height: 120px;
   display: inline-block;
 }
+
+.report-content-wrapper .report-image-grid {
+  width: 100%;
+  table-layout: fixed;
+  break-inside: auto;
+}
+.report-content-wrapper .report-image-grid tr {
+  break-inside: avoid;
+}
+.report-content-wrapper .report-image-grid td {
+  width: 25%;
+  padding: 0.35rem;
+  text-align: center;
+  vertical-align: top;
+}
+.report-content-wrapper .report-image-grid img {
+  width: 105px;
+  height: 78px;
+  object-fit: cover;
+  margin: 0 auto 0.2rem;
+}
+.report-content-wrapper .report-image-grid p {
+  margin: 0;
+  font-size: 0.6rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}

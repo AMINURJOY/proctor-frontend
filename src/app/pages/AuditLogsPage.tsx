@@ -48,11 +48,11 @@ export default function AuditLogsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const pageSize = 20;
 
   const hasFilters = !!(search || action || role || entityType || result || from || to);
 
@@ -100,7 +100,7 @@ export default function AuditLogsPage() {
     const timer = window.setTimeout(loadLogs, search ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, action, role, entityType, result, from, to]);
+  }, [page, pageSize, search, action, role, entityType, result, from, to]);
 
   useEffect(() => { setPage(1); }, [search, action, role, entityType, result, from, to]);
 
@@ -183,7 +183,7 @@ export default function AuditLogsPage() {
       {loading && <div className="flex min-h-52 items-center justify-center text-sm text-slate-500"><RefreshCw size={18} className="mr-2 animate-spin" /> Loading audit logs…</div>}
       {!loading && error && <div className="flex min-h-52 items-center justify-center p-6 text-sm text-red-600">{error}</div>}
       {!loading && !error && logs.length === 0 && <div className="flex min-h-52 items-center justify-center p-6 text-sm text-slate-500">No audit logs match the selected filters.</div>}
-      <TablePagination currentPage={page} pageSize={pageSize} totalItems={total} onPageChange={setPage} itemLabel="audit logs" />
+      <TablePagination currentPage={page} pageSize={pageSize} totalItems={total} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="audit logs" />
     </section>
 
     {selectedLog && <>

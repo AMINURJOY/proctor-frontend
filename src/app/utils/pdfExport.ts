@@ -2,6 +2,7 @@ import julyRegular from '../../assets/fonts/July-Regular.ttf';
 import julyBold from '../../assets/fonts/July-Bold.ttf';
 import { toast } from 'sonner';
 import { Case } from '../types';
+import { API_BASE_URL } from '../services/api';
 
 const abs = (url: string) => new URL(url, window.location.origin).href;
 export const BANGLA_FONT_STACK = `'July', 'Noto Sans Bengali', Arial, sans-serif`;
@@ -10,6 +11,93 @@ const JULY_FACE_CSS = `
   @font-face { font-family: 'July'; src: url('${abs(julyRegular)}') format('truetype'); font-weight: 400; font-style: normal; unicode-range: ${JULY_RANGE}; }
   @font-face { font-family: 'July'; src: url('${abs(julyBold)}') format('truetype'); font-weight: 700; font-style: normal; unicode-range: ${JULY_RANGE}; }
 `;
+
+type ReportImage = { src: string; alt: string };
+
+const isReportLogo = (src: string, alt: string) =>
+  src.toLowerCase().includes('report_logo') || alt.trim().toLowerCase() === 'logo';
+
+const reportImageUrl = (url: string) => url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')
+  ? url
+  : `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+
+/**
+ * Keep the official report logo in the header, but collect every evidence image into
+ * one compact four-column gallery at the very end of the report. Case image documents
+ * are included even when the officer did not manually insert them into the editor.
+ */
+export function arrangeReportImagesAtEnd(html: string, documents: Case['documents'] = []): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || '', 'text/html');
+  const collected: ReportImage[] = [];
+  const imageTables = new Set<HTMLTableElement>();
+
+  for (const table of Array.from(doc.body.querySelectorAll<HTMLTableElement>('table.report-image-grid, table[data-report-image-grid="true"]'))) {
+    imageTables.add(table);
+  }
+  for (const heading of Array.from(doc.body.querySelectorAll('h3'))) {
+    if (!/evidence images|সংযুক্ত ছবিসমূহ/i.test(heading.textContent || '')) continue;
+    if (heading.nextElementSibling?.tagName === 'TABLE') imageTables.add(heading.nextElementSibling as HTMLTableElement);
+  }
+
+  for (const image of Array.from(doc.body.querySelectorAll('img'))) {
+    const src = image.getAttribute('src')?.trim() || '';
+    const alt = image.getAttribute('alt')?.trim() || 'Evidence image';
+    if (!src || isReportLogo(src, alt)) continue;
+    collected.push({ src: reportImageUrl(src), alt });
+    const table = image.closest('table');
+    if (!table || !imageTables.has(table)) {
+      const parent = image.parentElement;
+      image.remove();
+      if (parent && parent.tagName === 'P' && !parent.textContent?.trim() && parent.children.length === 0) parent.remove();
+    }
+  }
+
+  // A previous gallery is rebuilt on every save/export so this operation remains idempotent.
+  for (const table of imageTables) {
+    const previous = table.previousElementSibling;
+    table.remove();
+    if (previous?.tagName === 'H3' && /evidence images|সংযুক্ত ছবিসমূহ/i.test(previous.textContent || '')) previous.remove();
+  }
+
+  for (const document of documents.filter(item => item.type === 'image' && item.url)) {
+    collected.push({ src: reportImageUrl(document.url), alt: document.name || 'Evidence image' });
+  }
+
+  const unique = collected.filter((image, index, all) =>
+    all.findIndex(candidate => candidate.src === image.src) === index);
+  if (unique.length === 0) return doc.body.innerHTML;
+
+  const heading = doc.createElement('h3');
+  heading.textContent = /[\u0980-\u09FF]/.test(doc.body.textContent || '') ? 'সংযুক্ত ছবিসমূহ' : 'Evidence Images';
+  doc.body.appendChild(heading);
+
+  const table = doc.createElement('table');
+  table.className = 'report-image-grid';
+  table.setAttribute('data-report-image-grid', 'true');
+  const body = doc.createElement('tbody');
+  for (let index = 0; index < unique.length; index += 4) {
+    const row = doc.createElement('tr');
+    for (let column = 0; column < 4; column++) {
+      const cell = doc.createElement('td');
+      const item = unique[index + column];
+      if (item) {
+        const image = doc.createElement('img');
+        image.src = item.src;
+        image.alt = item.alt;
+        image.loading = 'lazy';
+        const caption = doc.createElement('p');
+        caption.textContent = item.alt;
+        cell.append(image, caption);
+      }
+      row.appendChild(cell);
+    }
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  doc.body.appendChild(table);
+  return doc.body.innerHTML;
+}
 
 export function generateReportHTML(caseItem: Case): string {
   const cr = (caseItem.complainants || []).map(c =>
@@ -25,7 +113,7 @@ export function generateReportHTML(caseItem: Case): string {
     .join('') || '<tr><td colspan="2">[তদন্তকারীর নাম যোগ করুন]</td></tr>';
   const docs = (caseItem.documents || []).map((d, i) => `<li>পরিশিষ্ট ${i + 1}ঃ ${d.name} (${d.type})</li>`).join('') || '<li>কোনো সংযুক্তি নেই</li>';
 
-  return `
+  const report = `
 <p style="text-align: center"><img src="/report_logo.png" alt="Logo"></p>
 <h2 style="text-align: center"><u>তদন্ত প্রতিবেদন</u></h2>
 <p style="text-align: center">Daffodil International University - Proctor Office</p>
@@ -66,21 +154,23 @@ export function generateReportHTML(caseItem: Case): string {
 <p style="text-align: center">অধ্যাপক ও প্রক্টর</p>
 <p style="text-align: center">ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি</p>
 `.trim();
+  return arrangeReportImagesAtEnd(report, caseItem.documents || []);
 }
 
 export function getDisplayReportHTML(caseItem: Case): string {
-  const content = caseItem.reports?.[0]?.content || generateReportHTML(caseItem);
-  if (!caseItem.verdict) return content;
+  let content = caseItem.reports?.[0]?.content || generateReportHTML(caseItem);
+  if (!caseItem.verdict) return arrangeReportImagesAtEnd(content, caseItem.documents || []);
 
   if (content.includes('[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]')) {
-    return content.replace('[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]', caseItem.verdict.replace(/\n/g, '<br>'));
+    content = content.replace('[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]', caseItem.verdict.replace(/\n/g, '<br>'));
+  } else {
+    content += `
+      <div style="margin-top: 48px; border-top: 2px solid #ccc; padding-top: 24px;">
+        <h3 style="font-weight: bold; font-size: 18px; margin-bottom: 12px; color: #0b2652;">চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
+        <p style="white-space: pre-wrap; color: #1f2937; line-height: 1.6; font-size: 16px;">${caseItem.verdict}</p>
+      </div>`;
   }
-
-  return content + `
-    <div style="margin-top: 48px; border-top: 2px solid #ccc; padding-top: 24px;">
-      <h3 style="font-weight: bold; font-size: 18px; margin-bottom: 12px; color: #0b2652;">চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
-      <p style="white-space: pre-wrap; color: #1f2937; line-height: 1.6; font-size: 16px;">${caseItem.verdict}</p>
-    </div>`;
+  return arrangeReportImagesAtEnd(content, caseItem.documents || []);
 }
 
 export async function inlineImagesAsBase64(html: string, maxWidth = 80): Promise<string> {
@@ -134,7 +224,7 @@ export async function inlineImagesAsBase64(html: string, maxWidth = 80): Promise
 
 export async function exportReportToPdf(html: string, caseNumber: string) {
   try {
-    const inlined = await inlineImagesAsBase64(html);
+    const inlined = await inlineImagesAsBase64(arrangeReportImagesAtEnd(html));
     const win = window.open('', '_blank', 'width=900,height=1100');
     if (!win) {
       toast.error('Pop-up blocked', { description: 'Allow pop-ups to export PDF' });
@@ -151,6 +241,11 @@ export async function exportReportToPdf(html: string, caseNumber: string) {
   h2 { font-size: 22px; margin: 8px 0; }
   h3 { font-size: 16px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 4px; margin: 20px 0 10px; page-break-after: avoid; }
   img { max-width: 120px; display: block; margin: 0 auto; }
+  .report-image-grid { width: 100%; table-layout: fixed; page-break-inside: auto; }
+  .report-image-grid tr { page-break-inside: avoid; }
+  .report-image-grid td { width: 25%; padding: 5px; text-align: center; vertical-align: top; }
+  .report-image-grid img { width: 105px; height: 78px; object-fit: cover; margin: 0 auto 3px; }
+  .report-image-grid p { margin: 0; font-size: 9px; line-height: 1.2; overflow-wrap: anywhere; }
   p { margin: 4px 0; }
   ul { list-style: disc outside; padding-left: 28px; margin: 8px 0; }
   ol { list-style: decimal outside; padding-left: 28px; margin: 8px 0; }

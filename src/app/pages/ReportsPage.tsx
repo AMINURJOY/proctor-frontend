@@ -1,24 +1,34 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { Fragment, useState, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { casesApi, type3Api } from '../services/api';
 import { toast } from 'sonner';
 import { Case } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { exportReportToPdf } from '../utils/pdfExport';
+import { arrangeReportImagesAtEnd, exportReportToPdf } from '../utils/pdfExport';
 import TablePagination from '../components/TablePagination';
 import { caseTypeLabel } from '../utils/caseTypes';
+import { Forward, Loader2 } from 'lucide-react';
+import ReportWorkflowTimeline, { ReportWorkflowTransition } from '../components/ReportWorkflowTimeline';
+import ReportWorkflowOverview from '../components/ReportWorkflowOverview';
 
 type SortKey = 'caseNumber' | 'studentName' | 'type' | 'status' | 'createdDate' | 'updatedDate';
 type SortDir = 'asc' | 'desc';
 type ReportFilter = 'all' | 'none' | 'draft';
 type ReportsPageMode = 'pending' | 'completed';
+type PartyDecision = {
+  identityKey: string; name: string; studentId: string; batch?: string; department?: string;
+  isSubmitter: boolean; isComplainant: boolean; isAccused: boolean; notificationAvailable: boolean;
+  initialDisposition?: string; initialRemarks?: string;
+};
 
 const titleCase = (s: string) => s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 const isType2Case = (caseItem: Case) => caseItem.type === 'type-2' || caseItem.type === 'confidential';
 
 export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMode }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openCaseId = searchParams.get('openCase');
   const { currentUser } = useAuth();
   const permissions = usePermissions();
 
@@ -32,6 +42,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
   const [showFilters, setShowFilters] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [flowStatusFilter, setFlowStatusFilter] = useState('all');
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all');
   // View Report Modal State
   const [viewReportCaseId, setViewReportCaseId] = useState<string | null>(null);
@@ -40,24 +51,71 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
   const [reportZoom, setReportZoom] = useState(100);
   const [sendCase, setSendCase] = useState<Case | null>(null);
   const [sendRemarks, setSendRemarks] = useState('');
+  const [sendParties, setSendParties] = useState<PartyDecision[]>([]);
+  const [partyInputs, setPartyInputs] = useState<Record<string, { disposition: string; remarks: string }>>({});
+  const [partiesLoading, setPartiesLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState<string | null>(null);
+  const [workflowHistory, setWorkflowHistory] = useState<Record<string, { pendingForCurrentRole: boolean; transitions: ReportWorkflowTransition[] }>>({});
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(50);
 
   const sendToRegistrar = async () => {
-    if (!sendCase || !sendRemarks.trim()) return toast.error('Remarks are required.');
+    if (!sendCase) return;
+    if (sendParties.some(person => !partyInputs[person.identityKey]?.disposition)) return toast.error('Choose a decision for every person.');
+    const missingRequiredRemarks = sendParties.find(person =>
+      ['warning', 'counselling-needed-with-mentor'].includes(partyInputs[person.identityKey]?.disposition)
+      && !partyInputs[person.identityKey]?.remarks.trim());
+    if (missingRequiredRemarks) return toast.error(`Remarks are required for ${missingRequiredRemarks.name}.`);
     const finalReport = [...(sendCase.reports || [])]
       .filter(report => report.isFinal)
       .sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())[0];
     if (!finalReport) return toast.error('A finalized report is required.');
     setSending(true);
     try {
-      await type3Api.start(sendCase.id, finalReport.id, sendRemarks.trim());
-      setCases(items => items.map(item => item.id === sendCase.id ? { ...item, type: 'type-3', type3Stage: 'registrar-review', workflowStatusLabel: 'Sent to Registrar' } : item));
-      toast.success('Report sent to Registrar and Type-3 workflow started.');
-      setSendCase(null); setSendRemarks('');
+      const response = await type3Api.start(sendCase.id, finalReport.id, sendRemarks.trim(), sendParties.map(person => ({
+        identityKey: person.identityKey,
+        disposition: partyInputs[person.identityKey].disposition,
+        remarks: partyInputs[person.identityKey].remarks.trim(),
+      })));
+      window.dispatchEvent(new Event('report-queues-updated'));
+      const started = !!response.data.data?.workflowStarted;
+      setCases(items => items.map(item => item.id === sendCase.id ? { ...item, personDecisionsApplied: true, ...(started ? { type: 'type-3' as const, type3Stage: 'registrar-review', workflowStatusLabel: 'Sent to Registrar' } : {}) } : item));
+      toast.success(started ? 'Decisions applied and referred people sent to Registrar.' : 'Person decisions applied. No Registrar workflow was started.');
+      setSendCase(null); setSendRemarks(''); setSendParties([]); setPartyInputs({});
     } catch (error: any) { toast.error(error.response?.data?.message || 'Could not send this report.'); }
     finally { setSending(false); }
+  };
+
+  const openPersonDecisions = async (caseItem: Case) => {
+    setSendCase(caseItem); setSendRemarks(''); setPartiesLoading(true); setSendParties([]); setPartyInputs({});
+    try {
+      const response = await type3Api.parties(caseItem.id);
+      const parties: PartyDecision[] = response.data.data?.parties || [];
+      setSendParties(parties);
+      setPartyInputs(Object.fromEntries(parties.map(person => [person.identityKey, {
+        disposition: person.initialDisposition && person.initialDisposition !== 'not-recorded' ? person.initialDisposition : '',
+        remarks: person.initialRemarks || '',
+      }])));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Could not load case parties.');
+      setSendCase(null);
+    } finally { setPartiesLoading(false); }
+  };
+
+  const toggleWorkflow = async (caseId: string) => {
+    if (expandedWorkflow === caseId) return setExpandedWorkflow(null);
+    setExpandedWorkflow(caseId);
+    if (workflowHistory[caseId]) return;
+    setWorkflowLoading(caseId);
+    try {
+      const response = await type3Api.history(caseId);
+      setWorkflowHistory(value => ({ ...value, [caseId]: response.data.data }));
+    } catch (error: any) {
+      setExpandedWorkflow(null);
+      toast.error(error.response?.data?.message || 'Could not load the forwarding timeline.');
+    } finally { setWorkflowLoading(null); }
   };
 
   const openViewReport = async (caseId: string) => {
@@ -69,7 +127,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
       const res = await casesApi.getReports(caseId);
       const reports = res.data?.data || [];
       const finalReport = reports.find((r: any) => r.isFinal);
-      setReportContent(finalReport?.content || null);
+      setReportContent(finalReport?.content ? arrangeReportImagesAtEnd(finalReport.content) : null);
     } catch {
       setReportContent(null);
     } finally {
@@ -82,6 +140,16 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
       setCases(res.data.data?.items || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'completed' || loading || !openCaseId) return;
+    const reportCase = cases.find(item => item.id === openCaseId && item.reports?.some(report => report.isFinal));
+    if (!reportCase) return;
+    void openViewReport(reportCase.id);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('openCase');
+    setSearchParams(nextParams, { replace: true });
+  }, [mode, loading, openCaseId, cases, searchParams, setSearchParams]);
 
   // Pending Reports is exclusively a Type-2 work queue. Confidential cases remain eligible
   // because confidentiality is a flag on Type-2 (the legacy API label is still supported).
@@ -96,13 +164,23 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
   const statusOptions = useMemo(
     () => Array.from(new Set(optionCases.map(c => c.status).filter(Boolean))).sort(),
     [optionCases]);
+  const flowStatusOptions = useMemo(() => {
+    const labels = new Map<string, string>();
+    cases.filter(c => c.reports?.some(report => report.isFinal)).forEach(c => {
+      const stage = c.type3Stage || 'completed-reports';
+      labels.set(stage, c.workflowStatusLabel || (stage === 'completed-reports' ? 'Completed Reports' : titleCase(stage)));
+    });
+    const order = ['completed-reports', 'registrar-review', 'vc-review', 'dc-chairman-review', 'dc-member-review', 'dc-secretary-review', 'resolution-dc-chairman-review', 'chairman-review', 'completed'];
+    return [...labels.entries()].sort(([left], [right]) => order.indexOf(left) - order.indexOf(right));
+  }, [cases]);
 
   const activeFilterCount =
     (typeFilter !== 'all' ? 1 : 0) +
     (statusFilter !== 'all' ? 1 : 0) +
+    (mode === 'completed' && flowStatusFilter !== 'all' ? 1 : 0) +
     (mode === 'pending' && reportFilter !== 'all' ? 1 : 0);
 
-  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setReportFilter('all'); };
+  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setFlowStatusFilter('all'); setReportFilter('all'); };
 
   const visibleCases = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -116,6 +194,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
         !(c.studentId || '').toLowerCase().includes(term)) return false;
       if (typeFilter !== 'all' && c.type !== typeFilter) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      if (mode === 'completed' && flowStatusFilter !== 'all' && (c.type3Stage || 'completed-reports') !== flowStatusFilter) return false;
       if (mode === 'pending' && reportFilter !== 'all') {
         const count = c.reports?.length || 0;
         if (reportFilter === 'none' && count !== 0) return false;
@@ -136,7 +215,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [cases, mode, search, sortKey, sortDir, typeFilter, statusFilter, reportFilter]);
+  }, [cases, mode, search, sortKey, sortDir, typeFilter, statusFilter, flowStatusFilter, reportFilter]);
 
   const queueCount = useMemo(() => cases.filter(c => {
     const hasFinal = !!c.reports?.some(r => r.isFinal);
@@ -144,7 +223,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
   }).length, [cases, mode]);
   const totalPages = Math.max(1, Math.ceil(visibleCases.length / pageSize));
   const paginatedCases = useMemo(() => visibleCases.slice((page - 1) * pageSize, page * pageSize), [visibleCases, page]);
-  useEffect(() => { setPage(1); }, [mode, search, typeFilter, statusFilter, reportFilter]);
+  useEffect(() => { setPage(1); }, [mode, search, typeFilter, statusFilter, flowStatusFilter, reportFilter]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   const toggleSort = (key: SortKey) => {
@@ -202,7 +281,7 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#0b2652' }}>
-            {mode === 'pending' ? 'Pending Reports' : 'Completed Reports'}
+            {mode === 'pending' ? 'Pending Reports' : currentUser?.role === 'disciplinary-committee' ? 'Disciplinary Committee Reports' : 'Completed Reports'}
           </h1>
           <p className="text-sm text-gray-500">
             {mode === 'pending'
@@ -244,6 +323,8 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
         </div>
       </div>
 
+      {mode === 'completed' && <div className="mb-5"><ReportWorkflowOverview activeStage={flowStatusFilter === 'all' ? 'completed-reports' : flowStatusFilter} /></div>}
+
       {/* Filter bar */}
       {showFilters && (
         <div className="mb-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
@@ -256,13 +337,23 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
             </select>
           </div>
           <div className="min-w-[180px]">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Case Status</label>
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
               <option value="all">All statuses</option>
               {statusOptions.map(s => <option key={s} value={s}>{titleCase(s)}</option>)}
             </select>
           </div>
+          {mode === 'completed' && (
+            <div className="min-w-[220px]">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Report Flow Status</label>
+              <select value={flowStatusFilter} onChange={e => setFlowStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="all">All flow statuses</option>
+                {flowStatusOptions.map(([stage, label]) => <option key={stage} value={stage}>{label}</option>)}
+              </select>
+            </div>
+          )}
           {mode === 'pending' && (
             <div className="min-w-[170px]">
               <label className="block text-xs font-medium text-gray-500 mb-1">Pending State</label>
@@ -309,7 +400,8 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                   ? permissions.reports?.canUpdate
                   : permissions.reports?.canCreate);
                 return (
-                  <tr key={c.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                  <Fragment key={c.id}>
+                  <tr className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: '#0b2652' }}>{c.caseNumber}</td>
                     <td className="px-4 py-3 text-sm">{c.studentName}</td>
                     <td className="px-4 py-3">
@@ -347,8 +439,14 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                             View Report
                           </button>
                         )}
-                        {mode === 'completed' && hasFinal && !c.type3Stage && (c.type === 'type-2' || c.type === 'confidential') && (currentUser?.role === 'super-admin' || permissions['completed-reports']?.canSend) && (
-                          <button type="button" onClick={() => { setSendCase(c); setSendRemarks(''); }} className="rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-800">Forward to Registrar</button>
+                        {mode === 'completed' && hasFinal && c.type !== 'type-3' && !c.type3Stage && !c.personDecisionsApplied && (currentUser?.role === 'super-admin' || permissions['completed-reports']?.canSend) && (
+                          <button type="button" onClick={() => openPersonDecisions(c)} className="inline-flex items-center gap-1 rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-800"><Forward size={14}/> Decide People</button>
+                        )}
+                        {mode === 'completed' && c.personDecisionsApplied && !c.type3Stage && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Decisions Applied</span>}
+                        {mode === 'completed' && hasFinal && !!c.type3Stage && (
+                          <button type="button" onClick={() => toggleWorkflow(c.id)} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100" aria-expanded={expandedWorkflow === c.id}>
+                            {workflowLoading === c.id ? <Loader2 size={14} className="animate-spin"/> : <Forward size={14}/>} {expandedWorkflow === c.id ? 'Hide Flow' : 'View Flow'}
+                          </button>
                         )}
                         {mode === 'pending' && !hasFinal && canWorkOnReport && (
                           <button
@@ -364,6 +462,8 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                       </div>
                     </td>
                   </tr>
+                  {mode === 'completed' && expandedWorkflow === c.id && <tr className="border-b border-blue-100 bg-blue-50/40"><td colSpan={8} className="px-5 py-4"><div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#0b2652]">Report forwarding timeline</h3>{workflowHistory[c.id]?.pendingForCurrentRole && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Pending for you</span>}</div>{workflowLoading === c.id ? <div className="flex items-center gap-2 py-4 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/> Loading workflow…</div> : <ReportWorkflowTimeline transitions={workflowHistory[c.id]?.transitions || []} pending={workflowHistory[c.id]?.pendingForCurrentRole}/>}</td></tr>}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -378,10 +478,10 @@ export default function ReportsPage({ mode = 'pending' }: { mode?: ReportsPageMo
                 : mode === 'pending' ? 'No report records available' : 'No completed reports'}
           </div>
         )}
-        <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleCases.length} onPageChange={setPage} itemLabel="reports" />
+        <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleCases.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="reports" />
       </div>
 
-      {sendCase && <><div className="fixed inset-0 z-40 bg-black/40" onClick={() => !sending && setSendCase(null)} /><div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"><div className="pointer-events-auto w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold text-[#0b2652]">Send Report to Registrar</h3><p className="mt-1 text-sm text-slate-500">Send the finalized report for {sendCase.caseNumber}. The case will only be marked Type-3; its status and assignment will not change.</p><label className="mt-4 block text-sm font-medium text-slate-700">Remarks <span className="text-red-500">*</span><textarea autoFocus value={sendRemarks} onChange={e => setSendRemarks(e.target.value)} className="mt-1 min-h-28 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Add remarks for the Registrar…" /></label><div className="mt-4 flex justify-end gap-2"><button disabled={sending} onClick={() => setSendCase(null)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button><button disabled={sending || !sendRemarks.trim()} onClick={sendToRegistrar} className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{sending ? 'Sending…' : 'Send Report'}</button></div></div></div></>}
+      {sendCase && <><div className="fixed inset-0 z-40 bg-black/40" onClick={() => !sending && setSendCase(null)} /><div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-3"><div className="pointer-events-auto flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"><div className="border-b px-4 py-3"><h3 className="text-base font-semibold text-[#0b2652]">Person Decisions · {sendCase.caseNumber}</h3><p className="mt-0.5 text-xs text-slate-500">Decide now or refer a person for final committee review.</p></div><div className="flex-1 space-y-3 overflow-y-auto p-4">{partiesLoading ? <div className="flex items-center justify-center py-10 text-sm text-slate-500"><Loader2 className="mr-2 animate-spin"/> Loading people…</div> : <div className="space-y-2">{sendParties.map(person => { const input = partyInputs[person.identityKey] || { disposition: '', remarks: '' }; const roles = [person.isSubmitter && 'Submitter', person.isComplainant && 'Complainant', person.isAccused && 'Accused'].filter(Boolean).join(' · '); const remarksRequired = ['warning', 'counselling-needed-with-mentor'].includes(input.disposition); return <div key={person.identityKey} className="rounded-lg border border-slate-200 p-2.5"><div className="grid items-start gap-2 md:grid-cols-[1.15fr_.8fr_1.2fr]"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[#0b2652]">{person.name}</p><p className="truncate text-[11px] text-slate-500">{person.studentId || 'No student ID'} · {person.department || 'No department'} · {person.batch || 'No batch'}</p><p className="text-[11px] font-medium text-blue-700">{roles}</p>{!person.notificationAvailable && <p className="text-[10px] leading-4 text-amber-700">No linked student account</p>}</div><select value={input.disposition} onChange={e => setPartyInputs(value => ({ ...value, [person.identityKey]: { ...input, disposition: e.target.value } }))} className="h-9 rounded-md border border-slate-300 bg-white px-2 text-xs"><option value="">Select decision</option><option value="guilty">Guilty</option><option value="not-guilty">Not Guilty</option><option value="warning">Warning</option><option value="counselling-needed-with-mentor">Counselling Needed with Mentor</option><option value="referred-to-registrar">Refer to Registrar</option></select><textarea rows={1} value={input.remarks} onChange={e => setPartyInputs(value => ({ ...value, [person.identityKey]: { ...input, remarks: e.target.value } }))} className="h-9 min-h-9 resize-y rounded-md border border-slate-300 px-2.5 py-2 text-xs" placeholder={remarksRequired ? 'Remarks (required)' : 'Remarks (optional)'} /></div></div>; })}</div>}<label className="block text-xs font-medium text-slate-700">Forwarding remarks <span className="font-normal text-slate-500">(optional)</span><textarea rows={2} value={sendRemarks} onChange={e => setSendRemarks(e.target.value)} className="mt-1 min-h-12 w-full resize-y rounded-md border border-slate-300 px-2.5 py-2 text-xs" placeholder="Context for Registrar…" /></label></div><div className="flex justify-end gap-2 border-t bg-slate-50 px-4 py-3"><button disabled={sending} onClick={() => setSendCase(null)} className="rounded-md border bg-white px-3 py-1.5 text-xs">Cancel</button><button disabled={sending || partiesLoading || sendParties.length === 0} onClick={sendToRegistrar} className="inline-flex items-center gap-1.5 rounded-md bg-indigo-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"><Forward size={14}/>{sending ? 'Applying…' : Object.values(partyInputs).some(x => x.disposition === 'referred-to-registrar') ? 'Apply & Send to Registrar' : 'Apply Decisions'}</button></div></div></div></>}
 
       {/* View Report Modal */}
       {viewReportCaseId && (

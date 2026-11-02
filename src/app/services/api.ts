@@ -157,17 +157,27 @@ export const casesApi = {
 };
 
 export const type3Api = {
-  start: (caseId: string, reportId: string, remarks: string) => api.post(`/type3/cases/${caseId}/start`, { reportId, remarks }),
+  parties: (caseId: string) => api.get(`/type3/cases/${caseId}/parties`),
+  start: (caseId: string, reportId: string, remarks: string, people: Array<{ identityKey: string; disposition: string; remarks?: string }>) => api.post(`/type3/cases/${caseId}/start`, { reportId, remarks, people }),
   queue: () => api.get('/type3/queue'),
+  queueCounts: () => api.get('/type3/queue-counts'),
+  history: (caseId: string) => api.get(`/type3/cases/${caseId}/history`),
   forwardCase: (caseId: string, remarks: string) => api.post(`/type3/cases/${caseId}/forward`, { remarks }),
   saveRemark: (caseId: string, remarks: string) => api.put(`/type3/cases/${caseId}/remark`, { remarks }),
-  createResolution: (cases: Array<{ caseId: string; shortDescription: string; secretaryRemarks: string }>) =>
+  createResolution: (cases: Array<{ caseId: string; shortDescription: string; people: Array<{ decisionId: string; outcome: string; remarks: string }> }>) =>
     api.post('/type3/resolutions', { cases }),
   getResolution: (resolutionId: string) => api.get(`/type3/resolutions/${resolutionId}`),
   forwardResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/forward`, { remarks }),
   approveResolution: (resolutionId: string, remarks: string) => api.post(`/type3/resolutions/${resolutionId}/approve`, { remarks }),
   downloadResolutionUrl: (resolutionId: string) => `${API_BASE_URL}/api/type3/resolutions/${resolutionId}/docx`,
   downloadResolution: (resolutionId: string) => api.get(`/type3/resolutions/${resolutionId}/docx`, { responseType: 'blob' }),
+};
+
+export const warningsApi = {
+  getAll: () => api.get('/warnings'),
+  unreadCount: () => api.get('/warnings/unread-count'),
+  markRead: (id: string) => api.patch(`/warnings/${id}/read`),
+  markAllRead: () => api.patch('/warnings/read-all'),
 };
 
 export const investigationAttachmentsApi = {

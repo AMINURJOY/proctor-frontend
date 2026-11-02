@@ -181,6 +181,7 @@ export default function SubmitIncident() {
 
   // Configurable forwarding
   const [forwardingLabel, setForwardingLabel] = useState('Proctor / Deputy Proctor');
+  const [controlRoomNumber, setControlRoomNumber] = useState('');
 
   useEffect(() => {
     settingsApi.getByKey('type1_forwarding_roles').then(res => {
@@ -194,6 +195,11 @@ export default function SubmitIncident() {
       }
     }).catch(() => {});
 
+    settingsApi.getByKey('control_room_number').then(res => {
+      const setting = res.data.data || res.data;
+      setControlRoomNumber((setting?.value || '').trim());
+    }).catch(() => {});
+
     caseCategoriesApi.getAll().then(res => {
       const items: CaseCategory[] = res.data?.data || [];
       setCategories(items);
@@ -203,6 +209,27 @@ export default function SubmitIncident() {
   // Categories mapped to the chosen subject (superadmin maps each category to a subject).
   const subjectCategories = categories.filter(c =>
     c.isActive);
+
+  const categoryExamples = (preferred: string[], type: 'type-1' | 'type-2') => {
+    const configured = subjectCategories
+      .filter(category => category.appliesToType === type || category.appliesToType === 'both')
+      .map(category => category.name);
+    const unique = new Map<string, string>();
+    [...preferred, ...configured].forEach(label => {
+      const normalized = label.trim().toLocaleLowerCase();
+      if (normalized && !unique.has(normalized)) unique.set(normalized, label.trim());
+    });
+    return [...unique.values()].slice(0, 8);
+  };
+
+  const instantExamples = categoryExamples(
+    ['Fighting', 'Ragging', 'Immediate threats', 'Property damage in progress'],
+    'type-1'
+  );
+  const complaintExamples = categoryExamples(
+    ['Harassment', 'Bullying', 'Cheating', 'Theft', 'General misconduct'],
+    'type-2'
+  );
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -498,61 +525,166 @@ export default function SubmitIncident() {
   };
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>Submit Incident</h1>
-        <p className="text-gray-600">Send a message or submit a complaint to the Proctor Office</p>
+    <div className="pb-10">
+      <div className="mb-6 max-w-3xl">
+        <h1 className="mb-2 text-3xl font-semibold" style={{ color: '#0b2652' }}>Submit Incident</h1>
+        <p className="leading-6 text-gray-600">Choose a quick Message to Proctor for an urgent incident, or file a detailed Complain to Proctor when the matter needs formal verification and follow-up.</p>
+        {selectedType === null && <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Secure submission</span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Case-number tracking</span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Evidence supported</span>
+        </div>}
       </div>
 
       {/* Type Selection */}
       {selectedType === null && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-          <button
-            onClick={() => setSelectedType('type-1')}
-            className="bg-white rounded-xl shadow-md p-8 border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all text-left group"
-          >
-            <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center mb-4 group-hover:bg-blue-200 transition-colors">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold mb-2" style={{ color: '#0b2652' }}>
-              Message to Proctor
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Quick submission with image/video evidence. Goes directly to the Proctor or Deputy Proctor for immediate action.
-            </p>
-            <div className="flex items-center gap-2 text-blue-600 font-medium">
-              <span>Upload & Submit</span>
-              <ArrowRightIcon />
-            </div>
-          </button>
+        <div className="max-w-6xl space-y-8">
+          <section aria-label="Choose a submission type" className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <button
+              onClick={() => setSelectedType('type-1')}
+              className="group flex h-full flex-col rounded-2xl border-2 border-transparent bg-white p-7 text-left shadow-md transition-all hover:border-blue-500 hover:shadow-lg sm:p-8"
+            >
+              <div className="mb-5 flex h-40 items-center justify-center overflow-hidden rounded-2xl bg-blue-50 ring-1 ring-blue-100 transition-colors group-hover:bg-blue-100">
+                <picture>
+                  <source media="(prefers-reduced-motion: reduce)" srcSet="/animations/urgent-fight-poster.png" />
+                  <img
+                    src="/animations/urgent-fight.gif"
+                    alt="Animated illustration of an urgent student fight"
+                    className="h-36 w-36 object-contain transition-transform duration-300 group-hover:scale-105"
+                    draggable={false}
+                  />
+                </picture>
+              </div>
+              <span className="mb-3 w-fit rounded-full bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700">Urgent or happening now</span>
+              <h3 className="mb-2 text-xl font-semibold" style={{ color: '#0b2652' }}>
+                Message to Proctor
+              </h3>
+              <p className="mb-2 text-sm leading-6 text-blue-700">
+                আপনার যদি মনে হয়, এমন কোনো ঘটনা বা পরিস্থিতি ঘটছে, যা Proctor Office-কে জানানো উচিত, তাহলে অনুগ্রহ করে আমাদের জানান।
+              </p>
+              <p className="mb-4 text-gray-600">
+                Send a short, rapid alert when an incident is happening now or needs immediate attention. Add the location and upload image or video evidence when it is safe to do so.
+              </p>
+              <div className="mb-5">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Common instant cases</p>
+                <div className="flex flex-wrap gap-2">
+                  {instantExamples.map(example => <span key={example} className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">{example}</span>)}
+                </div>
+              </div>
+              <div className="mt-auto flex items-center gap-2 font-medium text-blue-600">
+                <span>Upload &amp; Submit</span>
+                <ArrowRightIcon />
+              </div>
+            </button>
 
-          <button
-            onClick={() => setSelectedType('type-2')}
-            className="bg-white rounded-xl shadow-md p-8 border-2 border-transparent hover:border-purple-500 hover:shadow-lg transition-all text-left group"
-          >
-            <div className="w-14 h-14 rounded-xl bg-purple-100 flex items-center justify-center mb-4 group-hover:bg-purple-200 transition-colors">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-              </svg>
+            <button
+              onClick={() => setSelectedType('type-2')}
+              className="group flex h-full flex-col rounded-2xl border-2 border-transparent bg-white p-7 text-left shadow-md transition-all hover:border-purple-500 hover:shadow-lg sm:p-8"
+            >
+              <div className="mb-5 flex h-40 items-center justify-center overflow-hidden rounded-2xl bg-purple-50 ring-1 ring-purple-100 transition-colors group-hover:bg-purple-100">
+                <picture>
+                  <source media="(prefers-reduced-motion: reduce)" srcSet="/animations/complaint-writing-poster.png" />
+                  <img
+                    src="/animations/complaint-writing.gif"
+                    alt="Animated illustration of a complaint letter being written"
+                    className="h-36 w-36 object-contain transition-transform duration-300 group-hover:scale-105"
+                    draggable={false}
+                  />
+                </picture>
+              </div>
+              <span className="mb-3 w-fit rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700">Formal and detailed</span>
+              <h3 className="mb-2 text-xl font-semibold" style={{ color: '#0b2652' }}>
+                Complain to Proctor
+              </h3>
+              <p className="mb-2 text-sm leading-6 text-purple-700">
+                আপনার যদি কারও বিরুদ্ধে কোনো অভিযোগ থাকে, তাহলে অনুগ্রহ করে এখানে জমা দিন।
+              </p>
+              <p className="mb-4 text-gray-600">
+                File a documented complaint that needs verification, investigation, or formal follow-up. Include complainant and accused details, dates, a full description, and supporting documents.
+              </p>
+              <div className="mb-5">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Common formal complaints</p>
+                <div className="flex flex-wrap gap-2">
+                  {complaintExamples.map(example => <span key={example} className="rounded-full bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700">{example}</span>)}
+                </div>
+              </div>
+              <div className="mt-auto flex items-center gap-2 font-medium text-purple-600">
+                <span>Submit Complaint</span>
+                <ArrowRightIcon />
+              </div>
+            </button>
+          </section>
+
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <h2 className="text-xl font-semibold text-[#0b2652]">Which option should I choose?</h2>
+              <p className="mt-1 text-sm text-slate-600">Choose by urgency and how much information is ready now.</p>
             </div>
-            <h3 className="text-xl font-semibold mb-2" style={{ color: '#0b2652' }}>
-              Complain to Proctor
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Detailed complaint submission with documents. It is routed by the complainant's gender for verification and forwarding.
-            </p>
-            <div className="flex items-center gap-2 text-purple-600 font-medium">
-              <span>Submit Complaint</span>
-              <ArrowRightIcon />
+            <div className="grid gap-px bg-slate-200 md:grid-cols-2">
+              <div className="bg-blue-50/70 p-6">
+                <h3 className="font-semibold text-blue-900">Choose Message to Proctor when:</h3>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li>• The incident is happening now or may quickly become unsafe.</li>
+                  <li>• You need to alert the Proctor Office with only essential details.</li>
+                  <li>• Location, a short description, and immediate evidence are available.</li>
+                  <li>• The message should go directly to {forwardingLabel}.</li>
+                </ul>
+              </div>
+              <div className="bg-purple-50/70 p-6">
+                <h3 className="font-semibold text-purple-900">Choose Complain to Proctor when:</h3>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li>• You are reporting a past, repeated, or ongoing disciplinary matter.</li>
+                  <li>• The complaint needs verification, investigation, or a formal record.</li>
+                  <li>• You can provide people involved, dates, category, and full details.</li>
+                  <li>• Documents and other supporting evidence need to be reviewed.</li>
+                </ul>
+              </div>
             </div>
-          </button>
+          </section>
+
+          <section className="grid overflow-hidden rounded-2xl bg-[#0b2652] text-white shadow-md lg:grid-cols-[1.35fr_0.65fr]">
+            <div className="p-7 sm:p-8">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">Daffodil International University</p>
+              <h2 className="mt-2 text-2xl font-semibold">About the Proctor Office</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-100">
+                The Proctor Office receives student incident messages and formal complaints, acknowledges submissions, verifies information, and forwards cases to the responsible officer or committee. You can follow progress from My Cases and Notifications after submission.
+              </p>
+              <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                <div className="rounded-xl bg-white/10 p-4"><strong className="block text-white">Secure case record</strong><span className="mt-1 block text-blue-100">Your description, evidence, notes, and updates stay connected to one case number.</span></div>
+                <div className="rounded-xl bg-white/10 p-4"><strong className="block text-white">Controlled visibility</strong><span className="mt-1 block text-blue-100">Sensitive cases are available only to authorized roles in the case workflow.</span></div>
+              </div>
+            </div>
+            <div className="flex flex-col justify-center border-t border-white/15 bg-white/5 p-7 sm:p-8 lg:border-l lg:border-t-0">
+              <p className="text-sm font-medium text-blue-200">Need immediate assistance?</p>
+              <h3 className="mt-1 text-xl font-semibold">Proctor Office Control Room</h3>
+              {controlRoomNumber ? (
+                <a href={`tel:${controlRoomNumber.replace(/[^+\d]/g, '')}`} className="mt-4 rounded-xl bg-white px-4 py-3 text-center text-lg font-semibold text-[#0b2652] transition hover:bg-blue-50">
+                  Call {controlRoomNumber}
+                </a>
+              ) : (
+                <p className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm text-blue-100">The Control Room contact number will appear here when configured by the office.</p>
+              )}
+              <p className="mt-3 text-xs leading-5 text-blue-200">If there is immediate physical danger, move to a safe place first and contact the Control Room or campus security.</p>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-[#0b2652]">Before you submit</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ['1', 'Stay safe', 'Do not put yourself at risk to capture evidence. Move away from immediate danger first.'],
+                ['2', 'Share accurate facts', 'Describe what happened, when it happened, and where it happened as clearly as possible.'],
+                ['3', 'Attach relevant evidence', 'Upload only useful photos, videos, or documents connected to the incident.'],
+                ['4', 'Track the case', 'Keep the generated case number and check My Cases or Notifications for updates.'],
+              ].map(([number, title, description]) => (
+                <div key={number} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-700">{number}</span>
+                  <h3 className="mt-3 font-semibold text-slate-900">{title}</h3>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 

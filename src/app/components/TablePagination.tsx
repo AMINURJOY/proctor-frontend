@@ -3,14 +3,18 @@ type TablePaginationProps = {
   pageSize: number;
   totalItems: number;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   itemLabel?: string;
 };
+
+const pageSizeOptions = [50, 100, 200, 300, 500, 1000];
 
 export default function TablePagination({
   currentPage,
   pageSize,
   totalItems,
   onPageChange,
+  onPageSizeChange,
   itemLabel = 'items',
 }: TablePaginationProps) {
   if (totalItems === 0) return null;
@@ -24,10 +28,8 @@ export default function TablePagination({
   const buttonClass = 'h-8 min-w-8 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
 
   return <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-    <p className="text-xs text-slate-500">
-      Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, totalItems)} of {totalItems} {itemLabel}
-    </p>
-    <nav className="flex items-center gap-1" aria-label={`${itemLabel} pagination`}>
+    <div className="flex flex-wrap items-center gap-3"><p className="text-xs text-slate-500">Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, totalItems)} of {totalItems} {itemLabel}</p><label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">Rows<select value={pageSize} onChange={event => { onPageSizeChange(Number(event.target.value)); onPageChange(1); }} className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700">{pageSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}</select></label></div>
+    <nav className="flex flex-wrap items-center gap-1" aria-label={`${itemLabel} pagination`}>
       <button type="button" aria-label="First page" title="First page" disabled={safePage === 1} onClick={() => onPageChange(1)} className={buttonClass}>&lt;&lt;</button>
       <button type="button" aria-label="Previous page" title="Previous page" disabled={safePage === 1} onClick={() => onPageChange(safePage - 1)} className={buttonClass}>&lt;</button>
       {pageNumbers.map(page => <button

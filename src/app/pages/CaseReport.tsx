@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
 import { casesApi } from '../services/api';
 import { Case } from '../types';
+import { arrangeReportImagesAtEnd } from '../utils/pdfExport';
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[character] || character));
 
 export default function CaseReport() {
   const { id } = useParams();
@@ -35,6 +40,16 @@ export default function CaseReport() {
   }
 
   const finalReport = caseItem.reports?.find(r => r.isFinal);
+  let reportHtml = finalReport?.content || '';
+  if (finalReport && caseItem.verdict && !reportHtml.includes('চূড়ান্ত সিদ্ধান্ত')) {
+    const verdict = escapeHtml(caseItem.verdict).replace(/\n/g, '<br>');
+    reportHtml += `
+      <div style="margin-top: 48px; border-top: 2px solid #ccc; padding-top: 24px;">
+        <h3 style="font-weight: bold; font-size: 18px; margin-bottom: 12px; color: #0b2652;">১১। চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
+        <p style="white-space: pre-wrap; color: #1f2937; line-height: 1.6; font-size: 16px;">${verdict}</p>
+      </div>`;
+  }
+  reportHtml = arrangeReportImagesAtEnd(reportHtml, caseItem.documents || []);
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8 bg-white min-h-screen">
@@ -51,20 +66,13 @@ export default function CaseReport() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 md:p-12 print:shadow-none print:border-none print:p-0 report-content-wrapper prose max-w-none">
         {finalReport ? (
-          <div dangerouslySetInnerHTML={{ __html: finalReport.content }} />
+          <div dangerouslySetInnerHTML={{ __html: reportHtml }} />
         ) : (
           <div className="text-center py-12 text-gray-500">
             No final report available for this case.
           </div>
         )}
         
-        {/* Fallback verdict if not already in final report */}
-        {caseItem.verdict && finalReport && !finalReport.content.includes("চূড়ান্ত সিদ্ধান্ত") && (
-          <div className="mt-8 pt-4 border-t border-gray-200">
-            <h3>১১। চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
-            <p>{caseItem.verdict}</p>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -28,7 +28,7 @@ interface Student {
   isActive: boolean;
 }
 
-const emptyForm = { studentId: '', name: '', department: '', batch: '', contact: '', email: '', gender: 'male', cgpa: '', outstandingDues: '', completedCredits: '', expectedCredits: '', currentSemester: '', registrationStatus: 'registered', unregistrationReason: '', fatherName: '', fatherContact: '', advisorName: '' };
+const emptyForm = { studentId: '', name: '', department: '', batch: '', contact: '', email: '', gender: 'male', cgpa: '', outstandingDues: '', completedCredits: '', expectedCredits: '', currentSemester: '', registrationStatus: 'registered', unregistrationReason: '', fatherName: '', fatherContact: '', advisorName: '', createAccount: false, accountPassword: '' };
 
 const genderBadge = (g: string) => {
   const v = (g || '').toLowerCase();
@@ -45,7 +45,7 @@ export default function StudentsList() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(50);
 
   const load = async () => {
     setLoading(true);
@@ -78,9 +78,17 @@ export default function StudentsList() {
       toast.error('Completed credits cannot exceed expected credits');
       return;
     }
+    if (form.createAccount && !form.email.trim()) {
+      toast.error('Email is required to create a login account');
+      return;
+    }
+    if (form.createAccount && form.accountPassword.length < 8) {
+      toast.error('Account password must contain at least 8 characters');
+      return;
+    }
     setSaving(true);
     try {
-      await studentsApi.create({
+      const response = await studentsApi.create({
         ...form,
         cgpa: form.cgpa === '' ? null : Number(form.cgpa),
         outstandingDues: form.outstandingDues === '' ? null : Number(form.outstandingDues),
@@ -89,7 +97,7 @@ export default function StudentsList() {
         currentSemester: form.currentSemester === '' ? null : Number(form.currentSemester),
         unregistrationReason: form.registrationStatus === 'unregistered' ? form.unregistrationReason || null : null,
       });
-      toast.success('Student added');
+      toast.success(response.data?.message || (form.createAccount ? 'Student and account created' : 'Student added'));
       setForm(emptyForm);
       setShowNew(false);
       await load();
@@ -155,14 +163,21 @@ export default function StudentsList() {
             </select>
             {form.registrationStatus === 'unregistered' && <input placeholder="Unregistration reason" value={form.unregistrationReason} onChange={e => setForm({ ...form, unregistrationReason: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />}
             <input placeholder="Contact / Phone" value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="email" placeholder={form.createAccount ? 'Email *' : 'Email'} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Father's Name" value={form.fatherName} onChange={e => setForm({ ...form, fatherName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Father's Contact" value={form.fatherContact} onChange={e => setForm({ ...form, fatherContact: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             <input placeholder="Advisor Name" value={form.advisorName} onChange={e => setForm({ ...form, advisorName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" checked={form.createAccount} onChange={e => setForm({ ...form, createAccount: e.target.checked, accountPassword: e.target.checked ? form.accountPassword : '' })} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-700" />
+              <span><span className="block text-sm font-semibold text-[#0b2652]">Create a login account for this student</span><span className="block text-xs text-gray-600">Useful for testing the student dashboard, notifications, warnings, and case submission. The email above will be the username.</span></span>
+            </label>
+            {form.createAccount && <div className="mt-3 max-w-md"><label className="text-xs font-medium text-gray-700">Temporary password *<input type="password" autoComplete="new-password" minLength={8} value={form.accountPassword} onChange={e => setForm({ ...form, accountPassword: e.target.value })} placeholder="At least 8 characters" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" /></label><p className="mt-1 text-xs text-gray-500">The account role will be Student and it will be linked through the directory email.</p></div>}
+          </div>
           <div className="flex justify-end gap-2 mt-3">
             <button onClick={() => { setShowNew(false); setForm(emptyForm); }} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
-            <button onClick={handleCreate} disabled={saving} className="px-4 py-2 text-sm rounded-lg text-white disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>{saving ? 'Saving…' : 'Add Student'}</button>
+            <button onClick={handleCreate} disabled={saving} className="px-4 py-2 text-sm rounded-lg text-white disabled:opacity-50" style={{ backgroundColor: '#0b2652' }}>{saving ? 'Saving…' : form.createAccount ? 'Add Student & Create Account' : 'Add Student'}</button>
           </div>
         </div>
       )}
@@ -224,7 +239,7 @@ export default function StudentsList() {
             </table>
           </div>
         )}
-        {!loading && <TablePagination currentPage={page} pageSize={pageSize} totalItems={filtered.length} onPageChange={setPage} itemLabel="students" />}
+        {!loading && <TablePagination currentPage={page} pageSize={pageSize} totalItems={filtered.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="students" />}
       </div>
     </div>
   );

@@ -33,7 +33,7 @@ export default function UsersManagement() {
   const [ranks, setRanks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(50);
 
   const canAccess = currentUser?.role === 'super-admin' || currentUser?.role === 'proctor';
 
@@ -250,7 +250,7 @@ export default function UsersManagement() {
               <p className="text-gray-500">No users found</p>
             </div>
           )}
-          <TablePagination currentPage={page} pageSize={pageSize} totalItems={users.length} onPageChange={setPage} itemLabel="users" />
+          <TablePagination currentPage={page} pageSize={pageSize} totalItems={users.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="users" />
         </div>
       )}
 

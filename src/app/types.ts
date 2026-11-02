@@ -130,6 +130,7 @@ export interface Case {
   isConfidential?: boolean;
   type3Stage?: string;
   workflowStatusLabel?: string;
+  personDecisionsApplied?: boolean;
   subject?: string;
   status: CaseStatus;
   priority: Priority;

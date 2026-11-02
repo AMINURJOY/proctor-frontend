@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { notificationsApi, casesApi } from '../services/api';
+import { notificationsApi } from '../services/api';
 import { AppNotification } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { notificationPathForRole } from '../utils/roleNavigation';
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -13,26 +16,8 @@ export default function NotificationsPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [notifRes, casesRes] = await Promise.allSettled([
-          notificationsApi.getAll(),
-          casesApi.getAll({ pageSize: 1000 }),
-        ]);
-
-        const notifs: AppNotification[] =
-          notifRes.status === 'fulfilled'
-            ? (notifRes.value.data.data || notifRes.value.data || [])
-            : [];
-
-        // Build a set of valid case IDs so we can drop notifications that reference deleted cases.
-        const validCaseIds = new Set<string>();
-        if (casesRes.status === 'fulfilled') {
-          const items = casesRes.value.data.data?.items || casesRes.value.data.data || [];
-          for (const c of items) if (c?.id) validCaseIds.add(c.id);
-        }
-
-        setNotifications(
-          notifs.filter(n => !n.caseId || validCaseIds.has(n.caseId))
-        );
+        const response = await notificationsApi.getAll();
+        setNotifications(response.data.data || response.data || []);
       } catch {
         setNotifications([]);
       } finally {
@@ -59,7 +44,7 @@ export default function NotificationsPage() {
       await handleMarkAsRead(notification.id);
     }
     if (notification.caseId) {
-      navigate(`/cases/${notification.caseId}`);
+      navigate(notificationPathForRole(currentUser?.role, notification.caseId));
     }
   };
 

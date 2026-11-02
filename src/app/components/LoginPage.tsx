@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { LockIcon } from './Icons';
 import { useState } from 'react';
 import { User } from '../types';
+import { landingPathForRole } from '../utils/roleNavigation';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -14,8 +15,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const landingPathFor = (role?: string) => (role === 'student' ? '/submit' : '/dashboard');
-
   const handleFormLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
@@ -23,7 +22,7 @@ export default function LoginPage() {
     try {
       const user = await login(email, password);
       if (user) {
-        navigate(landingPathFor(user.role));
+        navigate(landingPathForRole(user.role));
       } else {
         setError('Invalid email or password. Please try again.');
       }
@@ -39,7 +38,7 @@ export default function LoginPage() {
       const pwd = user.role === 'super-admin' ? 'Admin@123!' : 'Password123!';
       const loggedIn = await login(user.email, pwd);
       if (loggedIn) {
-        navigate(landingPathFor(user.role));
+        navigate(landingPathForRole(user.role));
       } else {
         setError('Quick login failed. Please try again.');
       }

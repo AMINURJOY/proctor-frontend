@@ -22,7 +22,7 @@ type Statistics = {
   yearlyTrend: { year: number; total: number; redZone: number; redZoneRate: number; averageCgpa?: number }[];
   complaintYearlyTrend: { year: number; values: { name: string; count: number }[] }[];
   mmsYearlyTrend: { year: number; values: { name: string; count: number }[] }[];
-  complaints: Complaint[]; mmsDistribution: Group[]; mmsProfiles: Breakdown[]; mmsByRisk: CrossTab[];
+  complaints: Complaint[]; outcomes: Group[]; mmsDistribution: Group[]; mmsProfiles: Breakdown[]; mmsByRisk: CrossTab[];
   academicRisk: Group[]; financialRisk: Group[]; ccrRisk: Group[]; dropoutRisk: Group[]; cgpaDistribution: Group[];
   departments: Breakdown[]; batches: Breakdown[]; genders: Breakdown[];
   complaintByMms: CrossTab[]; complaintByRisk: CrossTab[]; complaintByAcademicRisk: CrossTab[]; complaintByFinancialRisk: CrossTab[];
@@ -34,6 +34,7 @@ type Statistics = {
 const COLORS = ['#0b2652', '#2563eb', '#06b6d4', '#f59e0b', '#ef4444', '#7c3aed', '#10b981', '#64748b'];
 const RISK_COLORS: Record<string, string> = { Low: '#22c55e', Moderate: '#f59e0b', High: '#ef4444', Severe: '#991b1b', 'Very High': '#7f1d1d', Unknown: '#94a3b8' };
 const MMS_COLORS: Record<string, string> = { 'Fit–Fit': '#22c55e', 'Poor–Fit': '#f97316', 'Fit–Poor': '#eab308', 'Poor–Poor': '#ef4444', Unknown: '#94a3b8' };
+const OUTCOME_COLORS: Record<string, string> = { Guilty: '#dc2626', Warning: '#f59e0b', 'Counselling Needed with Mentor': '#7c3aed' };
 const money = (value?: number) => value == null ? '—' : `৳${Math.round(value).toLocaleString()}`;
 const number = (value?: number, digits = 1) => value == null ? '—' : Number(value).toFixed(digits);
 const date = (value?: string) => value ? new Date(value).toLocaleDateString() : '—';
@@ -223,7 +224,7 @@ export default function AccusedStatisticsPage() {
   if (!data) return null;
 
   const summaryCards = [
-    ['Accused records', data.summary.totalRecords, 'One accused person in one case'],
+    ['Accused records', data.summary.totalRecords, 'One qualifying person outcome in one case'],
     ['Unique students', data.summary.uniqueStudents, `${data.summary.repeatOffenders} repeat accused`],
     ['Red Zone', data.summary.redZone, `${data.summary.redZoneRate}% of all records`],
     ['High dropout risk', data.summary.highDropoutRisk, 'High and Very High tiers'],
@@ -234,7 +235,7 @@ export default function AccusedStatisticsPage() {
 
   return <div className="space-y-5">
     <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div><div className="flex items-center gap-3"><span className="rounded-xl bg-blue-50 p-2 text-blue-800"><BarChart3 size={24} /></span><div><h1 className="text-2xl font-semibold" style={{ color: '#0b2652' }}>Accused Statistics</h1><p className="text-sm text-gray-500">Risk intelligence from accessible disciplinary-case accused records</p></div></div>
+      <div><div className="flex items-center gap-3"><span className="rounded-xl bg-blue-50 p-2 text-blue-800"><BarChart3 size={24} /></span><div><h1 className="text-2xl font-semibold" style={{ color: '#0b2652' }}>Accused Statistics</h1><p className="text-sm text-gray-500">Risk intelligence for people with a recorded Guilty, Warning, or Counselling Needed with Mentor outcome</p></div></div>
         <p className="mt-2 text-xs text-gray-400">Period {date(data.periodFrom)} – {date(data.periodTo)} · Generated {new Date(data.generatedAt).toLocaleString()}</p>
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm md:grid-cols-3 xl:grid-cols-6">
@@ -248,7 +249,8 @@ export default function AccusedStatisticsPage() {
     </header>
 
     {error && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Showing the last loaded result. Refresh failed: {error}</div>}
-    {data.summary.totalRecords === 0 ? <Card title="No accused data"><div className="py-12 text-center text-gray-500"><Users className="mx-auto mb-3 text-gray-300" size={38} /><p>No accused records match these filters.</p></div></Card> : <>
+    {data.summary.totalRecords === 0 ? <Card title="No accused data"><div className="py-12 text-center text-gray-500"><Users className="mx-auto mb-3 text-gray-300" size={38} /><p>No Guilty, Warning, or Counselling Needed with Mentor outcomes match these filters.</p></div></Card> : <>
+      <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900"><strong>Outcome-based population:</strong> only Guilty, Warning, and Counselling Needed with Mentor decisions are included. Not Guilty people and allegations without a qualifying decision are excluded, even if the person was entered as accused during submission.</div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">{summaryCards.map(([label, value, note], index) => <div key={String(label)} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm" style={{ borderTopColor: COLORS[index % COLORS.length], borderTopWidth: 3 }}><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold" style={{ color: '#0b2652' }}>{value}</p><p className="mt-1 text-xs text-gray-500">{note}</p></div>)}</div>
 
       <AnalysisSection number={1} title="Year-over-Year Trend Analysis" description="Evolution of accused occurrences and Red Zone screening over the selected period." summary="The stacked bars separate Red Zone from non-Red Zone records without double-counting. The line chart compares Red Zone rate with average CGPA on independent axes.">
@@ -258,9 +260,10 @@ export default function AccusedStatisticsPage() {
         </div>
       </AnalysisSection>
 
-      <AnalysisSection number={2} title="Complaint Type Analysis" description="Complaint volume, Red Zone rate, yearly trend, and risk profile by case category." summary="Counts use one accused occurrence per case. Red Zone rates use each complaint type's own record count as the denominator.">
-        <div className="grid gap-4 xl:grid-cols-2">
+      <AnalysisSection number={2} title="Complaint Type Analysis" description="Complaint volume, qualifying disciplinary outcomes, Red Zone rate, yearly trend, and risk profile by case category." summary="Counts use one qualifying person outcome per case. Red Zone rates use each complaint type's own record count as the denominator.">
+        <div className="grid gap-4 xl:grid-cols-3">
           <Card title={`Complaint distribution (n=${data.summary.totalRecords})`}><Donut data={complaintPie} /></Card>
+          <Card title="Included person outcomes"><Donut data={data.outcomes || []} colors={OUTCOME_COLORS} /></Card>
           <Card title="Red Zone rate by complaint type"><ResponsiveContainer width="100%" height={Math.max(280, data.complaints.length * 38)}><BarChart data={data.complaints} layout="vertical" margin={{ left: 28, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis type="number" domain={[0, 100]} unit="%" /><YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} /><Tooltip formatter={(value: number) => [`${value}%`, 'Red Zone rate']} /><Bar dataKey="redZoneRate" fill="#ef4444" radius={[0, 5, 5, 0]} /></BarChart></ResponsiveContainer></Card>
         </div>
         <Card title="Complaint type trend by year">{complaintTrend.length === 0 ? <EmptyChart /> : <ResponsiveContainer width="100%" height={340}><BarChart data={complaintTrend}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="year" /><YAxis allowDecimals={false} /><Tooltip /><Legend />{complaintSeries.map((series, index) => <Bar key={series.key} dataKey={series.key} name={series.name} stackId="complaints" fill={COLORS[index % COLORS.length]} radius={index === complaintSeries.length - 1 ? [4, 4, 0, 0] : undefined} />)}</BarChart></ResponsiveContainer>}</Card>
@@ -354,6 +357,6 @@ export default function AccusedStatisticsPage() {
 
     <Card title="Data completeness"><div className="mb-4 flex items-start gap-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900"><Database className="mt-0.5 shrink-0" size={18} /><p>Unknown values stay visible and are never treated as zero or low risk. Percentages in risk charts use all accused records and include an explicit Unknown tier.</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(data.dataCoverage).map(([key, value]) => <div key={key} className="rounded-lg border border-gray-100 p-3"><p className="text-xs capitalize text-gray-500">{key.replace(/([A-Z])/g, ' $1')}</p><p className="mt-1 text-xl font-semibold text-gray-800">{value}</p></div>)}</div></Card>
 
-    <details className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm"><summary className="cursor-pointer text-sm font-semibold" style={{ color: '#0b2652' }}>Methodology and thresholds</summary><div className="mt-4 grid gap-3 text-sm text-gray-600 md:grid-cols-2"><p><strong>MMS:</strong> academic fit at CGPA ≥2.90; financial fit at dues ≤৳35,000.</p><p><strong>Academic:</strong> Low ≥3.50, Moderate 3.00–3.49, High 2.50–2.99, Severe &lt;2.50.</p><p><strong>Financial:</strong> Low at zero, Moderate through ৳35,000, High above it, Severe when unregistered for financial reasons.</p><p><strong>CCR:</strong> completed ÷ expected credits; Low ≥0.85, Moderate ≥0.70, High ≥0.50, Severe below 0.50.</p><p className="md:col-span-2"><strong>Important:</strong> High dropout risk is a deterministic screening indicator, not a confirmed dropout or clinical diagnosis.</p></div></details>
+    <details className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm"><summary className="cursor-pointer text-sm font-semibold" style={{ color: '#0b2652' }}>Methodology and thresholds</summary><div className="mt-4 grid gap-3 text-sm text-gray-600 md:grid-cols-2"><p><strong>Population:</strong> only people whose effective outcome is Guilty, Warning, or Counselling Needed with Mentor. A final resolution outcome overrides the earlier Proctor Office decision.</p><p><strong>MMS:</strong> academic fit at CGPA ≥2.90; financial fit at dues ≤৳35,000.</p><p><strong>Academic:</strong> Low ≥3.50, Moderate 3.00–3.49, High 2.50–2.99, Severe &lt;2.50.</p><p><strong>Financial:</strong> Low at zero, Moderate through ৳35,000, High above it, Severe when unregistered for financial reasons.</p><p><strong>CCR:</strong> completed ÷ expected credits; Low ≥0.85, Moderate ≥0.70, High ≥0.50, Severe below 0.50.</p><p className="md:col-span-2"><strong>Important:</strong> High dropout risk is a deterministic screening indicator, not a confirmed dropout or clinical diagnosis.</p></div></details>
   </div>;
 }

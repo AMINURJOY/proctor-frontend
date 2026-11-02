@@ -19,7 +19,7 @@ import {
   PlusIcon
 } from '../components/Icons';
 import { Case, CaseStatus, Hearing, User, InvestigationAttachment } from '../types';
-import api, { casesApi, hearingsApi, usersApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, API_BASE_URL } from '../services/api';
+import api, { casesApi, hearingsApi, usersApi, studentsApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, API_BASE_URL } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
@@ -31,6 +31,17 @@ import { roleLabel } from '../utils/roles';
 // Returns the open hearing (for messaging), or null when the case is free to forward.
 function getOpenHearing(caseItem: Case): Hearing | null {
   return (caseItem.hearings || []).find(h => h.status === 'scheduled') || null;
+}
+
+// The Deputy Proctor's return to the Proctor Office finishes the Type-2 case-review
+// chain. The case remains "assigned" for compatibility, but its next action is report
+// preparation—not another Accept & Forward cycle.
+function isReadyForReport(caseItem: Case): boolean {
+  if (caseItem.type === 'type-1' || caseItem.forwardedToRole !== 'proctor') return false;
+  const latestForward = [...(caseItem.timeline || [])]
+    .filter(event => event.action === 'Case Forwarded')
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  return latestForward?.description.toLowerCase().includes('from deputy-proctor to proctor') === true;
 }
 
 // Workflow steps for the stepper
@@ -122,6 +133,7 @@ export default function CaseDetail() {
   const [showAddAccused, setShowAddAccused] = useState(false);
   const [addingAccused, setAddingAccused] = useState(false);
   const [accusedForm, setAccusedForm] = useState({ name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '', cgpa: '' });
+  const [accusedLookupStatus, setAccusedLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle');
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
   // Per-case notifications shown to the student in the "Message from Proctor Office" tab.
@@ -300,6 +312,7 @@ export default function CaseDetail() {
       const response = await casesApi.getById(caseItem.id);
       setCaseItem(response.data.data || response.data);
       setAccusedForm({ name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '', cgpa: '' });
+      setAccusedLookupStatus('idle');
       setShowAddAccused(false);
       toast.success('Accused person added');
     } catch (err: any) {
@@ -308,6 +321,47 @@ export default function CaseDetail() {
       setAddingAccused(false);
     }
   };
+
+  useEffect(() => {
+    if (!showAddAccused) return;
+    const studentId = accusedForm.accusedStudentId.trim();
+    if (!studentId) {
+      setAccusedLookupStatus('idle');
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setAccusedLookupStatus('loading');
+      try {
+        const response = await studentsApi.getByStudentId(studentId);
+        if (cancelled) return;
+        const student = response.data?.data || response.data;
+        if (!student) {
+          setAccusedLookupStatus('not-found');
+          return;
+        }
+        setAccusedForm(current => ({
+          ...current,
+          accusedStudentId: student.studentId || current.accusedStudentId,
+          name: student.name || current.name,
+          department: student.department || current.department,
+          contact: student.contact || current.contact,
+          guardianContact: student.guardianContact || current.guardianContact,
+          cgpa: student.cgpa != null ? String(student.cgpa) : current.cgpa,
+        }));
+        setAccusedLookupStatus('found');
+      } catch (error: any) {
+        if (cancelled) return;
+        setAccusedLookupStatus(error?.response?.status === 404 ? 'not-found' : 'error');
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showAddAccused, accusedForm.accusedStudentId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!caseItem || !e.target.files?.length) return;
@@ -442,7 +496,10 @@ export default function CaseDetail() {
   }
 
   const isConfidential = !!caseItem.isConfidential || caseItem.type === 'confidential';
-  const isType3 = caseItem.type === 'type-3';
+  // Only cases that actually entered the managed Registrar → VC → DC Type-3 workflow
+  // must use the dedicated report queues. Legacy/manual Type-3 cases can still be
+  // assigned back to the Proctor and need the normal Forward action when they return.
+  const isType3 = caseItem.type === 'type-3' && !!caseItem.type3Stage;
   const confidentialMark = (caseItem.timeline || []).find(event => event.action === 'Marked Confidential');
   const isOwnSubmission = !!currentUser?.id && (
     caseItem.submittedByUserId === currentUser.id ||
@@ -451,6 +508,7 @@ export default function CaseDetail() {
   const isAssignedToMe = !!currentUser?.name && caseItem.assignedTo === currentUser.name;
   const isInMyRoleQueue = !!currentUser?.role && caseItem.forwardedToRole === currentUser.role;
   const isActiveAssignee = (caseItem.assignments || []).some(a => a.isActive && (a.userId === currentUser?.id || a.userName === currentUser?.name));
+  const readyForReport = isReadyForReport(caseItem);
   const acknowledgedByMe = !!currentUser?.id && caseItem.isAcknowledged && caseItem.acknowledgedById === currentUser.id;
   const canCloseType1 = canCloseByRole || acknowledgedByMe || (!!caseItem.isAcknowledged && isActiveAssignee);
   const canAddAccused = !!currentUser?.role
@@ -517,7 +575,7 @@ export default function CaseDetail() {
   const allTabs = [
     { id: 'overview' as const, label: 'Overview' },
     { id: 'documents' as const, label: 'Documents' },
-    { id: 'hearing' as const, label: 'Hearing' },
+    { id: 'hearing' as const, label: isStudentView ? 'Hearing Participants' : 'Hearing' },
     // Students never see internal Notes; they get "Message from Proctor Office" instead.
     isStudentView
       ? { id: 'message' as const, label: 'Message from Proctor Office' }
@@ -593,8 +651,13 @@ export default function CaseDetail() {
               return next ? <HearingCountdown date={next.hearing.date} time={next.hearing.time} /> : null;
             })()}
             <div className="flex flex-wrap gap-2 justify-end">
+              {readyForReport && ['proctor', 'coordinator', 'female-coordinator', 'super-admin'].includes(role) && (
+                <span className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
+                  <FileIcon /> Ready to Create Report
+                </span>
+              )}
               {coordinatorCanAct && (
-                <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} actingRole={role} onStatusChange={handleStatusChange} onForward={handleForward} />
+                <CoordinatorPanel caseItem={caseItem} isConfidential={isConfidential} actingRole={role} showForward={!readyForReport} onStatusChange={handleStatusChange} onForward={handleForward} />
               )}
               {assistantProctorCanAct && (
                 <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
@@ -1124,6 +1187,22 @@ export default function CaseDetail() {
 
           {/* Hearing Tab */}
           {activeTab === 'hearing' && caseItem.type !== 'type-1' && (
+            isStudentView ? (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium" style={{ color: '#0b2652' }}>Hearing Participants</h3>
+                {Array.from(new Set(caseItem.hearings.flatMap(hearing => hearing.participants || []).filter(Boolean))).length === 0 ? (
+                  <p className="py-8 text-center text-gray-500">No hearing participants added</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    {Array.from(new Set(caseItem.hearings.flatMap(hearing => hearing.participants || []).filter(Boolean))).map(participant => (
+                      <span key={participant} className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-sm font-medium text-[#0b2652] shadow-sm">
+                        {participant}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium" style={{ color: '#0b2652' }}>
@@ -1203,6 +1282,7 @@ export default function CaseDetail() {
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* Message from Proctor Office Tab (students) */}
@@ -1471,17 +1551,42 @@ export default function CaseDetail() {
 
       {showAddAccused && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => !addingAccused && setShowAddAccused(false)} />
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => {
+            if (!addingAccused) {
+              setShowAddAccused(false);
+              setAccusedLookupStatus('idle');
+            }
+          }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
               <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>Add Accused Person</h3>
-              <p className="mt-1 text-sm text-gray-500">This person will become part of the permanent case details.</p>
+              <p className="mt-1 text-sm text-gray-500">Enter the Student ID to load the person from the student directory. You can review or edit the information before adding it.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium text-gray-700 sm:col-span-2">Name <span className="text-red-500">*</span>
-                  <input autoFocus value={accusedForm.name} onChange={e => setAccusedForm(v => ({ ...v, name: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                <label className="text-sm font-medium text-gray-700 sm:col-span-2">Student ID / University ID
+                  <div className="relative mt-1">
+                    <input
+                      autoFocus
+                      value={accusedForm.accusedStudentId}
+                      onChange={e => {
+                        setAccusedLookupStatus('idle');
+                        setAccusedForm(v => ({ ...v, accusedStudentId: e.target.value }));
+                      }}
+                      placeholder="Enter the student ID to search automatically"
+                      autoComplete="off"
+                      aria-describedby="accused-student-lookup-status"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                    {accusedLookupStatus === 'loading' && <span className="absolute right-3 top-2.5 h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" aria-hidden="true" />}
+                  </div>
                 </label>
-                <label className="text-sm font-medium text-gray-700">Student ID
-                  <input value={accusedForm.accusedStudentId} onChange={e => setAccusedForm(v => ({ ...v, accusedStudentId: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                <div id="accused-student-lookup-status" aria-live="polite" className="sm:col-span-2">
+                  {accusedLookupStatus === 'loading' && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">Searching the student directory…</p>}
+                  {accusedLookupStatus === 'found' && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700"><strong>Student found.</strong> Name, department, contact, guardian contact, and CGPA were filled automatically where available.</p>}
+                  {accusedLookupStatus === 'not-found' && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"><strong>No matching student was found.</strong> Check the ID or complete the fields manually.</p>}
+                  {accusedLookupStatus === 'error' && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">The student directory could not be reached. You can try again or enter the information manually.</p>}
+                </div>
+                <label className="text-sm font-medium text-gray-700 sm:col-span-2">Name <span className="text-red-500">*</span>
+                  <input value={accusedForm.name} onChange={e => setAccusedForm(v => ({ ...v, name: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-medium text-gray-700">Department
                   <input value={accusedForm.department} onChange={e => setAccusedForm(v => ({ ...v, department: e.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
@@ -1497,7 +1602,10 @@ export default function CaseDetail() {
                 </label>
               </div>
               <div className="mt-5 flex justify-end gap-2">
-                <button disabled={addingAccused} onClick={() => setShowAddAccused(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
+                <button disabled={addingAccused} onClick={() => {
+                  setShowAddAccused(false);
+                  setAccusedLookupStatus('idle');
+                }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
                 <button disabled={addingAccused || !accusedForm.name.trim()} onClick={handleAddAccused} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
                   {addingAccused ? 'Adding…' : 'Add Accused Person'}
                 </button>
@@ -2146,12 +2254,13 @@ function ForwardButton({ fromRole, caseItem, onForward, beforeForward, label = '
 }
 
 // Coordinator actions — compact header buttons that open the verify / forward popups.
-function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential, actingRole }: {
+function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential, actingRole, showForward }: {
   onStatusChange: (status: string, extra?: any) => Promise<void>;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
   caseItem: Case;
   isConfidential: boolean;
   actingRole: string;
+  showForward: boolean;
 }) {
   const [actionLoading, setActionLoading] = useState(false);
   const withLoading = async (fn: () => Promise<void>) => {
@@ -2241,12 +2350,12 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
           : 'flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-600 bg-emerald-600 text-white text-sm cursor-default'}>
         <CheckIcon /> {needsVerification ? 'Verify Case' : 'Verified'}
       </button>
-      <button onClick={() => setForwardOpen(true)}
+      {showForward && <button onClick={() => setForwardOpen(true)}
         disabled={!!forwardBlockedReason}
         title={forwardBlockedReason}
         className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50">
         <ForwardIcon /> Accept & Forward
-      </button>
+      </button>}
 
       {/* Verify popup */}
       {verifyOpen && (
@@ -2307,7 +2416,7 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
       )}
 
       {/* Accept & Forward popup */}
-      {forwardOpen && (
+      {showForward && forwardOpen && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !actionLoading && setForwardOpen(false)} />
           <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-24">

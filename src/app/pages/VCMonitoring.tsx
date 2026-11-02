@@ -15,7 +15,7 @@ export default function VCMonitoring() {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -248,7 +248,7 @@ export default function VCMonitoring() {
             </tbody>
           </table>
         </div>
-        <TablePagination currentPage={page} pageSize={pageSize} totalItems={cases.length} onPageChange={setPage} itemLabel="cases" />
+        <TablePagination currentPage={page} pageSize={pageSize} totalItems={cases.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="cases" />
       </div>
     </div>
   );

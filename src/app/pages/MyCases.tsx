@@ -32,10 +32,10 @@ export default function MyCases() {
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const pageSize = 10;
 
   // Filter chip coming from the dashboard stat card (?filter=my-tasks|pending|completed)
   // — purely a client-side narrowing on top of the server-side "my cases" set.
@@ -62,7 +62,7 @@ export default function MyCases() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, pageSize]);
 
   useEffect(() => {
     fetchMyCases();
@@ -283,7 +283,7 @@ export default function MyCases() {
                 </tbody>
               </table>
             </div>
-            <TablePagination currentPage={page} pageSize={pageSize} totalItems={totalCount} onPageChange={setPage} itemLabel="cases" />
+            <TablePagination currentPage={page} pageSize={pageSize} totalItems={totalCount} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="cases" />
           </div>
         </>
       )}

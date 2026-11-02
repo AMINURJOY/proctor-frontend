@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { LockIcon, EyeIcon, ShieldIcon, CheckIcon } from '../components/Icons';
@@ -9,6 +9,8 @@ import { statusLabel } from '../utils/status';
 
 export default function ConfidentialCases() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const openCaseId = searchParams.get('openCase');
   const { currentUser } = useAuth();
   const permissions = usePermissions();
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
@@ -16,6 +18,10 @@ export default function ConfidentialCases() {
   const [loading, setLoading] = useState(true);
 
   const canView = currentUser?.role === 'super-admin' || permissions['confidential']?.canRead === true;
+
+  useEffect(() => {
+    if (openCaseId) navigate(`/cases/${openCaseId}`, { replace: true });
+  }, [openCaseId, navigate]);
 
   useEffect(() => {
     if (!canView) return;
@@ -92,7 +98,7 @@ export default function ConfidentialCases() {
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>Confidential Cases</h1>
+          <h1 className="text-3xl mb-2" style={{ color: '#0b2652' }}>{isCommittee ? 'Sexual Harassment Committee Reports' : 'Confidential Cases'}</h1>
           <p className="text-gray-600">Sexual Harassment Committee - Restricted Access</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-lg">

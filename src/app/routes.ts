@@ -23,12 +23,15 @@ import StudentsList from './pages/StudentsList';
 import Type3WorkflowPage from './pages/Type3WorkflowPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import AccusedStatisticsPage from './pages/AccusedStatisticsPage';
+import WarningsPage from './pages/WarningsPage';
+import { landingPathForRole } from './utils/roleNavigation';
 
 // Students land on /submit instead of /dashboard.
-function StudentDashboardGuard() {
+function RoleDashboardGuard() {
   const { currentUser } = useAuth();
-  if (currentUser?.role === 'student') {
-    return React.createElement(Navigate, { to: '/submit', replace: true });
+  const landingPath = landingPathForRole(currentUser?.role);
+  if (landingPath !== '/dashboard') {
+    return React.createElement(Navigate, { to: landingPath, replace: true });
   }
   return React.createElement(Dashboard);
 }
@@ -36,7 +39,7 @@ function StudentDashboardGuard() {
 // Catch-all redirect: students go to /submit, everyone else to /dashboard.
 function StudentCatchAllRedirect() {
   const { currentUser } = useAuth();
-  const target = currentUser?.role === 'student' ? '/submit' : '/dashboard';
+  const target = landingPathForRole(currentUser?.role);
   return React.createElement(Navigate, { to: target, replace: true });
 }
 
@@ -57,7 +60,7 @@ export const router = createBrowserRouter([
     path: '/',
     Component: Layout,
     children: [
-      { path: 'dashboard', Component: StudentDashboardGuard },
+      { path: 'dashboard', Component: RoleDashboardGuard },
       { path: 'advanced-search', Component: AdvancedSearch },
       { path: 'accused-statistics', Component: AccusedStatisticsPage },
       { path: 'submit', Component: SubmitIncident },
@@ -67,6 +70,7 @@ export const router = createBrowserRouter([
       { path: 'cases/:id/edit', Component: CaseEdit },
       { path: 'my-cases', Component: MyCases },
       { path: 'notifications', Component: NotificationsPage },
+      { path: 'warnings', Component: WarningsPage },
       { path: 'hearings', Component: HearingManagement },
       { path: 'confidential', Component: ConfidentialCases },
       { path: 'monitoring', Component: VCMonitoring },

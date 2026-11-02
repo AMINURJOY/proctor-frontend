@@ -13,14 +13,20 @@ import { caseTypeLabel } from '../utils/caseTypes';
 type Group = { name: string; count: number };
 type Person = { id: string; name: string; role: string };
 type DepartmentBatch = { department: string; batchId: string; batch: string };
-type CaseRow = { id: string; caseNumber: string; studentName: string; studentId: string; department?: string; batch?: string; categoryName?: string; status: string; type: string; assignedTo?: string; createdAt: string; accusedName?: string; complainantName?: string; punishment?: string; semester?: number; cgpa?: number; collaborators?: string };
+type PersonOutcome = { name: string; studentId: string; outcome: 'guilty' | 'not-guilty' | 'warning' | 'counselling-needed-with-mentor' };
+type CaseRow = { id: string; caseNumber: string; studentName: string; studentId: string; department?: string; batch?: string; categoryName?: string; status: string; type: string; assignedTo?: string; createdAt: string; accusedName?: string; complainantName?: string; punishment?: string; semester?: number; cgpa?: number; collaborators?: string; personOutcomes?: PersonOutcome[] };
 type Activity = { caseId: string; caseNumber: string; action: string; user: string; timestamp: string };
 type Analytics = { totalCases: number; openCases: number; resolvedCases: number; pendingCases: number; underReview: number; type1Pending: number; type2Pending: number; monthlyTrend: Group[]; yearlyTrend: Group[]; semesters: Group[]; caseTypes: Group[]; categories: Group[]; cgpaRanges: Group[]; workload: Group[]; roleWorkload: Group[]; departments: string[]; batches: string[]; departmentBatches: DepartmentBatch[]; people: Person[]; cases: CaseRow[]; activity: Activity[]; page: number; pageSize: number };
-type Filters = { search: string; status: string; type: string; categoryId: string; departments: string[]; batchIds: string[]; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number };
-const emptyFilters: Filters = { search: '', status: '', type: '', categoryId: '', departments: [], batchIds: [], responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1 };
+type Filters = { search: string; status: string; personOutcome: string; type: string; categoryId: string; departments: string[]; batchIds: string[]; responsiblePersonId: string; year: string; semester: string; minCgpa: string; maxCgpa: string; from: string; to: string; page: number; pageSize: number };
+const emptyFilters: Filters = { search: '', status: '', personOutcome: '', type: '', categoryId: '', departments: [], batchIds: [], responsiblePersonId: '', year: '', semester: '', minCgpa: '', maxCgpa: '', from: '', to: '', page: 1, pageSize: 50 };
 const colors = ['#173b70', '#377cb2', '#57a5b5', '#95c6a5', '#e7a85a', '#a98ec0'];
 const statuses = ['submitted', 'pending', 'under-review', 'verified', 'assigned', 'hearing-scheduled', 'hearing-completed', 'resolved', 'closed', 'rejected', 'on-hold', 'suggested-type-2', 'police-case', 'forwarded-to-registrar', 'forwarded-to-committee', 'resubmission-requested'];
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-600 focus:outline-none';
+const outcomeLabel = (outcome: string) => outcome === 'not-guilty'
+  ? 'Not Guilty'
+  : outcome === 'counselling-needed-with-mentor'
+    ? 'Counselling Needed with Mentor'
+    : outcome.charAt(0).toUpperCase() + outcome.slice(1);
 
 function MultiSelectFilter({ label, options, selected, onChange, emptyText, allOptionLabel }: {
   label: string;
@@ -133,7 +139,7 @@ export default function AdvancedSearch() {
       ...Object.fromEntries(Object.entries(scalarFilters).filter(([, value]) => value !== '')),
       department: departments.length ? departments.join(',') : undefined,
       batch: batchIds.length ? [...new Set(exactBatches)].join(',') : undefined,
-      pageSize: 10
+      pageSize: filters.pageSize
     })
       .then(res => { if (active) { setData(res.data.data); setError(''); } })
       .catch(() => { if (active) setError('Unable to load dashboard data.'); })
@@ -187,6 +193,7 @@ export default function AdvancedSearch() {
       'Category': c.categoryName || '—',
       'Type': caseTypeLabel(c.type),
       'Status': statusLabel(c.status),
+      'Person Outcomes': (c.personOutcomes || []).map(person => `${person.name}: ${outcomeLabel(person.outcome)}`).join('; ') || '—',
       'Punishment': c.punishment || '—',
       'Responsible': c.assignedTo || 'Unassigned',
       'Collaborators': c.collaborators || '—',
@@ -225,7 +232,8 @@ export default function AdvancedSearch() {
         <label className="text-xs font-medium text-slate-600 lg:col-span-2">Search case, student or accused<input className={field} value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Name, ID, case number, description" /></label>
         <label className="text-xs font-medium text-slate-600">From date<input className={field} type="date" value={filters.from} onChange={e => update('from', e.target.value)} /></label>
         <label className="text-xs font-medium text-slate-600">To date<input className={field} type="date" value={filters.to} onChange={e => update('to', e.target.value)} /></label>
-        <label className="text-xs font-medium text-slate-600">Status<select className={field} value={filters.status} onChange={e => update('status', e.target.value)}><option value="">All statuses</option>{statuses.map(x => <option key={x} value={x}>{statusLabel(x)}</option>)}</select></label>
+        <label className="text-xs font-medium text-slate-600">Case status<select className={field} value={filters.status} onChange={e => update('status', e.target.value)}><option value="">All case statuses</option>{statuses.map(x => <option key={x} value={x}>{statusLabel(x)}</option>)}</select></label>
+        <label className="text-xs font-medium text-slate-600">Person outcome<select className={field} value={filters.personOutcome} onChange={e => update('personOutcome', e.target.value)}><option value="">All person outcomes</option><option value="guilty">Guilty</option><option value="not-guilty">Not Guilty</option><option value="warning">Warning</option><option value="counselling-needed-with-mentor">Counselling Needed with Mentor</option></select></label>
         <label className="text-xs font-medium text-slate-600">Case type<select className={field} value={filters.type} onChange={e => update('type', e.target.value)}><option value="">All types</option><option value="type-1">Message to Proctor</option><option value="type-2">Complain to Proctor</option><option value="type-3">Type 3</option><option value="confidential">Confidential</option></select></label>
         <label className="text-xs font-medium text-slate-600">Category<select className={field} value={filters.categoryId} onChange={e => update('categoryId', e.target.value)}><option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}{c.isActive ? '' : ' (inactive)'}</option>)}</select></label>
         <label className="text-xs font-medium text-slate-600">Year<input className={field} type="number" min="2000" max="2100" value={filters.year} onChange={e => update('year', e.target.value)} placeholder="All years" /></label>
@@ -254,11 +262,11 @@ export default function AdvancedSearch() {
       <div>
         <section id="report-section" className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5"><h2 className="font-semibold text-slate-800">Cases ({data.totalCases})</h2><p className="text-xs text-slate-500">Select a case to see student details, investigation, action, outcome, and timeline.</p></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[950px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Case', 'Accused', 'Complainant', 'Department', 'Batch', 'Category', 'Type', 'Status', 'Punishment', 'Responsible', 'Collaborators', 'Opened'].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>
-          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3 font-mono">{c.batch || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{caseTypeLabel(c.type)}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
-          {!(data.cases?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-slate-500">No cases match these filters.</td></tr>}
+        <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Case', 'Accused', 'Complainant', 'Department', 'Batch', 'Category', 'Type', 'Case Status', 'Person Outcome', 'Punishment', 'Responsible', 'Collaborators', 'Opened'].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>
+          {(data.cases || []).map(c => <tr key={c.id} tabIndex={0} role="link" onClick={() => navigate(`/cases/${c.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }} className="cursor-pointer border-t border-slate-100 hover:bg-blue-50 focus:bg-blue-50"><td className="px-4 py-3 font-medium text-blue-700">{c.caseNumber}</td><td className="px-4 py-3">{c.accusedName || '—'}<span className="block text-xs text-slate-500">{c.studentId}</span></td><td className="px-4 py-3">{c.complainantName || '—'}</td><td className="px-4 py-3">{c.department || '—'}</td><td className="px-4 py-3 font-mono">{c.batch || '—'}</td><td className="px-4 py-3">{c.categoryName || '—'}</td><td className="px-4 py-3">{caseTypeLabel(c.type)}</td><td className="px-4 py-3">{statusLabel(c.status)}</td><td className="px-4 py-3"><div className="flex min-w-32 flex-col gap-1">{(c.personOutcomes || []).map((person, index) => <span key={`${person.studentId}-${person.outcome}-${index}`} title={`${person.name}${person.studentId ? ` · ${person.studentId}` : ''}`} className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${person.outcome === 'guilty' ? 'bg-red-100 text-red-700' : person.outcome === 'warning' ? 'bg-amber-100 text-amber-800' : person.outcome === 'counselling-needed-with-mentor' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{person.name}: {outcomeLabel(person.outcome)}</span>)}{!(c.personOutcomes?.length) && <span className="text-slate-400">—</span>}</div></td><td className="px-4 py-3">{c.punishment || '—'}</td><td className="px-4 py-3">{c.assignedTo || 'Unassigned'}</td><td className="px-4 py-3">{c.collaborators || '—'}</td><td className="px-4 py-3">{new Date(c.createdAt).toLocaleDateString()}</td></tr>)}
+          {!(data.cases?.length) && <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-500">No cases match these filters.</td></tr>}
         </tbody></table></div>
-        <TablePagination currentPage={data.page} pageSize={data.pageSize} totalItems={data.totalCases} onPageChange={page => update('page', page)} itemLabel="cases" />
+        <TablePagination currentPage={data.page} pageSize={data.pageSize} totalItems={data.totalCases} onPageChange={page => update('page', page)} onPageSizeChange={pageSize => update('pageSize', pageSize)} itemLabel="cases" />
       </section>
       </div>
 

@@ -20,9 +20,10 @@ import {
 import { ScrollText } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { notificationsApi, casesApi, dashboardApi } from '../services/api';
+import { notificationsApi, casesApi, dashboardApi, type3Api, warningsApi } from '../services/api';
 import { AppNotification } from '../types';
 import { roleLabel } from '../utils/roles';
+import { focusedReportMenuForRole, notificationPathForRole } from '../utils/roleNavigation';
 
 export default function Layout() {
   const { currentUser, logout } = useAuth();
@@ -33,13 +34,14 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [validCaseIds, setValidCaseIds] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
   const [myCasesCount, setMyCasesCount] = useState(0);
   const [type1Count, setType1Count] = useState(0);
   const [confidentialCount, setConfidentialCount] = useState(0);
   const [pendingReportsCount, setPendingReportsCount] = useState(0);
   const [completedReportsCount, setCompletedReportsCount] = useState(0);
+  const [type3QueueCounts, setType3QueueCounts] = useState<Record<string, number>>({});
+  const [warningCount, setWarningCount] = useState(0);
   const permissions = usePermissions();
 
   const handleLogout = () => {
@@ -91,33 +93,27 @@ export default function Layout() {
     } catch { /* silent */ }
   }, []);
 
+  const fetchType3QueueCounts = useCallback(async () => {
+    if (role === 'student' || !role) return;
+    try {
+      const res = await type3Api.queueCounts();
+      setType3QueueCounts(res.data.data ?? res.data ?? {});
+    } catch { setType3QueueCounts({}); }
+  }, [role]);
+
+  const fetchWarningCount = useCallback(async () => {
+    if (role !== 'student') return;
+    try { const res = await warningsApi.unreadCount(); setWarningCount(res.data.data?.count ?? 0); }
+    catch { setWarningCount(0); }
+  }, [role]);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await notificationsApi.getAll();
       const all: AppNotification[] = res.data.data || [];
-      // Drop notifications whose caseId no longer exists, then keep the unread
-      // badge in sync with what the dropdown actually shows.
-      const filtered = all.filter(n => !n.caseId || validCaseIds.has(n.caseId));
-      setNotifications(filtered);
-      setUnreadCount(filtered.filter(n => !n.isRead).length);
+      setNotifications(all);
+      setUnreadCount(all.filter(n => !n.isRead).length);
     } catch { /* silent */ }
-  }, [validCaseIds]);
-
-  // Pull the list of valid case IDs once on mount. Used to hide notifications
-  // that reference a case that has since been deleted.
-  useEffect(() => {
-    let cancelled = false;
-    casesApi
-      .getAll({ pageSize: 1000 })
-      .then((res) => {
-        if (cancelled) return;
-        const items = res.data.data?.items || res.data.data || [];
-        const ids = new Set<string>();
-        for (const c of items) if (c?.id) ids.add(c.id);
-        setValidCaseIds(ids);
-      })
-      .catch(() => { /* silent */ });
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -125,11 +121,16 @@ export default function Layout() {
     fetchMyCasesCount();
     fetchCategoryCounts();
     fetchReportCounts();
-    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); }, 30000);
-    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); } };
+    fetchType3QueueCounts();
+    fetchWarningCount();
+    const interval = setInterval(() => { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); fetchType3QueueCounts(); fetchWarningCount(); }, 30000);
+    const onFocus = () => { if (document.visibilityState === 'visible') { fetchUnreadCount(); fetchMyCasesCount(); fetchCategoryCounts(); fetchReportCounts(); fetchType3QueueCounts(); fetchWarningCount(); } };
+    const onReportQueuesUpdated = () => { fetchReportCounts(); fetchType3QueueCounts(); };
     document.addEventListener('visibilitychange', onFocus);
-    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onFocus); };
-  }, [fetchUnreadCount, fetchMyCasesCount, fetchCategoryCounts, fetchReportCounts]);
+    window.addEventListener('report-queues-updated', onReportQueuesUpdated);
+    window.addEventListener('warnings-updated', fetchWarningCount);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onFocus); window.removeEventListener('report-queues-updated', onReportQueuesUpdated); window.removeEventListener('warnings-updated', fetchWarningCount); };
+  }, [fetchUnreadCount, fetchMyCasesCount, fetchCategoryCounts, fetchReportCounts, fetchType3QueueCounts, fetchWarningCount, location.pathname]);
 
   const handleBellClick = () => {
     setShowNotifications(!showNotifications);
@@ -153,7 +154,7 @@ export default function Layout() {
       } catch { /* silent */ }
     }
     setShowNotifications(false);
-    if (n.caseId) navigate(`/cases/${n.caseId}`);
+    if (n.caseId) navigate(notificationPathForRole(role, n.caseId));
   };
 
   const timeAgo = (dateStr: string) => {
@@ -179,6 +180,7 @@ export default function Layout() {
     { path: '/monitoring', label: 'VC Monitoring', icon: BarChartIcon, menuKey: 'monitoring' },
     { path: '/my-cases', label: 'My Cases', icon: CasesIcon, menuKey: 'my-cases' },
     { path: '/notifications', label: 'Notifications', icon: BellIcon, menuKey: 'notifications' },
+    { path: '/warnings', label: 'Warnings', icon: ShieldIcon, menuKey: 'warnings', studentOnly: true },
     { path: '/reports', label: 'Pending Reports', icon: ReportIcon, menuKey: 'reports' },
     { path: '/completed-reports', label: 'Completed Reports', icon: ReportIcon, menuKey: 'completed-reports' },
     { path: '/registrar-reports', label: 'Registrar Reports', icon: ReportIcon, menuKey: 'registrar-reports' },
@@ -192,7 +194,13 @@ export default function Layout() {
     { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText, menuKey: 'audit-logs' },
   ];
 
+  const focusedReportMenu = focusedReportMenuForRole(role);
   const menuItems = allMenuItems.filter(item => {
+    if (item.studentOnly) return role === 'student';
+    if (role === 'student' && item.menuKey === 'cases') return false;
+    // These approval roles intentionally have a focused sidebar: their own queue and
+    // Notifications. General Settings is rendered separately below.
+    if (focusedReportMenu && item.menuKey !== focusedReportMenu && item.menuKey !== 'notifications') return false;
     // Students directory is available to all staff (any non-student role); there is no
     // dedicated permission row for it.
     if (item.menuKey === 'students') return isSuperAdmin || (!!currentUser?.role && currentUser.role !== 'student');
@@ -265,6 +273,11 @@ export default function Layout() {
         {menuItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
+          const menuLabel = role === 'disciplinary-committee' && item.menuKey === 'completed-reports'
+            ? 'Committee Reports'
+            : role === 'sexual-harassment-committee' && item.menuKey === 'confidential'
+              ? 'SH Committee Reports'
+              : item.label;
           return (
             <button
               key={item.path}
@@ -276,12 +289,15 @@ export default function Layout() {
               }`}
             >
               <Icon />
-              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+              <span className="text-sm font-medium flex-1 text-left">{menuLabel}</span>
               {item.menuKey === 'my-cases' && myCasesCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{myCasesCount > 99 ? '99+' : myCasesCount}</span>
               )}
               {item.menuKey === 'notifications' && unreadCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+              {item.menuKey === 'warnings' && warningCount > 0 && (
+                <span className="min-w-5 h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{warningCount > 99 ? '99+' : warningCount}</span>
               )}
               {item.menuKey === 'incidents' && type1Count > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{type1Count > 99 ? '99+' : type1Count}</span>
@@ -294,6 +310,9 @@ export default function Layout() {
               )}
               {item.menuKey === 'completed-reports' && completedReportsCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{completedReportsCount > 99 ? '99+' : completedReportsCount}</span>
+              )}
+              {(type3QueueCounts[item.menuKey] ?? 0) > 0 && (
+                <span className="min-w-5 h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{type3QueueCounts[item.menuKey] > 99 ? '99+' : type3QueueCounts[item.menuKey]}</span>
               )}
             </button>
           );
