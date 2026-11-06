@@ -198,6 +198,9 @@ export default function Layout() {
   const menuItems = allMenuItems.filter(item => {
     if (item.studentOnly) return role === 'student';
     if (role === 'student' && item.menuKey === 'cases') return false;
+    // Deputy Proctor is shared by male and female users. The confidential permission is seeded
+    // on the role, but its menu is exposed only to female Deputy Proctor profiles.
+    if (item.menuKey === 'confidential' && role === 'deputy-proctor' && currentUser?.gender !== 'female') return false;
     // These approval roles intentionally have a focused sidebar: their own queue and
     // Notifications. General Settings is rendered separately below.
     if (focusedReportMenu && item.menuKey !== focusedReportMenu && item.menuKey !== 'notifications') return false;

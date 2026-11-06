@@ -2,6 +2,7 @@ import React from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
+import LandingPage from './pages/LandingPage';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AdvancedSearch from './pages/AdvancedSearch';
@@ -54,6 +55,10 @@ function AdminSettingsGuard() {
 export const router = createBrowserRouter([
   {
     path: '/',
+    Component: LandingPage,
+  },
+  {
+    path: '/login',
     Component: LoginPage,
   },
   {

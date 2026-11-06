@@ -1,31 +1,64 @@
+import { FormEvent, useMemo, useState } from 'react';
+import { ArrowLeft, ChevronDown, ChevronUp, LockKeyhole, UserRound } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { roleLabel } from '../utils/roles';
 import { proctorialBody, users } from '../data/mockData';
-import { useNavigate } from 'react-router';
-import { LockIcon } from './Icons';
-import { useState } from 'react';
 import { User } from '../types';
 import { landingPathForRole } from '../utils/roleNavigation';
+import { roleLabel } from '../utils/roles';
+
+const roleColors: Record<string, string> = {
+  student: 'bg-blue-600 hover:bg-blue-700',
+  coordinator: 'bg-emerald-700 hover:bg-emerald-800',
+  proctor: 'bg-purple-700 hover:bg-purple-800',
+  'assistant-proctor': 'bg-sky-700 hover:bg-sky-800',
+  'deputy-proctor': 'bg-indigo-600 hover:bg-indigo-700',
+  registrar: 'bg-orange-600 hover:bg-orange-700',
+  'disciplinary-committee': 'bg-rose-800 hover:bg-rose-900',
+  'female-coordinator': 'bg-teal-600 hover:bg-teal-700',
+  'sexual-harassment-committee': 'bg-amber-600 hover:bg-amber-700',
+  vc: 'bg-slate-700 hover:bg-slate-800',
+  'super-admin': 'bg-green-700 hover:bg-green-800',
+  external: 'bg-stone-600 hover:bg-stone-700',
+  'dc-chairman': 'bg-fuchsia-700 hover:bg-fuchsia-800',
+  'dc-member': 'bg-violet-700 hover:bg-violet-800',
+  'dc-secretary': 'bg-indigo-700 hover:bg-indigo-800',
+  chairman: 'bg-rose-800 hover:bg-rose-900',
+};
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, currentUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [quickLoginOpen, setQuickLoginOpen] = useState(true);
 
-  const handleFormLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+  const committeeAccounts = useMemo(
+    () => users.filter((user) =>
+      ['registrar', 'disciplinary-committee', 'vc', 'sexual-harassment-committee', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman'].includes(user.role)
+    ),
+    []
+  );
+  const otherAccounts = useMemo(() => users.filter((user) => user.role === 'student' || user.role === 'super-admin'), []);
+  const quickLoginProfiles = [...proctorialBody, ...committeeAccounts, ...otherAccounts];
+
+  const destinationFor = (user: User) => {
+    const requestedPath = searchParams.get('next');
+    const safeRequestedPath = requestedPath?.startsWith('/') && !requestedPath.startsWith('//') ? requestedPath : null;
+    return user.role === 'student' && safeRequestedPath ? safeRequestedPath : landingPathForRole(user.role);
+  };
+
+  const handleFormLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password);
-      if (user) {
-        navigate(landingPathForRole(user.role));
-      } else {
-        setError('Invalid email or password. Please try again.');
-      }
+      const user = await login(email.trim(), password);
+      if (user) navigate(destinationFor(user));
+      else setError('Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -35,217 +68,144 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const pwd = user.role === 'super-admin' ? 'Admin@123!' : 'Password123!';
-      const loggedIn = await login(user.email, pwd);
-      if (loggedIn) {
-        navigate(landingPathForRole(user.role));
-      } else {
-        setError('Quick login failed. Please try again.');
-      }
+      const demoPassword = user.role === 'super-admin' ? 'Admin@123!' : 'Password123!';
+      const loggedInUser = await login(user.email, demoPassword);
+      if (loggedInUser) navigate(destinationFor(loggedInUser));
+      else setError('Quick login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Solid role chips: each role gets one saturated colour, white text.
-  const roleColors: Record<string, string> = {
-    'student': 'bg-blue-600 hover:bg-blue-700',
-    'coordinator': 'bg-emerald-700 hover:bg-emerald-800',
-    'proctor': 'bg-purple-700 hover:bg-purple-800',
-    'assistant-proctor': 'bg-sky-700 hover:bg-sky-800',
-    'deputy-proctor': 'bg-indigo-600 hover:bg-indigo-700',
-    'registrar': 'bg-orange-600 hover:bg-orange-700',
-    'disciplinary-committee': 'bg-rose-800 hover:bg-rose-900',
-    'female-coordinator': 'bg-teal-600 hover:bg-teal-700',
-    'sexual-harassment-committee': 'bg-amber-600 hover:bg-amber-700',
-    'vc': 'bg-slate-700 hover:bg-slate-800',
-    'super-admin': 'bg-green-700 hover:bg-green-800',
-    'external': 'bg-stone-600 hover:bg-stone-700',
-    'dc-chairman': 'bg-fuchsia-700 hover:bg-fuchsia-800',
-    'dc-member': 'bg-violet-700 hover:bg-violet-800',
-    'dc-secretary': 'bg-indigo-700 hover:bg-indigo-800',
-    'chairman': 'bg-rose-800 hover:bg-rose-900'
-  };
-
-  // These demo profiles match the seeded accounts and use the same login flow.
-  const committeeAccounts = users.filter((u) =>
-    ['registrar', 'disciplinary-committee', 'vc', 'sexual-harassment-committee', 'dc-chairman', 'dc-member', 'dc-secretary', 'chairman'].includes(u.role)
-  );
-  const otherAccounts = users.filter((u) => u.role === 'student' || u.role === 'super-admin');
-  const quickLoginProfiles = [...proctorialBody, ...committeeAccounts, ...otherAccounts];
-
   const renderQuickLoginChip = (user: User) => (
     <button
       key={user.id}
+      type="button"
       onClick={() => handleQuickLogin(user)}
       disabled={loading}
       title={`${user.name} - ${user.rank ?? roleLabel(user.role)} (${user.email})`}
-      className={`rounded-lg px-2.5 py-2 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 ${roleColors[user.role]}`}
+      className={`min-w-0 rounded-lg px-2.5 py-2 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 ${roleColors[user.role] ?? 'bg-slate-700 hover:bg-slate-800'}`}
     >
       <span className="block truncate text-xs font-semibold leading-tight">{user.name}</span>
-      <span className="mt-0.5 block truncate text-[10px] leading-tight text-white/75">
-        {user.rank ?? roleLabel(user.role)}
-      </span>
+      <span className="mt-0.5 block truncate text-[10px] leading-tight text-white/75">{user.rank ?? roleLabel(user.role)}</span>
     </button>
   );
 
   return (
-    <div className="min-h-[100svh] w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,_#f4f7fc_0%,_#e9eef8_45%,_#dde7f4_100%)]">
-      <div className="grid min-h-[100svh] w-full lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative flex min-h-[42svh] items-center overflow-hidden bg-[#0b2652] px-6 py-10 text-white shadow-2xl sm:px-8 md:px-12 lg:min-h-[100svh] lg:px-16">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.16),_transparent_36%),radial-gradient(circle_at_bottom_left,_rgba(78,124,255,0.18),_transparent_40%)]" />
-          <div className="absolute -right-16 top-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-          <div className="absolute -left-14 bottom-10 h-32 w-32 rounded-full bg-blue-300/10 blur-3xl" />
+    <div className="relative min-h-screen overflow-x-hidden bg-[#f4f6f8] px-4 py-8 sm:px-6 sm:py-10">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-65">
+        <div className="absolute inset-0 [background-image:linear-gradient(28deg,transparent_49.7%,rgba(11,38,82,0.09)_50%,transparent_50.3%),linear-gradient(152deg,transparent_49.7%,rgba(11,38,82,0.07)_50%,transparent_50.3%)] [background-size:310px_230px]" />
+        <div className="absolute -bottom-36 -left-20 h-[460px] w-[120%] rounded-[50%] border-[3px] border-cyan-300/45" />
+        <div className="absolute -bottom-44 -left-32 h-[430px] w-[125%] rounded-[50%] border-2 border-white" />
+        <div className="absolute bottom-14 left-[22%] h-5 w-5 rounded-full bg-white shadow-[0_0_28px_10px_rgba(103,232,249,0.55)]" />
+        <div className="absolute bottom-24 right-[18%] h-4 w-4 rounded-full bg-white shadow-[0_0_24px_9px_rgba(103,232,249,0.45)]" />
+      </div>
 
-          <div className="relative flex w-full flex-col justify-between gap-10 lg:min-h-[80vh]">
-            <div className="max-w-2xl">
-              <div className="mb-6 flex items-center gap-4">
-                <img src="/daffodil_logo.svg" alt="DIU" className="w-16 h-16 rounded-xl bg-white/10 p-1" />
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white/85 backdrop-blur">
-                  <LockIcon />
-                  Secure access for university case operations
-                </div>
-              </div>
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        className="relative z-10 mx-auto flex w-full max-w-5xl items-center gap-2 text-sm font-semibold text-[#0b2652] transition hover:text-blue-700"
+      >
+        <ArrowLeft size={17} /> Back to home
+      </button>
 
-              <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
-                Proctor Office Automation System
-              </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-slate-200 md:text-lg">
-                Manage incidents, cases, hearings, and committee workflows from a single professional portal built for clarity and control.
-              </p>
+      <main className="relative z-10 mx-auto mt-7 flex w-full max-w-5xl flex-col items-center">
+        <img src="/daffodil_logo.svg" alt="Daffodil International University" className="h-auto w-[245px] sm:w-[290px]" />
+        <p className="mt-2 text-sm font-semibold text-[#0b2652]">Proctor Office Student Support Portal</p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                {['Case tracking', 'Hearing scheduling', 'Role-based access'].map((item) => (
-                  <span key={item} className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm text-white/90 backdrop-blur">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              {[
-                { label: 'Secure', value: 'Access' },
-                { label: 'Unified', value: 'Workflow' },
-                { label: 'Trusted by', value: 'Committees' },
-              ].map((metric) => (
-                <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur">
-                  <div className="text-xs uppercase tracking-[0.3em] text-white/55">{metric.label}</div>
-                  <div className="mt-2 text-lg font-semibold text-white">{metric.value}</div>
-                </div>
-              ))}
-            </div>
+        <section className="mt-8 w-full max-w-[520px] border-t-4 border-blue-600 bg-white px-6 py-7 shadow-[0_18px_50px_rgba(15,23,42,0.16)] sm:px-10 sm:py-8" aria-labelledby="login-heading">
+          <div className="text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700"><LockKeyhole size={21} /></div>
+            <h1 id="login-heading" className="mt-4 text-2xl font-medium text-slate-800 sm:text-3xl">Sign in to your account</h1>
+            <p className="mt-2 text-sm text-slate-500">Use your university account to continue securely.</p>
           </div>
-        </section>
 
-        <section className="flex min-h-[58svh] flex-col justify-center overflow-y-auto bg-white px-6 py-8 shadow-[0_0_0_1px_rgba(15,23,42,0.06)] sm:px-8 md:px-12 lg:min-h-[100svh] lg:px-16 lg:py-12">
-          <div className="mx-auto w-full max-w-xl">
-            <div className="mb-8">
-              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[#0b2652]">Sign In</p>
-              <h2 className="mt-3 text-3xl font-semibold text-slate-900 sm:text-4xl">Welcome back</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                Use your university email to continue, or pick a quick login profile below for demo access.
-              </p>
-            </div>
-
-            <form onSubmit={handleFormLogin} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">
-                  University Email
-                </label>
+          <form onSubmit={handleFormLogin} className="mt-7 space-y-5">
+            <div>
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">University Email</label>
+              <div className="relative">
+                <UserRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="email"
+                  id="login-email"
                   type="email"
+                  autoComplete="username"
+                  required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@university.edu"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2652] focus:bg-white focus:ring-4 focus:ring-[#0b2652]/10"
+                  placeholder="student@diu.edu.bd"
+                  className="h-12 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
                 />
               </div>
+            </div>
 
-              <div>
-                <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-                  Password
-                </label>
+            <div>
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
+              <div className="relative">
+                <LockKeyhole size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="password"
+                  id="login-password"
                   type="password"
+                  autoComplete="current-password"
+                  required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Enter your password"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2652] focus:bg-white focus:ring-4 focus:ring-[#0b2652]/10"
+                  className="h-12 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
                 />
               </div>
+            </div>
 
-              {error ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-[#0b2652]/10 bg-[#0b2652]/5 px-4 py-3 text-sm text-slate-600">
-                  Demo tip: use the quick login profiles below or sign in with your credentials.
-                </div>
-              )}
+            {error && <div role="alert" className="border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700">{error}</div>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b2652] px-4 py-3.5 font-medium text-white shadow-lg shadow-[#0b2652]/20 transition hover:bg-[#10336a] disabled:opacity-60"
-              >
-                {loading ? (
-                  <span>Signing in...</span>
-                ) : (
-                  <>
-                    <LockIcon />
-                    Sign In
-                  </>
-                )}
-              </button>
-            </form>
+            <button type="submit" disabled={loading} className="flex h-11 w-full items-center justify-center bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
 
-            <div className="mt-8 border-t border-slate-200 pt-6">
-              <div className="mb-3 flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Quick Login</h3>
-                  <p className="text-xs text-slate-500">Select a profile to jump directly into the portal.</p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                  {quickLoginProfiles.length} profiles
-                </span>
-              </div>
+          {currentUser && (
+            <button type="button" onClick={() => navigate(landingPathForRole(currentUser.role))} className="mt-3 w-full text-center text-xs font-semibold text-blue-700 hover:underline">
+              You are already signed in — open your portal
+            </button>
+          )}
+        </section>
 
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Proctorial Body
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {proctorialBody.map(renderQuickLoginChip)}
-              </div>
+        <section className="mt-5 w-full max-w-3xl rounded-xl border border-slate-200 bg-white/95 shadow-lg shadow-slate-900/5">
+          <button
+            type="button"
+            onClick={() => setQuickLoginOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+            aria-expanded={quickLoginOpen}
+          >
+            <div>
+              <h2 className="text-sm font-bold text-[#0b2652]">Quick Login <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-700">Demo only</span></h2>
+              <p className="mt-1 text-xs text-slate-500">Choose a seeded account for testing. This section can be removed later.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-500">
+              {quickLoginProfiles.length} profiles
+              {quickLoginOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+            </div>
+          </button>
 
-              <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Registrar, Committees &amp; VC
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {committeeAccounts.map(renderQuickLoginChip)}
-              </div>
+          {quickLoginOpen && (
+            <div className="border-t border-slate-200 px-5 pb-5 pt-4">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Proctorial Body</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{proctorialBody.map(renderQuickLoginChip)}</div>
+
+              <p className="mb-2 mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Registrar, Committees &amp; VC</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{committeeAccounts.map(renderQuickLoginChip)}</div>
 
               {otherAccounts.length > 0 && (
                 <>
-                  <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Student &amp; Admin
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {otherAccounts.map(renderQuickLoginChip)}
-                  </div>
+                  <p className="mb-2 mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Student &amp; Admin</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{otherAccounts.map(renderQuickLoginChip)}</div>
                 </>
               )}
-
-              <p className="mt-4 text-center text-xs text-slate-500">
-                Demo System - Choose any account to enter immediately.
-              </p>
             </div>
-          </div>
+          )}
         </section>
-      </div>
+
+        <p className="mt-6 max-w-xl text-center text-xs leading-5 text-slate-500">For account access problems, contact the university support team. Do not share your password with anyone.</p>
+      </main>
     </div>
   );
 }

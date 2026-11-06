@@ -176,10 +176,6 @@ export default function CaseDetail() {
   // Police-case confirmation dialog
   const [showPoliceConfirm, setShowPoliceConfirm] = useState(false);
 
-  // Deputy Proctor review remarks (lifted to top-level so the header "Accept & Forward"
-  // button and the inline remarks textarea share the same state).
-  const [deputyRemarks, setDeputyRemarks] = useState('');
-
   // The current user's role is used by the header action row.
   const role = currentUser?.role || '';
 
@@ -199,19 +195,33 @@ export default function CaseDetail() {
     return () => window.removeEventListener('keydown', onKey);
   }, [previewDoc]);
 
-  // Student "Message from Proctor Office" unread badge: compare the latest acknowledgment timestamp
-  // against what the student has already seen (stored locally).
+  // Keep the case-tab badge independent from the global Notifications read flag. Opening a
+  // notification marks that row read before navigating to the case, but the red indicator must
+  // remain until the student actually opens "Message from Proctor Office". Including every
+  // visible message ID also makes female-routed acceptance updates behave exactly like male ones.
+  const proctorMessageSignature = [
+    caseItem?.isAcknowledged ? `ack:${caseItem.acknowledgedAt || 'acknowledged'}` : '',
+    ...caseNotifications
+      .map(notification => `notification:${notification.id}:${notification.createdAt || ''}`)
+      .sort(),
+  ].filter(Boolean).join('|');
+
   useEffect(() => {
     if (currentUser?.role !== 'student' || !caseItem?.id) return;
     const seen = localStorage.getItem(`proctorMsgSeen_${caseItem.id}`);
-    setProctorMsgSeen(!caseItem.isAcknowledged || seen === (caseItem.acknowledgedAt || ''));
-  }, [currentUser?.role, caseItem?.id, caseItem?.isAcknowledged, caseItem?.acknowledgedAt]);
+    if (!proctorMessageSignature) {
+      setProctorMsgSeen(true);
+      return;
+    }
+
+    setProctorMsgSeen(seen === proctorMessageSignature);
+  }, [currentUser?.role, caseItem?.id, caseItem?.acknowledgedAt, proctorMessageSignature, caseNotifications]);
 
   // Mark the message as seen once the student opens the Message tab, and clear the
   // unread notifications badge by marking this case's notifications as read.
   useEffect(() => {
     if (activeTab === 'message' && currentUser?.role === 'student' && caseItem?.id) {
-      localStorage.setItem(`proctorMsgSeen_${caseItem.id}`, caseItem.acknowledgedAt || '');
+      localStorage.setItem(`proctorMsgSeen_${caseItem.id}`, proctorMessageSignature);
       setProctorMsgSeen(true);
       const unread = caseNotifications.filter(n => !n.isRead);
       if (unread.length > 0) {
@@ -219,7 +229,7 @@ export default function CaseDetail() {
           .then(() => setCaseNotifications(prev => prev.map(n => ({ ...n, isRead: true }))));
       }
     }
-  }, [activeTab, currentUser?.role, caseItem?.id, caseItem?.acknowledgedAt, caseNotifications]);
+  }, [activeTab, currentUser?.role, caseItem?.id, proctorMessageSignature, caseNotifications]);
 
   // Hearing tab "new update" badge: red dot until the user opens the Hearing tab, keyed
   // on the latest hearing update so a reschedule/new hearing re-triggers the badge.
@@ -663,7 +673,7 @@ export default function CaseDetail() {
                 <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
               )}
               {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
-                <DeputyProctorPanel caseItem={caseItem} remarks={deputyRemarks} onForward={handleForward} />
+                <DeputyProctorPanel caseItem={caseItem} onForward={handleForward} />
               )}
               <AssignCaseButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
               <CloseHearingButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
@@ -784,7 +794,7 @@ export default function CaseDetail() {
       )}
 
       {/* Role-Based Action Panel */}
-      {!isType3 && <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} deputyRemarks={deputyRemarks} setDeputyRemarks={setDeputyRemarks} />}
+      {!isType3 && <RoleActionPanel role={role} caseItem={caseItem} isConfidential={isConfidential} onStatusChange={handleStatusChange} onForward={handleForward} onRefresh={refreshCase} />}
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-6">
@@ -1726,20 +1736,16 @@ export default function CaseDetail() {
 }
 
 // Role-based action panel component
-function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onForward, onRefresh, deputyRemarks, setDeputyRemarks }: {
+function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onForward, onRefresh }: {
   role: string;
   caseItem: Case;
   isConfidential: boolean;
   onStatusChange: (status: string, extra?: { verdict?: string; recommendation?: string; note?: string }) => Promise<void>;
   onForward: (targetRole: string, extra?: { note?: string; recommendation?: string; verdict?: string }) => Promise<void>;
   onRefresh: () => Promise<void>;
-  deputyRemarks: string;
-  setDeputyRemarks: (s: string) => void;
 }) {
   const { currentUser } = useAuth();
   const [actionLoading, setActionLoading] = useState(false);
-  const remarks = deputyRemarks;
-  const setRemarks = setDeputyRemarks;
   const [recommendation, setRecommendation] = useState('');
   const [verdict, setVerdict] = useState('');
   const [investigationNotes, setInvestigationNotes] = useState('');
@@ -1821,49 +1827,10 @@ function RoleActionPanel({ role, caseItem, isConfidential, onStatusChange, onFor
     return null;
   }
 
-  // Deputy Proctor panel
+  // Deputy Proctor actions live entirely in the header Accept & Forward dialog. The dialog
+  // collects the required forwarding note after the recipient is selected.
   if (role === 'deputy-proctor') {
-    return (
-      <>
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-semibold" style={{ color: '#0b2652' }}>Deputy Proctor: Review & Decision</h3>
-            <p className="text-xs text-gray-500">Review reports and make decisions</p>
-          </div>
-        </div>
-
-        {caseItem.notes.length > 0 && (
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">Latest Report / Notes:</p>
-            <div className="border border-gray-200 rounded p-3 bg-white">
-              <p className="text-sm text-gray-700">{caseItem.notes[caseItem.notes.length - 1].content}</p>
-              <p className="text-xs text-gray-500 mt-1">by {caseItem.notes[caseItem.notes.length - 1].author}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Add Remarks</label>
-          <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
-            placeholder="Add your review remarks (will be attached to the forward action)..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            rows={2}
-          />
-        </div>
-
-        <p className="text-xs text-gray-500 italic">
-          Use the <span className="font-medium text-blue-700">Accept &amp; Forward</span> button in the header to forward this case.
-        </p>
-      </div>
-      </>
-    );
+    return null;
   }
 
   // Registrar panel
@@ -2466,9 +2433,8 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
 // Deputy Proctor header actions: "Accept & Forward" button + popup modal wrapping the
 // unified forward section. Mirrors the Coordinator pattern so Deputy Proctor's forward
 // UI lives in the header (not as an inline body block).
-function DeputyProctorPanel({ caseItem, remarks, onForward }: {
+function DeputyProctorPanel({ caseItem, onForward }: {
   caseItem: Case;
-  remarks: string;
   onForward: (targetRole: string, extra?: any) => Promise<void>;
 }) {
   const [forwardOpen, setForwardOpen] = useState(false);
@@ -2512,7 +2478,7 @@ function DeputyProctorPanel({ caseItem, remarks, onForward }: {
                 actionLoading={actionLoading}
                 withLoading={withLoading}
                 title="Accept & Forward to:"
-                initialNote={remarks}
+                requireNote
                 onForward={onForward}
               />
             </div>

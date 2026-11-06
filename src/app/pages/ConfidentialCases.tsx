@@ -17,7 +17,10 @@ export default function ConfidentialCases() {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const canView = currentUser?.role === 'super-admin' || permissions['confidential']?.canRead === true;
+  const isFemaleDeputy = currentUser?.role === 'deputy-proctor' && currentUser?.gender === 'female';
+  const isIneligibleDeputy = currentUser?.role === 'deputy-proctor' && !isFemaleDeputy;
+  const canView = currentUser?.role === 'super-admin'
+    || (!isIneligibleDeputy && permissions['confidential']?.canRead === true);
 
   useEffect(() => {
     if (openCaseId) navigate(`/cases/${openCaseId}`, { replace: true });
