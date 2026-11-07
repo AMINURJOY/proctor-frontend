@@ -36,7 +36,6 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
       { key: 'my-cases', label: 'My Cases', description: 'Access cases assigned to the current user.' },
       { key: 'confidential', label: 'Confidential Cases', description: 'Access restricted and confidential cases.' },
       { key: 'hearings', label: 'Hearing Management', description: 'Organize and manage case hearings.' },
-      { key: 'monitoring', label: 'VC Monitoring', description: 'Monitor cases from the VC dashboard.' },
     ],
   },
   {
@@ -81,6 +80,9 @@ const copyPermissions = (value: PermissionMap): PermissionMap => {
 
 const rolePermissionSignature = (permissions: PermissionMap, role: string) =>
   menus.map(menu => actionsForMenu(menu.key).map(action => permissions[role]?.[menu.key]?.[action.key] ? '1' : '0').join('')).join('|');
+const permissionRoleLabel = (role: string) => role === 'deputy-proctor'
+  ? 'Deputy Proctor / Female Deputy Proctor'
+  : roleLabel(role);
 
 export default function RolePermissionsPage() {
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -223,7 +225,7 @@ export default function RolePermissionsPage() {
         </span>
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-            Permissions <span className="text-slate-400">—</span> {roleLabel(selectedRole)}
+            Permissions <span className="text-slate-400">—</span> {permissionRoleLabel(selectedRole)}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">Choose a menu, then enable only the actions this role may perform.</p>
         </div>
@@ -236,12 +238,15 @@ export default function RolePermissionsPage() {
           onChange={event => changeRole(event.target.value)}
           className="min-w-48 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         >
-          {roles.map(role => <option key={role.id} value={role.name}>{roleLabel(role.name)}</option>)}
+          {roles.map(role => <option key={role.id} value={role.name}>{permissionRoleLabel(role.name)}</option>)}
         </select>
       </label>
     </header>
 
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+      {selectedRole === 'deputy-proctor' && <div className="border-b border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+        Female Deputy Proctor accounts, including Dr. Sharifa Sultana, use these permissions for confidential cases. Confidential records remain hidden from male Deputy Proctor accounts.
+      </div>}
       <div className="border-b border-slate-200 p-3 sm:p-4">
         <div className="mb-3 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-100">
           <ListChecks size={17} aria-hidden="true" />

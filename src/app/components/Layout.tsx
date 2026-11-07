@@ -177,7 +177,6 @@ export default function Layout() {
     { path: '/cases', label: 'Cases', icon: CasesIcon, menuKey: 'cases' },
     { path: '/hearings', label: 'Hearing Management', icon: HearingIcon, menuKey: 'hearings' },
     { path: '/confidential', label: 'Confidential Cases', icon: ShieldIcon, menuKey: 'confidential' },
-    { path: '/monitoring', label: 'VC Monitoring', icon: BarChartIcon, menuKey: 'monitoring' },
     { path: '/my-cases', label: 'My Cases', icon: CasesIcon, menuKey: 'my-cases' },
     { path: '/notifications', label: 'Notifications', icon: BellIcon, menuKey: 'notifications' },
     { path: '/warnings', label: 'Warnings', icon: ShieldIcon, menuKey: 'warnings', studentOnly: true },
@@ -201,6 +200,8 @@ export default function Layout() {
     // Deputy Proctor is shared by male and female users. The confidential permission is seeded
     // on the role, but its menu is exposed only to female Deputy Proctor profiles.
     if (item.menuKey === 'confidential' && role === 'deputy-proctor' && currentUser?.gender !== 'female') return false;
+    if (role === 'deputy-proctor' && currentUser?.gender !== 'female'
+      && ['reports', 'completed-reports'].includes(item.menuKey)) return false;
     // These approval roles intentionally have a focused sidebar: their own queue and
     // Notifications. General Settings is rendered separately below.
     if (focusedReportMenu && item.menuKey !== focusedReportMenu && item.menuKey !== 'notifications') return false;
@@ -229,7 +230,9 @@ export default function Layout() {
   const isActive = (path: string) => location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
   const isSettingsActive = location.pathname.startsWith('/settings');
 
-  const displayRole = roleLabel(role);
+  const displayRole = role === 'deputy-proctor' && currentUser?.gender === 'female'
+    ? 'Female Deputy Proctor'
+    : roleLabel(role);
 
   const roleColorMap: Record<string, string> = {
     'student': '#3b82f6',

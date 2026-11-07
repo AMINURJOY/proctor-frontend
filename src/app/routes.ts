@@ -12,7 +12,6 @@ import SubmitIncident from './pages/SubmitIncident';
 import IncidentsList from './pages/IncidentsList';
 import HearingManagement from './pages/HearingManagement';
 import ConfidentialCases from './pages/ConfidentialCases';
-import VCMonitoring from './pages/VCMonitoring';
 import ReportsPage from './pages/ReportsPage';
 import ReportEditorPage from './pages/ReportEditorPage';
 import UsersManagement from './pages/UsersManagement';
@@ -78,7 +77,6 @@ export const router = createBrowserRouter([
       { path: 'warnings', Component: WarningsPage },
       { path: 'hearings', Component: HearingManagement },
       { path: 'confidential', Component: ConfidentialCases },
-      { path: 'monitoring', Component: VCMonitoring },
       { path: 'reports', element: React.createElement(ReportsPage, { mode: 'pending' }) },
       { path: 'completed-reports', element: React.createElement(ReportsPage, { mode: 'completed' }) },
       { path: 'registrar-reports', Component: Type3WorkflowPage },

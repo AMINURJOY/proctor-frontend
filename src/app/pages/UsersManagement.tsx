@@ -155,6 +155,9 @@ export default function UsersManagement() {
 
   const formatRole = (role: string) =>
     roleLabel(role);
+  const formatUserRole = (user: User) => user.role === 'deputy-proctor' && user.gender === 'female'
+    ? 'Female Deputy Proctor'
+    : formatRole(user.role);
 
   return (
     <div>
@@ -210,7 +213,7 @@ export default function UsersManagement() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2.5 py-1 text-xs rounded-full font-medium ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
-                        {formatRole(user.role)}
+                        {formatUserRole(user)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

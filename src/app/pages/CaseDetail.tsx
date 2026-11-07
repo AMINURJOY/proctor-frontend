@@ -672,7 +672,7 @@ export default function CaseDetail() {
               {assistantProctorCanAct && (
                 <ForwardButton fromRole="assistant-proctor" caseItem={caseItem} onForward={handleForward} />
               )}
-              {role === 'deputy-proctor' && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
+              {role === 'deputy-proctor' && !isConfidential && caseItem.type !== 'type-1' && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status) && (
                 <DeputyProctorPanel caseItem={caseItem} onForward={handleForward} />
               )}
               <AssignCaseButton caseItem={caseItem} role={role} onRefresh={refreshCase} />
@@ -2420,6 +2420,7 @@ function CoordinatorPanel({ onStatusChange, onForward, caseItem, isConfidential,
                 title="Accept & Forward to:"
                 onForward={onForward}
                 forwardExtra={{ markAsConfidential }}
+                femaleDeputyOnly={isConfidential || markAsConfidential}
                 requireNote={caseItem.status !== 'verified'}
               />
             </div>
@@ -2640,7 +2641,7 @@ function StudentResubmitPanel({ caseItem, actionLoading, withLoading, onStatusCh
 // Unified forward control. Intake roles can perform the first verified hand-off by selecting
 // a recipient only; all subsequent stages require a Case Notes & Remarks entry.
 // Renders nothing when the role has no forwarding permission / no eligible users.
-function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra, initialNote = '', requireNote = true }: {
+function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward, title, beforeForward, forwardExtra, initialNote = '', requireNote = true, femaleDeputyOnly = false }: {
   fromRole: string;
   actionLoading: boolean;
   withLoading: (fn: () => Promise<void>) => Promise<void>;
@@ -2651,6 +2652,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
   forwardExtra?: Record<string, unknown>;
   initialNote?: string;
   requireNote?: boolean;
+  femaleDeputyOnly?: boolean;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -2677,15 +2679,27 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!femaleDeputyOnly) return;
+    setSelectedUsers(selected => selected.filter(id => users.some(user =>
+      user.id === id && user.role === 'deputy-proctor' && user.gender === 'female')));
+  }, [femaleDeputyOnly, users]);
+
 
   // Nothing to forward to: hide the whole section (no forwarding permission).
   if (!loaded) return null;
   if (users.length === 0) return null;
 
-  const filteredUsers = users.filter(u =>
+  const eligibleUsers = femaleDeputyOnly
+    ? users.filter(user => user.role === 'deputy-proctor' && user.gender === 'female')
+    : users;
+  const displayUserRole = (user?: User) => user?.role === 'deputy-proctor' && user.gender === 'female'
+    ? 'Female Deputy Proctor'
+    : roleLabel(user?.role);
+  const filteredUsers = eligibleUsers.filter(u =>
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    roleLabel(u.role).toLowerCase().includes(searchTerm.toLowerCase())
+    displayUserRole(u).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const toggleUser = (userId: string) => {
@@ -2733,7 +2747,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
                 const u = users.find(x => x.id === uid);
                 return u ? (
                   <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                    {u.name} <span className="opacity-60">· {roleLabel(u.role)}</span>
+                    {u.name} <span className="opacity-60">· {displayUserRole(u)}</span>
                     <button onClick={(e) => { e.stopPropagation(); toggleUser(uid); }} className="hover:text-blue-900">&times;</button>
                   </span>
                 ) : null;
@@ -2757,7 +2771,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
               />
             </div>
             {filteredUsers.length === 0 ? (
-              <div className="p-3 text-sm text-gray-400 text-center">No users found</div>
+              <div className="p-3 text-sm text-gray-400 text-center">{femaleDeputyOnly ? 'No active female Deputy Proctor found' : 'No users found'}</div>
             ) : (
               filteredUsers.map(u => (
                 <div
@@ -2768,7 +2782,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
                   <input type="checkbox" checked={selectedUsers.includes(u.id)} readOnly className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
                   <span className="font-medium">{u.name}</span>
                   <span className="text-gray-400 text-xs flex-1 truncate">{u.email}</span>
-                  <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{roleLabel(u.role)}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] whitespace-nowrap">{displayUserRole(u)}</span>
                 </div>
               ))
             )}
@@ -2796,7 +2810,7 @@ function UnifiedForwardSection({ fromRole, actionLoading, withLoading, onForward
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Selected recipient</p>
           <p className="mt-1 text-sm font-medium text-blue-950">
             {users.find(user => user.id === selectedUsers[0])?.name || 'Unknown'}
-            <span className="ml-1 font-normal text-blue-700">· {roleLabel(users.find(user => user.id === selectedUsers[0])?.role || '')}</span>
+            <span className="ml-1 font-normal text-blue-700">· {displayUserRole(users.find(user => user.id === selectedUsers[0]))}</span>
           </p>
         </div>
         <label className="block text-sm font-medium text-gray-700 mb-1">2. Forwarding note <span className="text-red-600">*</span></label>
