@@ -152,7 +152,9 @@ export default function CaseDetail() {
   const [driveName, setDriveName] = useState('');
   const [driveUrl, setDriveUrl] = useState('');
   const permissions = usePermissions();
-  const canDelete = permissions['cases']?.canDelete ?? false;
+  const canDelete = caseItem?.type === 'type-1'
+    ? (permissions['incidents']?.canDelete ?? false)
+    : (permissions['cases']?.canDelete ?? false);
 
   // Close-case dialog. Holds the extra payload (verdict / recommendation) collected by the
   // panel that asked to close, until the mandatory closing message is supplied.

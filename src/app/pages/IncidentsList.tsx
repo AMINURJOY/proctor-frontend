@@ -8,6 +8,8 @@ import { casesApi, settingsApi } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { usePermissions } from '../hooks/usePermissions';
 import { roleLabel } from '../utils/roles';
+import TablePagination from '../components/TablePagination';
+import { Phone } from 'lucide-react';
 
 export default function IncidentsList() {
   const navigate = useNavigate();
@@ -20,8 +22,10 @@ export default function IncidentsList() {
   const [loading, setLoading] = useState(true);
   const [canViewType1, setCanViewType1] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const permissions = usePermissions();
-  const canDelete = permissions['cases']?.canDelete ?? false;
+  const canDelete = permissions['incidents']?.canDelete ?? false;
 
   useEffect(() => {
     if (!currentUser?.role) return;
@@ -42,7 +46,7 @@ export default function IncidentsList() {
     const fetchCases = async () => {
       setLoading(true);
       try {
-        const response = await casesApi.getAll({ type: 'type-1' });
+        const response = await casesApi.getAll({ type: 'type-1', pageSize: 1000 });
         setCases(response.data.data?.items || []);
       } catch {
         setCases([]);
@@ -54,6 +58,13 @@ export default function IncidentsList() {
   }, []);
 
   const type1Cases = cases.filter(c => c.type === 'type-1');
+  const totalPages = Math.max(1, Math.ceil(type1Cases.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedCases = type1Cases.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const statusColors: Record<CaseStatus, string> = {
     'submitted': 'bg-blue-100 text-blue-700',
@@ -99,166 +110,70 @@ export default function IncidentsList() {
         <p className="text-gray-600">Messages submitted with image or video evidence</p>
       </div>
 
-      {/* Incident Cards */}
-      <div className="space-y-4">
-        {type1Cases.map((incident) => (
-          <div key={incident.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-            <div className="p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                {/* Left: Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <h3 className="text-lg font-semibold" style={{ color: '#0b2652' }}>
-                      {incident.caseNumber}
-                    </h3>
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[incident.status]}`}>
-                      {statusLabel(incident.status)}
-                    </span>
-                    {incident.categoryName && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
-                        {incident.categoryName}
-                      </span>
-                    )}
-                    {incident.isAcknowledged && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700">✓ Acknowledged</span>
-                    )}
-                    {incident.forwardedToRole && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
-                        → {roleLabel(incident.forwardedToRole)}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-1">
-                    <span className="font-medium">{incident.studentName}</span> ({incident.studentId})
-                    {incident.studentDepartment && <span className="text-gray-500"> · {incident.studentDepartment}</span>}
-                    {incident.studentContact && <span className="text-gray-500"> · 📞 {incident.studentContact}</span>}
-                  </p>
-                  <p className="text-sm text-gray-500 mb-3 whitespace-pre-wrap">{incident.description}</p>
-
-                  {/* Accused persons (Type-1 may or may not have these) */}
-                  {(() => {
-                    const accusedList = incident.accusedPersons && incident.accusedPersons.length > 0
-                      ? incident.accusedPersons
-                      : (incident.accusedName ? [{ id: 'legacy', name: incident.accusedName, accusedStudentId: incident.accusedId || '', department: incident.accusedDepartment, contact: incident.accusedContact, guardianContact: incident.accusedGuardianContact }] : []);
-                    return accusedList.length > 0 ? (
-                      <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 mb-3">
-                        <p className="text-xs font-medium text-orange-700 mb-1">Accused ({accusedList.length})</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {accusedList.map(a => (
-                            <div key={a.id} className="text-xs text-gray-700">
-                              <span className="font-medium">{a.name}</span>
-                              {a.accusedStudentId && <span className="text-gray-500"> · {a.accusedStudentId}</span>}
-                              {a.department && <span className="text-gray-500"> · {a.department}</span>}
-                              {a.contact && <span className="text-gray-500"> · 📞 {a.contact}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {(incident.incidentLocationDescription || incident.incidentLatitude != null) && (
-                    <div className="text-xs text-gray-600 mb-2">
-                      📍 {incident.incidentLocationDescription || '—'}
-                      {incident.incidentLatitude != null && incident.incidentLongitude != null && (
-                        <a
-                          href={`https://maps.google.com/?q=${incident.incidentLatitude},${incident.incidentLongitude}`}
-                          target="_blank" rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="ml-2 text-blue-600 hover:underline"
-                        >
-                          ({incident.incidentLatitude.toFixed(4)}, {incident.incidentLongitude.toFixed(4)}) — View on Maps
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {incident.videoLink && (
-                    <div className="text-xs text-gray-600 mb-2">
-                      🎥 <a href={incident.videoLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline break-all">{incident.videoLink}</a>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-                    <span>Submitted: {new Date(incident.createdDate).toLocaleDateString()}</span>
-                    {incident.incidentDate && <span>Incident: {new Date(incident.incidentDate).toLocaleDateString()}</span>}
-                    {incident.assignedTo && <span>Assigned: {incident.assignedTo}</span>}
-                  </div>
-                </div>
-
-                {/* Right: Media Preview */}
-                <div className="flex gap-3 flex-shrink-0">
-                  {incident.documents?.filter(d => d.type === 'image' || d.type === 'video').slice(0, 2).map(doc => (
-                    <div key={doc.id} className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
-                      {doc.type === 'image' && doc.url.startsWith('http') ? (
-                        <img src={doc.url} alt={doc.name} className="w-full h-full object-cover" />
-                      ) : doc.type === 'video' ? (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                          <VideoIcon />
-                          <span className="absolute bottom-1 right-1 text-[10px] text-white bg-black/50 px-1 rounded">MP4</span>
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ImageIcon />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {(!incident.documents || incident.documents.length === 0) && (
-                    <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400">
-                      <span className="text-xs">No media</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                <button
-                  onClick={() => navigate(`/cases/${incident.id}`)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <EyeIcon />
-                  View Details
-                </button>
-                {canTakeAction && incident.status !== 'closed' && incident.status !== 'resolved' && incident.status !== 'suggested-type-2' && (
-                  <>
-                    <button
-                      onClick={() => setShowSuggestModal(incident.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                    >
-                      <ArrowRightIcon />
-                      Suggest as Complain to Proctor
-                    </button>
-                    <button
-                      onClick={() => setShowCloseModal(incident.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-                    >
-                      <XIcon />
-                      Close Case
-                    </button>
-                  </>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={() => setDeleteId(incident.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                  >
-                    <XIcon />
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {type1Cases.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-xl shadow-md">
-          <p className="text-gray-500">No Message to Proctor submissions found</p>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-sm font-semibold text-[#0b2652]">Incident messages</h2><p className="text-xs text-slate-500">Compact view of submitted Message to Proctor records</p></div>
+          <span className="w-fit rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{type1Cases.length} total</span>
         </div>
-      )}
+
+        {loading ? <div className="space-y-2 p-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-24 animate-pulse rounded-lg bg-slate-100" />)}</div> : (
+          <div className="divide-y divide-slate-200">
+            {paginatedCases.map((incident) => {
+              const accusedList = incident.accusedPersons && incident.accusedPersons.length > 0
+                ? incident.accusedPersons
+                : (incident.accusedName ? [{ id: 'legacy', name: incident.accusedName }] : []);
+              const media = incident.documents?.filter(document => document.type === 'image' || document.type === 'video').slice(0, 1) || [];
+              return <article key={incident.id} className="px-4 py-3 transition-colors hover:bg-blue-50/40">
+                <div className="grid gap-3 lg:grid-cols-[minmax(250px,.95fr)_minmax(320px,1.45fr)_64px_minmax(240px,auto)] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button onClick={() => navigate(`/cases/${incident.id}`)} className="truncate text-left text-sm font-bold text-[#0b2652] hover:underline">{incident.caseNumber}</button>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColors[incident.status]}`}>{statusLabel(incident.status)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${priorityColors[incident.priority]}`}>{incident.priority}</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                      {incident.categoryName && <span className="rounded bg-purple-50 px-1.5 py-0.5 text-purple-700">{incident.categoryName}</span>}
+                      {incident.isAcknowledged && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">✓ Acknowledged</span>}
+                      {incident.forwardedToRole && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">→ {roleLabel(incident.forwardedToRole)}</span>}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-500">Submitted {new Date(incident.createdDate).toLocaleDateString()}</p>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800">{incident.studentName} <span className="font-normal text-slate-500">· {incident.studentId || 'No ID'}{incident.studentDepartment ? ` · ${incident.studentDepartment}` : ''}</span></p>
+                    <p className="mt-1 truncate text-xs text-slate-600" title={incident.description}>{incident.description || 'No description provided'}</p>
+                    <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                      {incident.studentContact && <span className="inline-flex items-center gap-1"><Phone size={12} strokeWidth={1.8} aria-hidden="true" />{incident.studentContact}</span>}
+                      {accusedList.length > 0 && <span className="max-w-full truncate text-orange-700" title={accusedList.map(person => person.name).join(', ')}>Accused ({accusedList.length}): {accusedList.map(person => person.name).join(', ')}</span>}
+                      {(incident.incidentLocationDescription || incident.incidentLatitude != null) && <span className="truncate">⌖ {incident.incidentLocationDescription || 'Map location attached'}</span>}
+                      {incident.videoLink && <a href={incident.videoLink} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Video link</a>}
+                    </div>
+                  </div>
+
+                  <div className="hidden lg:block">
+                    {media.map(document => <div key={document.id} className="relative h-14 w-14 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                      {document.type === 'image' && document.url.startsWith('http') ? <img src={document.url} alt={document.name} className="h-full w-full object-cover" /> : document.type === 'video' ? <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white"><VideoIcon /><span className="absolute bottom-0.5 right-0.5 rounded bg-black/50 px-1 text-[8px]">MP4</span></div> : <div className="flex h-full w-full items-center justify-center"><ImageIcon /></div>}
+                    </div>)}
+                    {media.length === 0 && <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-slate-300 text-[9px] text-slate-400">No media</div>}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 lg:justify-end">
+                    <button onClick={() => navigate(`/cases/${incident.id}`)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"><EyeIcon /> Details</button>
+                    {canTakeAction && !['closed', 'resolved', 'suggested-type-2'].includes(incident.status) && <>
+                      <button onClick={() => setShowSuggestModal(incident.id)} className="inline-flex h-8 items-center gap-1 rounded-md bg-purple-600 px-2.5 text-xs font-medium text-white hover:bg-purple-700" title="Suggest as Complain to Proctor"><ArrowRightIcon /> Suggest complaint</button>
+                      <button onClick={() => setShowCloseModal(incident.id)} className="inline-flex h-8 items-center gap-1 rounded-md bg-slate-600 px-2.5 text-xs font-medium text-white hover:bg-slate-700"><XIcon /> Close</button>
+                    </>}
+                    {canDelete && <button onClick={() => setDeleteId(incident.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700 hover:bg-red-100"><XIcon /> Delete</button>}
+                  </div>
+                </div>
+              </article>;
+            })}
+            {type1Cases.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No Message to Proctor submissions found</div>}
+          </div>
+        )}
+
+        <TablePagination currentPage={safePage} pageSize={pageSize} totalItems={type1Cases.length} onPageChange={setPage} onPageSizeChange={setPageSize} itemLabel="incidents" />
+      </div>
 
       {/* Suggest to Type-2 Modal */}
       {showSuggestModal && (

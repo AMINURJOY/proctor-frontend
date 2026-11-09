@@ -26,17 +26,17 @@ export const users: User[] = [
 // Real DIU Proctorial Body. The `coordinator` role is presented as
 // "Assistant Administrative Officer" throughout the UI.
 export const proctorialBody: User[] = [
-  { id: 'pb-1', name: 'Dr. Shaikh Muhammad Allayear', email: 'proctor@daffodilvarsity.edu.bd', role: 'proctor', gender: 'male', rank: 'Professor and Proctor' },
-  { id: 'pb-2', name: 'Dr. Sharifa Sultana', email: 'sharifa@daffodilvarsity.edu.bd', role: 'deputy-proctor', gender: 'female', rank: 'Professor and Deputy Proctor' },
-  { id: 'pb-3', name: 'Mr. Mohammad Badruzzaman', email: 'badruzzaman.law@diu.edu.bd', role: 'deputy-proctor', gender: 'male', rank: 'Assistant Professor & Deputy Proctor' },
-  { id: 'pb-4', name: 'Mr. Kazi Md. Diljeb Kabir', email: 'diljeb@daffodilvarsity.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Deputy Director & Assistant Proctor' },
-  { id: 'pb-5', name: 'Mr. Khalid Been Badruzzaman Biplob', email: 'khalid@daffodilvarsity.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer (Senior Scale) & Assistant Proctor' },
-  { id: 'pb-6', name: 'Md. Ahsan Ullah', email: 'ahsan.law@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer (Senior Scale) & Assistant Proctor' },
-  { id: 'pb-7', name: 'Md. Manik Parvez', email: 'parvez.te@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer & Assistant Proctor' },
-  { id: 'pb-8', name: 'Mohammad Jahangir Alam', email: 'jahangir.cse@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Assistant Professor & Assistant Proctor' },
-  { id: 'pb-9', name: 'Md. Shariful Islam', email: 'proctoroffice@daffodilvarsity.edu.bd', role: 'coordinator', gender: 'male', rank: 'Assistant Administrative Officer' },
+  { id: 'pb-1', name: 'Dr. Shaikh Muhammad Allayear', email: 'proctor@daffodilvarsity.edu.bd', role: 'proctor', gender: 'male', rank: 'Professor and Proctor', avatar: 'https://webbackend.daffodilvarsity.edu.bd/images/proctor-article/proctor.jpg' },
+  { id: 'pb-2', name: 'Dr. Sharifa Sultana', email: 'sharifa@daffodilvarsity.edu.bd', role: 'deputy-proctor', gender: 'female', rank: 'Professor and Deputy Proctor', avatar: 'https://webbackend.daffodilvarsity.edu.bd/images/proctor-article/sharifa.jpg' },
+  { id: 'pb-3', name: 'Mr. Mohammad Badruzzaman', email: 'badruzzaman.law@diu.edu.bd', role: 'deputy-proctor', gender: 'male', rank: 'Assistant Professor & Deputy Proctor', avatar: 'https://faculty.daffodilvarsity.edu.bd/images/teacher/e3b6de42b0a07abe1bc44ffe4076d2f5.jpg' },
+  { id: 'pb-4', name: 'Mr. Kazi Md. Diljeb Kabir', email: 'diljeb@daffodilvarsity.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Deputy Director & Assistant Proctor', avatar: 'https://webbackend.daffodilvarsity.edu.bd/images/proctor-article/kabir.jpg' },
+  { id: 'pb-5', name: 'Mr. Khalid Been Badruzzaman Biplob', email: 'khalid@daffodilvarsity.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer (Senior Scale) & Assistant Proctor', avatar: 'https://faculty.daffodilvarsity.edu.bd/images/teacher/35524ec7b738a0754fb36a2621915bc9.jpg' },
+  { id: 'pb-6', name: 'Md. Ahsan Ullah', email: 'ahsan.law@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer (Senior Scale) & Assistant Proctor', avatar: 'https://faculty.daffodilvarsity.edu.bd/images/teacher/18c2543d18ca2f9b13c2578c3d20c43a.jpg' },
+  { id: 'pb-7', name: 'Md. Manik Parvez', email: 'parvez.te@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Lecturer & Assistant Proctor', avatar: 'https://faculty.daffodilvarsity.edu.bd/images/teacher/7d874550b0d13fb4ed16e4da1f918a68.jpg' },
+  { id: 'pb-8', name: 'Mohammad Jahangir Alam', email: 'jahangir.cse@diu.edu.bd', role: 'assistant-proctor', gender: 'male', rank: 'Assistant Professor & Assistant Proctor', avatar: 'https://faculty.daffodilvarsity.edu.bd/images/teacher/4012e95a6aaef1c9f65889b69e30eca2.jpg' },
+  { id: 'pb-9', name: 'Md. Shariful Islam', email: 'proctoroffice@daffodilvarsity.edu.bd', role: 'coordinator', gender: 'male', rank: 'Assistant Administrative Officer', avatar: 'https://webbackend.daffodilvarsity.edu.bd/images/proctor-article/shariful.jpg' },
   // Handles the female / confidential track; her office designation is Assistant Administrative Officer.
-  { id: 'pb-10', name: 'Nelima Afroz Oishee', email: 'proctoroffice2@daffodilvarsity.edu.bd', role: 'female-coordinator', gender: 'female', rank: 'Assistant Administrative Officer' },
+  { id: 'pb-10', name: 'Nelima Afroz Oishee', email: 'proctoroffice2@daffodilvarsity.edu.bd', role: 'female-coordinator', gender: 'female', rank: 'Assistant Administrative Officer', avatar: 'https://webbackend.daffodilvarsity.edu.bd/storage/photos/shares/common/oishee.jpg' },
 ];
 
 export const mockCases: Case[] = [

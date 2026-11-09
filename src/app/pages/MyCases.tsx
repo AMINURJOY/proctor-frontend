@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { roleLabel } from '../utils/roles';
 import TablePagination from '../components/TablePagination';
 import { caseTypeLabel } from '../utils/caseTypes';
+import { Case } from '../types';
 
 const statusColors: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -28,7 +29,9 @@ export default function MyCases() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const permissions = usePermissions();
-  const canDelete = permissions['cases']?.canDelete ?? false;
+  const canDeleteCase = (caseItem: Case) => caseItem.type === 'type-1'
+    ? (permissions['incidents']?.canDelete ?? false)
+    : (permissions['cases']?.canDelete ?? false);
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -261,7 +264,7 @@ export default function MyCases() {
                               <line x1="16" y1="17" x2="8" y2="17"/>
                             </svg>
                           </button>
-                          {canDelete && (
+                          {canDeleteCase(c) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setDeleteId(c.id); }}
                               title="Delete Case"

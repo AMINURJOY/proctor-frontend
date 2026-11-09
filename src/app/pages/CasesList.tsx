@@ -25,7 +25,9 @@ export default function CasesList() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const permissions = usePermissions();
-  const canDelete = permissions['cases']?.canDelete ?? false;
+  const canDeleteCase = (caseItem: Case) => caseItem.type === 'type-1'
+    ? (permissions['incidents']?.canDelete ?? false)
+    : (permissions['cases']?.canDelete ?? false);
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -342,7 +344,7 @@ export default function CasesList() {
                             <line x1="16" y1="17" x2="8" y2="17" />
                           </svg>
                         </button>
-                        {canDelete && (
+                        {canDeleteCase(caseItem) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

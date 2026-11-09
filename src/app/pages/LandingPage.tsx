@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  AlertTriangle,
   ArrowRight,
   BellRing,
   ChevronRight,
@@ -42,6 +41,12 @@ export default function LandingPage() {
 
   const followSection = () => setMobileMenuOpen(false);
 
+  useEffect(() => {
+    const previousBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    return () => { document.documentElement.style.scrollBehavior = previousBehavior; };
+  }, []);
+
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <header className="sticky top-0 z-50 bg-white shadow-sm">
@@ -50,6 +55,7 @@ export default function LandingPage() {
             <a href="#proctorial-body" className="hover:text-[#074b8c]">Proctorial Body</a>
             <a href="#procedure" className="hover:text-[#074b8c]">Procedure</a>
             <a href="#services" className="hover:text-[#074b8c]">Student Services</a>
+            <a href="https://aiproctor.daffodilglobal.ai/" target="_blank" rel="noreferrer" className="hover:text-[#074b8c]">AI Proctor</a>
             <a href="mailto:proctoroffice@daffodilvarsity.edu.bd" className="hover:text-[#074b8c]">Contact the Office</a>
           </div>
         </div>
@@ -63,12 +69,13 @@ export default function LandingPage() {
             </span>
           </button>
 
-          <nav className="hidden items-center gap-7 text-[13px] font-semibold text-[#253f5d] lg:flex" aria-label="Primary navigation">
+          <nav className="hidden items-center gap-5 text-[13px] font-semibold text-[#253f5d] lg:flex" aria-label="Primary navigation">
             <a href="#home" className="transition hover:text-[#0662ad]">Home</a>
             <a href="#proctorial-body" className="transition hover:text-[#0662ad]">Proctorial Body</a>
             <a href="#procedure" className="transition hover:text-[#0662ad]">Procedure</a>
             <a href="#services" className="transition hover:text-[#0662ad]">Submit Concern</a>
             <a href="#support" className="transition hover:text-[#0662ad]">Support</a>
+            <a href="https://aiproctor.daffodilglobal.ai/" target="_blank" rel="noreferrer" className="rounded-md border border-[#07559a]/20 bg-blue-50 px-3 py-2 text-[#07559a] transition hover:border-[#07559a]/40 hover:bg-blue-100">AI Proctor</a>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -94,6 +101,9 @@ export default function LandingPage() {
                 <item.icon size={17} /> {item.label}
               </a>
             ))}
+            <a href="https://aiproctor.daffodilglobal.ai/" target="_blank" rel="noreferrer" onClick={followSection} className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-[#07559a] hover:bg-blue-50">
+              <ShieldCheck size={17} /> AI Proctor <ArrowRight size={14} className="ml-auto" />
+            </a>
           </nav>
         )}
       </header>
@@ -151,12 +161,6 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <div className="mt-8 border-l-2 border-amber-400 bg-amber-50 px-4 py-4">
-                  <div className="flex items-start gap-2.5">
-                    <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
-                    <p className="text-xs leading-5 text-slate-600">For immediate physical danger, contact campus security or emergency services first.</p>
-                  </div>
-                </div>
               </div>
             </aside>
 
@@ -199,10 +203,11 @@ export default function LandingPage() {
                     {[proctorialBody.slice(0, 5), proctorialBody.slice(5)].map((members, columnIndex) => (
                       <div key={columnIndex} className="divide-y divide-slate-100">
                         {members.map((member) => {
-                          const initials = member.name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('');
                           return (
                             <article key={member.id} className="flex min-h-[104px] items-center gap-4 px-5 py-4 transition hover:bg-slate-50">
-                              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#0a5b9f] to-[#082c52] text-base font-bold text-white shadow-sm">{initials}</div>
+                              <div className="h-16 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 shadow-sm">
+                                <img src={member.avatar} alt={`Portrait of ${member.name}`} loading="lazy" className="h-full w-full object-cover object-top" onError={(event) => { event.currentTarget.src = '/report_logo.png'; event.currentTarget.className = 'h-full w-full object-contain p-1'; }} />
+                              </div>
                               <div className="min-w-0">
                                 <h3 className="text-sm font-bold text-slate-800">{member.name}</h3>
                                 <p className="mt-1 text-xs leading-5 text-slate-500">{member.rank}</p>
@@ -336,6 +341,7 @@ export default function LandingPage() {
             <div>
               <h3 className="text-sm font-bold text-white">Office Information</h3>
               <div className="mt-4 flex flex-col gap-3 text-sm"><a href="#proctorial-body" className="hover:text-white">Proctorial Body</a><a href="#support" className="hover:text-white">Privacy &amp; Support</a><a href="mailto:proctoroffice@daffodilvarsity.edu.bd" className="hover:text-white">Contact the Office</a></div>
+              <a href="https://aiproctor.daffodilglobal.ai/" target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm hover:text-white">AI Proctor <ArrowRight size={13} /></a>
             </div>
           </div>
 

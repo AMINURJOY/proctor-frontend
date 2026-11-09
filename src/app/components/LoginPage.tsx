@@ -58,7 +58,7 @@ export default function LoginPage() {
     try {
       const user = await login(email.trim(), password);
       if (user) navigate(destinationFor(user));
-      else setError('Invalid email or password. Please try again.');
+      else setError('Invalid email, student ID, or password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -122,17 +122,17 @@ export default function LoginPage() {
 
           <form onSubmit={handleFormLogin} className="mt-7 space-y-5">
             <div>
-              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">University Email</label>
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">University Email or Student ID</label>
               <div className="relative">
                 <UserRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   id="login-email"
-                  type="email"
+                  type="text"
                   autoComplete="username"
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="student@diu.edu.bd"
+                  placeholder="student@diu.edu.bd or 023-001"
                   className="h-12 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
                 />
               </div>
