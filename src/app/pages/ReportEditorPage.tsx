@@ -13,7 +13,7 @@ import { casesApi, articlesApi, aiApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Case, Article } from '../types';
 import { toast } from 'sonner';
-import { arrangeReportImagesAtEnd, exportReportToPdf, inlineImagesAsBase64, BANGLA_FONT_STACK, generateReportHTML } from '../utils/pdfExport';
+import { arrangeReportImagesAtEnd, exportReportToPdf, inlineImagesAsBase64, BANGLA_FONT_STACK, generateReportHTML, resolveDocumentUrl } from '../utils/pdfExport';
 import { caseTypeLabel } from '../utils/caseTypes';
 // Toolbar button component
 const Btn = ({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title?: string }) => (
@@ -131,10 +131,10 @@ export default function ReportEditorPage() {
             : target.createdByName === currentUser?.name;
           setCanEditReport(mine);
           setReportAuthor(target.createdByName || '');
-          editor?.commands.setContent(arrangeReportImagesAtEnd(target.content || generateReportHTML(c), c.documents || []));
+          editor?.commands.setContent(arrangeReportImagesAtEnd(target.content || generateReportHTML(c, currentUser), c.documents || []));
         } else {
           setCanEditReport(true);
-          editor?.commands.setContent(generateReportHTML(c));
+          editor?.commands.setContent(generateReportHTML(c, currentUser));
         }
       } catch { toast.error('Failed to load case data'); } finally { setLoading(false); }
     };
@@ -594,7 +594,10 @@ export default function ReportEditorPage() {
                     {caseItem.documents.map((d, i) => (
                       <li key={d.id} className="text-xs text-gray-700 flex items-start gap-1.5">
                         <span className="text-gray-400">{i + 1}.</span>
-                        <span className="flex-1 break-all">{d.name}</span>
+                        <a href={resolveDocumentUrl(d.url)} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 break-all text-blue-700 hover:underline" title={`Open ${d.name}`}>
+                          {d.name}
+                        </a>
                         <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">{d.type}</span>
                       </li>
                     ))}

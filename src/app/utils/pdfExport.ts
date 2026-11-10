@@ -1,7 +1,7 @@
 import julyRegular from '../../assets/fonts/July-Regular.ttf';
 import julyBold from '../../assets/fonts/July-Bold.ttf';
 import { toast } from 'sonner';
-import { Case } from '../types';
+import { Case, User } from '../types';
 import { API_BASE_URL } from '../services/api';
 
 const abs = (url: string) => new URL(url, window.location.origin).href;
@@ -17,7 +17,7 @@ type ReportImage = { src: string; alt: string };
 const isReportLogo = (src: string, alt: string) =>
   src.toLowerCase().includes('report_logo') || alt.trim().toLowerCase() === 'logo';
 
-const reportImageUrl = (url: string) => url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')
+export const resolveDocumentUrl = (url: string) => url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')
   ? url
   : `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
 
@@ -44,7 +44,7 @@ export function arrangeReportImagesAtEnd(html: string, documents: Case['document
     const src = image.getAttribute('src')?.trim() || '';
     const alt = image.getAttribute('alt')?.trim() || 'Evidence image';
     if (!src || isReportLogo(src, alt)) continue;
-    collected.push({ src: reportImageUrl(src), alt });
+    collected.push({ src: resolveDocumentUrl(src), alt });
     const table = image.closest('table');
     if (!table || !imageTables.has(table)) {
       const parent = image.parentElement;
@@ -61,7 +61,7 @@ export function arrangeReportImagesAtEnd(html: string, documents: Case['document
   }
 
   for (const document of documents.filter(item => item.type === 'image' && item.url)) {
-    collected.push({ src: reportImageUrl(document.url), alt: document.name || 'Evidence image' });
+    collected.push({ src: resolveDocumentUrl(document.url), alt: document.name || 'Evidence image' });
   }
 
   const unique = collected.filter((image, index, all) =>
@@ -87,8 +87,19 @@ export function arrangeReportImagesAtEnd(html: string, documents: Case['document
         image.alt = item.alt;
         image.loading = 'lazy';
         const caption = doc.createElement('p');
-        caption.textContent = item.alt;
-        cell.append(image, caption);
+        const link = doc.createElement('a');
+        link.href = item.src;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.title = `Open ${item.alt}`;
+        link.appendChild(image);
+        const captionLink = doc.createElement('a');
+        captionLink.href = item.src;
+        captionLink.target = '_blank';
+        captionLink.rel = 'noopener noreferrer';
+        captionLink.textContent = item.alt;
+        caption.appendChild(captionLink);
+        cell.append(link, caption);
       }
       row.appendChild(cell);
     }
@@ -99,7 +110,20 @@ export function arrangeReportImagesAtEnd(html: string, documents: Case['document
   return doc.body.innerHTML;
 }
 
-export function generateReportHTML(caseItem: Case): string {
+export function generateReportHTML(caseItem: Case, reportCreator?: Pick<User, 'name' | 'email' | 'rank'> | null): string {
+  const sharifaCreated = !!reportCreator && (
+    reportCreator.email?.toLowerCase() === 'sharifa@daffodilvarsity.edu.bd'
+    || reportCreator.name.toLowerCase().includes('sharifa sultana')
+  );
+  const signer = sharifaCreated
+    ? { name: reportCreator!.name, designation: 'অধ্যাপক ও উপ-প্রক্টর' }
+    : { name: 'Dr. Shaikh Muhammad Allayear', designation: 'অধ্যাপক ও প্রক্টর' };
+  const latestHearing = [...(caseItem.hearings || [])]
+    .filter(hearing => hearing.status === 'completed')
+    .sort((a, b) => String(b.conductedAt || b.date).localeCompare(String(a.conductedAt || a.date)))[0];
+  const reportValue = (value?: string | null) => value?.trim()
+    ? value.trim().replace(/\n/g, '<br>')
+    : '[তথ্য যোগ করুন]';
   const cr = (caseItem.complainants || []).map(c =>
     `<tr><td>${c.name}</td><td>${c.studentId}</td><td>${c.department || '-'}</td></tr>`
   ).join('') || '<tr><td colspan="3">-</td></tr>';
@@ -111,7 +135,9 @@ export function generateReportHTML(caseItem: Case): string {
     .filter(e => { if (seen.has(e.user)) return false; seen.add(e.user); return e.user !== 'System'; })
     .map(p => `<tr><td>${p.user}</td><td>${p.action}</td></tr>`)
     .join('') || '<tr><td colspan="2">[তদন্তকারীর নাম যোগ করুন]</td></tr>';
-  const docs = (caseItem.documents || []).map((d, i) => `<li>পরিশিষ্ট ${i + 1}ঃ ${d.name} (${d.type})</li>`).join('') || '<li>কোনো সংযুক্তি নেই</li>';
+  const docs = (caseItem.documents || []).map((d, i) =>
+    `<li>পরিশিষ্ট ${i + 1}ঃ <a href="${resolveDocumentUrl(d.url)}" target="_blank" rel="noopener noreferrer">${d.name}</a> (${d.type})</li>`
+  ).join('') || '<li>কোনো সংযুক্তি নেই</li>';
 
   const report = `
 <p style="text-align: center"><img src="/report_logo.png" alt="Logo"></p>
@@ -131,17 +157,21 @@ export function generateReportHTML(caseItem: Case): string {
 <h3>৪। তদন্তকারী:</h3>
 <table><thead><tr><th>নাম</th><th>পদবী</th></tr></thead><tbody>${pr}</tbody></table>
 <h3>৪.১। প্রতিবেদন প্রস্তুতকারী:</h3>
-<table><thead><tr><th>নাম</th><th>পদবী</th></tr></thead><tbody><tr><td>[নাম]</td><td>[পদবী]</td></tr></tbody></table>
+<table><thead><tr><th>নাম</th><th>পদবী</th></tr></thead><tbody><tr><td>${signer.name}</td><td>${signer.designation}</td></tr></tbody></table>
 <h3>৫। ঘটনার পটভূমি ও অভিযোগসমূহ:</h3>
 <p>${caseItem.description || '[ঘটনার বিস্তারিত বিবরণ এখানে লিখুন]'}</p>
+<h3>৬। অভিযোগকারী/সাক্ষীদের বিবৃতি:</h3>
+<p>${reportValue(latestHearing?.complainantStatement || latestHearing?.remarks)}</p>
+<h3>৭। অভিযুক্তের বিবৃতি:</h3>
+<p>${reportValue(latestHearing?.accusedStatement)}</p>
 <p></p>
-<h3>৯। বিশ্ববিদ্যালয়ের কোড অফ কন্ডাক্ট (ফলাফল):</h3>
+<h3>৮। বিশ্ববিদ্যালয়ের কোড অফ কন্ডাক্ট (ফলাফল):</h3>
 <table><thead><tr><th>অনুচ্ছেদ নং</th><th>অনুচ্ছেদের নাম ও ব্যখ্যা</th></tr></thead><tbody><tr><td colspan="2"><em>[আর্টিকেল সিলেক্টর থেকে নির্বাচন করুন]</em></td></tr></tbody></table>
-<h3>১০। সুপারিশ:</h3>
+<h3>৯। সুপারিশ:</h3>
 <p>[তদন্ত কমিটি নিম্নলিখিত সুপারিশ প্রদান করছে:]</p>
 <ul><li>[সুপারিশ ১]</li><li>[সুপারিশ ২]</li><li>[সুপারিশ ৩]</li></ul>
 <p></p>
-<h3>১১। চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
+<h3>১০। চূড়ান্ত সিদ্ধান্ত (Final Punishment):</h3>
 <p>${caseItem.verdict ? caseItem.verdict.replace(/\n/g, '<br>') : '[ডিসিপ্লিনারি কমিটি চূড়ান্ত সিদ্ধান্ত প্রদান করবে]'}</p>
 <p></p>
 <h3>প্রক্টোরিয়াল সদস্য:</h3>
@@ -150,8 +180,8 @@ export function generateReportHTML(caseItem: Case): string {
 <ol>${docs}</ol>
 <p></p>
 <p style="text-align: center"><strong>ধন্যবাদ</strong></p>
-<p style="text-align: center"><strong>[নাম]</strong></p>
-<p style="text-align: center">অধ্যাপক ও প্রক্টর</p>
+<p style="text-align: center"><strong>${signer.name}</strong></p>
+<p style="text-align: center">${signer.designation}</p>
 <p style="text-align: center">ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি</p>
 `.trim();
   return arrangeReportImagesAtEnd(report, caseItem.documents || []);

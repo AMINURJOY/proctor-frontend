@@ -3158,7 +3158,8 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
   const { currentUser } = useAuth();
   const [canHearing, setCanHearing] = useState(false);
   const [open, setOpen] = useState(false);
-  const [remarks, setRemarks] = useState('');
+  const [complainantStatement, setComplainantStatement] = useState('');
+  const [accusedStatement, setAccusedStatement] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -3181,14 +3182,20 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
   }
 
   const handleClose = async () => {
-    if (!remarks.trim()) return;
+    if (!complainantStatement.trim()) return;
     setBusy(true);
     try {
-      await hearingsApi.update(hearing.id, { remarks });
+      await hearingsApi.update(hearing.id, {
+        // Keep Remarks synchronized for existing reports and older API consumers.
+        remarks: complainantStatement.trim(),
+        complainantStatement: complainantStatement.trim(),
+        accusedStatement: accusedStatement.trim(),
+      });
       await hearingsApi.updateStatus(hearing.id, 'completed');
       await onRefresh();
       toast.success('Hearing closed');
-      setRemarks('');
+      setComplainantStatement('');
+      setAccusedStatement('');
       setOpen(false);
     } catch (err: any) {
       toast.error('Failed to close hearing', { description: err?.response?.data?.message || 'Try again' });
@@ -3199,7 +3206,11 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
 
   return (
     <>
-      <button onClick={() => { setRemarks(hearing.remarks || ''); setOpen(true); }}
+      <button onClick={() => {
+        setComplainantStatement(hearing.complainantStatement || hearing.remarks || '');
+        setAccusedStatement(hearing.accusedStatement || '');
+        setOpen(true);
+      }}
         className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">
         <CheckIcon /> Close Hearing
       </button>
@@ -3220,22 +3231,25 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
                 <p><span className="font-medium">Date:</span> {hearing.date} at {hearing.time}</p>
                 <p><span className="font-medium">Location:</span> {hearing.location}</p>
               </div>
-              <div className="mb-4">
+              <div className="grid max-h-[60vh] gap-3 overflow-y-auto pr-1">
+                <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   What did the victim/witnesses say? <span className="text-red-500">*</span>
                 </label>
-                <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
+                <textarea value={complainantStatement} onChange={e => setComplainantStatement(e.target.value)}
                   placeholder="Write the statements heard during the hearing — victim testimony, witness accounts, observations, decisions made..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={8} />
+                  rows={4} />
+                </div>
+                <HearingReportField label="Accused statement" value={accusedStatement} onChange={setAccusedStatement} placeholder="What did the accused person state or admit?" />
               </div>
-              <p className="text-xs text-gray-500 mb-4">Once closed, this case can be forwarded to the next role.</p>
+              <p className="my-4 text-xs text-gray-500">Optional fields are inserted into the investigation report only when information is recorded. Once closed, this case can be forwarded to the next role.</p>
               <div className="flex justify-end gap-2">
                 <button disabled={busy} onClick={() => setOpen(false)}
                   className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                   Cancel
                 </button>
-                <button disabled={busy || !remarks.trim()} onClick={handleClose}
+                <button disabled={busy || !complainantStatement.trim()} onClick={handleClose}
                   className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
                   <CheckIcon /> {busy ? 'Closing…' : 'Close Hearing'}
                 </button>
@@ -3245,6 +3259,21 @@ function CloseHearingButton({ caseItem, role, onRefresh }: {
         </>
       )}
     </>
+  );
+}
+
+function HearingReportField({ label, value, onChange, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block text-sm font-medium text-gray-700">
+      {label} <span className="font-normal text-gray-400">(optional)</span>
+      <textarea value={value} onChange={event => onChange(event.target.value)} rows={3} placeholder={placeholder}
+        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500" />
+    </label>
   );
 }
 

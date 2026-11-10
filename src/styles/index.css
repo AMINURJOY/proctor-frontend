@@ -49,3 +49,10 @@
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
+.report-content-wrapper .report-image-grid a {
+  color: #1d4ed8;
+  text-decoration: none;
+}
+.report-content-wrapper .report-image-grid p a:hover {
+  text-decoration: underline;
+}

@@ -266,6 +266,8 @@ export interface Hearing {
   status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
   remarks?: string;
+  complainantStatement?: string;
+  accusedStatement?: string;
   createdById?: string;
   createdByName?: string;
   conductedById?: string;
