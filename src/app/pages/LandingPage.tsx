@@ -64,8 +64,8 @@ export default function LandingPage() {
           <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-3 text-left">
             <img src="/daffodil_logo.svg" alt="Daffodil International University" className="h-12 w-auto sm:h-14" />
             <span className="hidden border-l border-slate-200 pl-3 xl:block">
-              <span className="block text-sm font-bold text-[#082c52]">Office of the Proctor</span>
-              <span className="block text-[11px] text-slate-500">Student Support Portal</span>
+              <span className="block text-sm font-bold text-[#082c52]">Daffodil Proctorial Management System</span>
+              <span className="block text-[11px] text-slate-500">DPMS · Student Portal</span>
             </span>
           </button>
 
@@ -119,7 +119,7 @@ export default function LandingPage() {
               <div className="flex items-center gap-2 text-xs font-medium text-blue-100/80">
                 <span>Home</span><ChevronRight size={13} /><span>Proctor Office</span>
               </div>
-              <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[58px]">Office of the Proctor</h1>
+              <h1 className="mt-5 max-w-5xl text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[52px]">Daffodil Proctorial Management System (DPMS)</h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-blue-100/85 sm:text-lg">
                 A secure student portal for reporting urgent incidents, submitting formal complaints, and following official updates from the Proctor Office.
               </p>
@@ -167,7 +167,7 @@ export default function LandingPage() {
             <div className="min-w-0 space-y-16">
               <section aria-labelledby="welcome-title">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0871be]">Student support</p>
-                <h2 id="welcome-title" className="mt-3 text-3xl font-semibold tracking-tight text-slate-800 sm:text-4xl">Welcome to the Proctor Office Portal</h2>
+                <h2 id="welcome-title" className="mt-3 text-3xl font-semibold tracking-tight text-slate-800 sm:text-4xl">Welcome to Daffodil Proctorial Management System (DPMS)</h2>
                 <p className="mt-5 max-w-4xl text-[15px] leading-7 text-slate-600">
                   The portal gives students a clear route to inform the Proctor Office, submit evidence, and receive private case updates. Choose the service that best matches the situation; both are handled through the university workflow.
                 </p>
@@ -227,19 +227,32 @@ export default function LandingPage() {
                 <h2 id="procedure-title" className="mt-3 text-3xl font-semibold tracking-tight text-slate-800 sm:text-4xl">How the portal works</h2>
                 <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600">The process is designed to be direct for students and traceable for the Proctor Office.</p>
 
-                <div className="mt-8 grid gap-0 border border-slate-200 md:grid-cols-4">
-                  {[
-                    ['01', 'Sign in', 'Use your university student account.'],
-                    ['02', 'Choose a service', 'Select an urgent message or formal complaint.'],
-                    ['03', 'Submit details', 'Describe the concern and attach evidence.'],
-                    ['04', 'Follow updates', 'Check My Cases and Notifications.'],
-                  ].map(([number, title, text], index) => (
-                    <article key={number} className={`relative p-6 ${index > 0 ? 'border-t border-slate-200 md:border-l md:border-t-0' : ''}`}>
-                      <span className="text-3xl font-light text-blue-200">{number}</span>
-                      <h3 className="mt-4 text-sm font-bold text-slate-800">{title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
-                    </article>
-                  ))}
+                <div className="mt-8 pb-3" aria-label="Student submission flow">
+                  <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:gap-0">
+                    {[
+                      ['01', 'Sign in', 'Use your university student account.', 'bg-[#0b2652]'],
+                      ['02', 'Choose a service', 'Select an urgent message or formal complaint.', 'bg-[#174f86]'],
+                      ['03', 'Submit details', 'Describe the concern and attach evidence.', 'bg-[#0871be]'],
+                      ['04', 'Follow updates', 'Check My Cases and Notifications.', 'bg-[#168a73]'],
+                    ].map(([number, title, text, color], index) => {
+                      const shape = index === 0
+                        ? 'polygon(0 0, calc(100% - 26px) 0, 100% 50%, calc(100% - 26px) 100%, 0 100%)'
+                        : 'polygon(0 0, calc(100% - 26px) 0, 100% 50%, calc(100% - 26px) 100%, 0 100%, 26px 50%)';
+                      return (
+                        <article
+                          key={number}
+                          style={{ clipPath: shape }}
+                          className={`relative flex h-28 w-full min-w-0 items-center pr-7 text-white shadow-sm transition-transform duration-200 hover:-translate-y-1 sm:flex-1 ${index === 0 ? 'pl-5' : 'pl-9 sm:-ml-2'} ${color}`}
+                        >
+                          <span className="mr-3 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/15 text-sm font-bold ring-1 ring-white/25">{number}</span>
+                          <span className="min-w-0">
+                            <h3 className="text-sm font-bold leading-5">{title}</h3>
+                            <p className="mt-1 text-xs leading-4 text-white/80">{text}</p>
+                          </span>
+                        </article>
+                      );
+                    })}
+                  </div>
                 </div>
               </section>
 
@@ -325,7 +338,7 @@ export default function LandingPage() {
           <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr_1fr]">
             <div>
               <img src="/daffodil_logo.svg" alt="Daffodil International University" className="h-14 w-auto rounded-md bg-white px-2 py-1" />
-              <h2 className="mt-5 text-base font-bold text-white">Office of the Proctor</h2>
+              <h2 className="mt-5 text-base font-bold text-white">Daffodil Proctorial Management System (DPMS)</h2>
               <p className="mt-3 max-w-sm text-sm leading-6">A secure university portal for student incident reporting, formal complaints, and disciplinary case updates.</p>
               <a href="mailto:proctoroffice@daffodilvarsity.edu.bd" className="mt-4 inline-flex items-center gap-2 text-sm text-white hover:underline"><Mail size={15} /> proctoroffice@daffodilvarsity.edu.bd</a>
             </div>
@@ -347,7 +360,7 @@ export default function LandingPage() {
 
           <div className="mt-10 flex flex-col gap-3 border-t border-white/10 pt-6 text-xs sm:flex-row sm:items-center sm:justify-between">
             <p>© 2026 Daffodil International University. All rights reserved.</p>
-            <p>Proctor Office Student Support Portal</p>
+            <p>Daffodil Proctorial Management System (DPMS)</p>
           </div>
         </div>
       </footer>

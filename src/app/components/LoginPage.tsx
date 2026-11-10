@@ -111,7 +111,7 @@ export default function LoginPage() {
 
       <main className="relative z-10 mx-auto mt-7 flex w-full max-w-5xl flex-col items-center">
         <img src="/daffodil_logo.svg" alt="Daffodil International University" className="h-auto w-[245px] sm:w-[290px]" />
-        <p className="mt-2 text-sm font-semibold text-[#0b2652]">Proctor Office Student Support Portal</p>
+        <p className="mt-2 text-sm font-semibold text-[#0b2652]">Daffodil Proctorial Management System (DPMS)</p>
 
         <section className="mt-8 w-full max-w-[520px] border-t-4 border-blue-600 bg-white px-6 py-7 shadow-[0_18px_50px_rgba(15,23,42,0.16)] sm:px-10 sm:py-8" aria-labelledby="login-heading">
           <div className="text-center">

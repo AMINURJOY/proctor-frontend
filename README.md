@@ -1,6 +1,6 @@
-# Proctor Office Automation System — Frontend
+# Daffodil Proctorial Management System (DPMS) — Frontend
 
-The frontend for Daffodil International University’s Proctor Office Automation System. It provides one role-aware portal for incident submission, case investigation, hearings, reports, disciplinary approvals, notifications, analytics, and system administration.
+The frontend for the Daffodil Proctorial Management System (DPMS). It provides one role-aware portal for incident submission, case investigation, hearings, reports, disciplinary approvals, notifications, analytics, and system administration.
 
 The application is a React single-page application (SPA) backed by the companion ASP.NET Core API in `../proctor-backend`.
 

@@ -256,12 +256,9 @@ export default function Layout() {
     <>
       {/* Logo */}
       <div className="p-6 border-b border-blue-900 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/daffodil_logo.svg" alt="DIU" className="w-40 h-10 rounded-lg" />
-          {/* <div>
-            <h1 className="text-white font-semibold text-sm">Daffodil International University</h1>
-            <p className="text-blue-200 text-xs">Proctor Office Automation</p>
-          </div> */}
+        <div className="min-w-0">
+          <img src="/daffodil_logo.svg" alt="Daffodil International University" className="h-10 w-40 rounded-lg" />
+          <p className="mt-1 max-w-[180px] text-[10px] font-medium leading-4 text-blue-200">Daffodil Proctorial Management System (DPMS)</p>
         </div>
         {/* Close button - mobile only */}
         <button
