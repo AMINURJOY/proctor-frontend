@@ -19,7 +19,7 @@ import {
   PlusIcon
 } from '../components/Icons';
 import { Case, CaseStatus, Hearing, User, InvestigationAttachment } from '../types';
-import api, { casesApi, hearingsApi, usersApi, studentsApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, API_BASE_URL } from '../services/api';
+import api, { casesApi, hearingsApi, usersApi, studentsApi, checklistApi, forwardingRulesApi, notificationsApi, settingsApi, investigationAttachmentsApi, dopeTestDefinitionsApi, API_BASE_URL } from '../services/api';
 import { statusLabel } from '../utils/status';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
@@ -134,6 +134,11 @@ export default function CaseDetail() {
   const [addingAccused, setAddingAccused] = useState(false);
   const [accusedForm, setAccusedForm] = useState({ name: '', accusedStudentId: '', department: '', contact: '', guardianContact: '', cgpa: '' });
   const [accusedLookupStatus, setAccusedLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle');
+  const [showAddDopeTest, setShowAddDopeTest] = useState(false);
+  const [addingDopeTest, setAddingDopeTest] = useState(false);
+  const [dopeTestComments, setDopeTestComments] = useState<Record<string, string>>({});
+  const [dopeTestDefinitions, setDopeTestDefinitions] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingDopeTests, setLoadingDopeTests] = useState(false);
   const [caseItem, setCaseItem] = useState<Case | null | undefined>(undefined);
   const [verifications, setVerifications] = useState<any[]>([]);
   // Per-case notifications shown to the student in the "Message from Proctor Office" tab.
@@ -334,6 +339,48 @@ export default function CaseDetail() {
     }
   };
 
+  const handleAddDopeTest = async () => {
+    if (!caseItem) return;
+    const completedTests = dopeTestDefinitions
+      .map(test => ({ test, comment: (dopeTestComments[test.id] || '').trim() }))
+      .filter(item => item.comment);
+    if (completedTests.length === 0) return;
+    setAddingDopeTest(true);
+    try {
+      await Promise.all(completedTests.map(item => casesApi.addDopeTestReport(caseItem.id, {
+        dopeTestDefinitionId: item.test.id,
+        comment: item.comment,
+      })));
+      const response = await casesApi.getById(caseItem.id);
+      setCaseItem(response.data.data || response.data);
+      setDopeTestComments({});
+      setShowAddDopeTest(false);
+      toast.success(completedTests.length === 1 ? 'Dope test report added' : `${completedTests.length} dope test reports added`);
+    } catch (err: any) {
+      toast.error('Could not add dope test report', { description: err?.response?.data?.message || 'Try again' });
+    } finally {
+      setAddingDopeTest(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showAddDopeTest) return;
+    let cancelled = false;
+    setLoadingDopeTests(true);
+    dopeTestDefinitionsApi.getAll()
+      .then(response => {
+        if (!cancelled) setDopeTestDefinitions(response.data?.data || []);
+      })
+      .catch((error: any) => {
+        if (!cancelled) {
+          setDopeTestDefinitions([]);
+          toast.error('Could not load dope test names', { description: error?.response?.data?.message || 'Try again' });
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingDopeTests(false); });
+    return () => { cancelled = true; };
+  }, [showAddDopeTest]);
+
   useEffect(() => {
     if (!showAddAccused) return;
     const studentId = accusedForm.accusedStudentId.trim();
@@ -526,6 +573,13 @@ export default function CaseDetail() {
   const canAddAccused = !!currentUser?.role
     && currentUser.role !== 'student'
     && currentUser.role !== 'external';
+  const canAddDopeTest = !caseItem.type3Stage
+    && !['closed', 'resolved', 'rejected', 'police-case'].includes(caseItem.status)
+    && (
+      currentUser?.role === 'super-admin'
+      || ((currentUser?.role === 'assistant-proctor' || currentUser?.role === 'deputy-proctor')
+        && (isAssignedToMe || isActiveAssignee || caseItem.forwardedToRole === currentUser.role))
+    );
   // Verify / forward actions live as header buttons (popups). Show them when the acting user
   // can work the case: coordinators in their gender-routed queue (or un-routed/assigned), and
   // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
@@ -1019,15 +1073,26 @@ export default function CaseDetail() {
                   {caseItem.studentCgpa != null && <span><strong>CGPA:</strong> {caseItem.studentCgpa.toFixed(2)}</span>}
                 </div>
               )}
-              {canAddAccused && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddAccused(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
-                  >
-                    <PlusIcon /> Add Accused Person
-                  </button>
+              {(canAddAccused || canAddDopeTest) && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {canAddDopeTest && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddDopeTest(true)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+                    >
+                      <FileIcon /> Add Dope Test Report
+                    </button>
+                  )}
+                  {canAddAccused && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddAccused(true)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
+                    >
+                      <PlusIcon /> Add Accused Person
+                    </button>
+                  )}
                 </div>
               )}
               {((caseItem.complainants?.length || 0) > 0 || caseItem.studentName || (caseItem.accusedPersons?.length || 0) > 0 || caseItem.accusedName) && (
@@ -1079,6 +1144,26 @@ export default function CaseDetail() {
                     </div>
                   ) : null}
                 </div>
+              )}
+
+              {currentUser?.role !== 'student' && (caseItem.dopeTestReports?.length || 0) > 0 && (
+                <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><FileIcon /></span>
+                    <div>
+                      <h3 className="font-semibold text-[#0b2652]">Dope Test Reports</h3>
+                      <p className="text-xs text-gray-500">Test comments recorded after case submission.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {caseItem.dopeTestReports!.map(report => (
+                      <article key={report.id} className="rounded-lg border border-blue-100 bg-white p-3">
+                        <p className="font-semibold text-[#0b2652]">{report.testName}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-700">{report.comment}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
               )}
 
               {caseItem.type !== 'type-1' && (
@@ -1620,6 +1705,63 @@ export default function CaseDetail() {
                 }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
                 <button disabled={addingAccused || !accusedForm.name.trim()} onClick={handleAddAccused} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
                   {addingAccused ? 'Adding…' : 'Add Accused Person'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showAddDopeTest && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => {
+            if (!addingDopeTest) {
+              setShowAddDopeTest(false);
+              setDopeTestComments({});
+            }
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-[#0b2652]">Add Dope Test Report</h3>
+              <p className="mt-1 text-sm text-gray-500">Add a comment beside each applicable test. Tests left empty will not be saved.</p>
+              <div className="mt-4 max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+                {loadingDopeTests && <p className="rounded-lg bg-blue-50 px-3 py-4 text-center text-sm text-blue-700">Loading test names…</p>}
+                {!loadingDopeTests && dopeTestDefinitions.length === 0 && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-4 text-sm text-amber-800">No active test names are configured. Ask Super Admin to add one in General Settings.</p>
+                )}
+                {!loadingDopeTests && dopeTestDefinitions.map((test, index) => (
+                  <label key={test.id} className="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[minmax(130px,0.8fr)_minmax(0,1.7fr)] sm:items-center">
+                    <span className="text-sm font-semibold text-[#0b2652]">{test.name}</span>
+                    <input
+                      autoFocus={index === 0}
+                      maxLength={4000}
+                      value={dopeTestComments[test.id] || ''}
+                      onChange={event => setDopeTestComments(value => ({ ...value, [test.id]: event.target.value }))}
+                      placeholder={`Comment for ${test.name}`}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={addingDopeTest}
+                  onClick={() => {
+                    setShowAddDopeTest(false);
+                    setDopeTestComments({});
+                  }}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={addingDopeTest || !Object.values(dopeTestComments).some(comment => comment.trim())}
+                  onClick={handleAddDopeTest}
+                  className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {addingDopeTest ? 'Adding…' : 'Add Reports'}
                 </button>
               </div>
             </div>

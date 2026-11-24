@@ -127,6 +127,8 @@ export const casesApi = {
   addNote: (caseId: string, data: any) => api.post(`/cases/${caseId}/notes`, data),
   addAccusedPerson: (caseId: string, data: { name: string; accusedStudentId?: string; department?: string; contact?: string; guardianContact?: string; cgpa?: number }) =>
     api.post(`/cases/${caseId}/accused-persons`, data),
+  addDopeTestReport: (caseId: string, data: { dopeTestDefinitionId: string; comment: string }) =>
+    api.post(`/cases/${caseId}/dope-test-reports`, data),
   addInternalHearingPerson: (caseId: string, userId: string) => api.post(`/cases/${caseId}/hearing-persons/internal`, { userId }),
   addExternalHearingPerson: (caseId: string, data: { emails: string[]; name?: string; subject?: string; message: string }) =>
     api.post(`/cases/${caseId}/hearing-persons/external`, data),
@@ -209,6 +211,14 @@ export const caseCategoriesApi = {
     api.post('/case-categories', data),
   update: (id: string, data: any) => api.put(`/case-categories/${id}`, data),
   delete: (id: string) => api.delete(`/case-categories/${id}`),
+};
+
+// Dope-test names are configured by Super Admin and selected by responsible case officers.
+export const dopeTestDefinitionsApi = {
+  getAll: (includeInactive = false) => api.get('/dope-test-definitions', { params: { includeInactive } }),
+  create: (data: { name: string; isActive?: boolean; sortOrder?: number }) => api.post('/dope-test-definitions', data),
+  update: (id: string, data: { name: string; isActive: boolean; sortOrder: number }) => api.put(`/dope-test-definitions/${id}`, data),
+  delete: (id: string) => api.delete(`/dope-test-definitions/${id}`),
 };
 
 // Hearings

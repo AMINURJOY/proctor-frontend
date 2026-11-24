@@ -121,6 +121,23 @@ export interface CaseAccused {
   cgpa?: number;
 }
 
+export interface CaseDopeTestReport {
+  id: string;
+  dopeTestDefinitionId?: string;
+  testName: string;
+  comment: string;
+  createdByName?: string;
+  createdByRole?: string;
+  createdAt?: string;
+}
+
+export interface DopeTestDefinition {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 export interface Case {
   id: string;
   caseNumber: string;
@@ -161,6 +178,7 @@ export interface Case {
   incidentDate?: string;
   complainants?: CaseComplainant[];
   accusedPersons?: CaseAccused[];
+  dopeTestReports?: CaseDopeTestReport[];
   documents: Document[];
   notes: Note[];
   hearings: Hearing[];
