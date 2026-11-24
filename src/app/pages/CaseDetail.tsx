@@ -341,14 +341,20 @@ export default function CaseDetail() {
 
   const handleAddDopeTest = async () => {
     if (!caseItem) return;
-    const completedTests = dopeTestDefinitions
-      .map(test => ({ test, comment: (dopeTestComments[test.id] || '').trim() }))
+    const completedTests = dopeTestPeople.flatMap(person => dopeTestDefinitions
+      .map(test => ({
+        person,
+        test,
+        comment: (dopeTestComments[`${person.key}:${test.id}`] || '').trim(),
+      })))
       .filter(item => item.comment);
     if (completedTests.length === 0) return;
     setAddingDopeTest(true);
     try {
       await Promise.all(completedTests.map(item => casesApi.addDopeTestReport(caseItem.id, {
         dopeTestDefinitionId: item.test.id,
+        participantType: item.person.participantType,
+        caseAccusedId: item.person.caseAccusedId,
         comment: item.comment,
       })));
       const response = await casesApi.getById(caseItem.id);
@@ -580,6 +586,33 @@ export default function CaseDetail() {
       || ((currentUser?.role === 'assistant-proctor' || currentUser?.role === 'deputy-proctor')
         && (isAssignedToMe || isActiveAssignee || caseItem.forwardedToRole === currentUser.role))
     );
+  const dopeTestPeople: Array<{
+    key: string;
+    participantType: 'submitter' | 'accused';
+    caseAccusedId?: string;
+    name: string;
+    studentId?: string;
+  }> = [
+    ...(caseItem.studentName ? [{
+      key: 'submitter',
+      participantType: 'submitter' as const,
+      name: caseItem.studentName,
+      studentId: caseItem.studentId,
+    }] : []),
+    ...(caseItem.accusedPersons || []).map(person => ({
+      key: `accused-${person.id}`,
+      participantType: 'accused' as const,
+      caseAccusedId: person.id,
+      name: person.name,
+      studentId: person.accusedStudentId,
+    })),
+    ...((caseItem.accusedPersons?.length || 0) === 0 && caseItem.accusedName ? [{
+      key: 'accused-legacy',
+      participantType: 'accused' as const,
+      name: caseItem.accusedName,
+      studentId: caseItem.accusedId,
+    }] : []),
+  ];
   // Verify / forward actions live as header buttons (popups). Show them when the acting user
   // can work the case: coordinators in their gender-routed queue (or un-routed/assigned), and
   // the Proctor on any case — a coordinator only assists the Proctor, so the Proctor holds the
@@ -1158,7 +1191,13 @@ export default function CaseDetail() {
                   <div className="grid gap-3 md:grid-cols-2">
                     {caseItem.dopeTestReports!.map(report => (
                       <article key={report.id} className="rounded-lg border border-blue-100 bg-white p-3">
-                        <p className="font-semibold text-[#0b2652]">{report.testName}</p>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p className="font-semibold text-[#0b2652]">{report.testName}</p>
+                          <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                            {report.personName || 'Person not recorded'}{report.studentId ? ` · ${report.studentId}` : ''}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">{report.participantType === 'submitter' ? 'Submitter' : report.participantType === 'accused' ? 'Accused' : 'Legacy report'}</p>
                         <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-700">{report.comment}</p>
                       </article>
                     ))}
@@ -1723,24 +1762,45 @@ export default function CaseDetail() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-[#0b2652]">Add Dope Test Report</h3>
-              <p className="mt-1 text-sm text-gray-500">Add a comment beside each applicable test. Tests left empty will not be saved.</p>
-              <div className="mt-4 max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+              <p className="mt-1 text-sm text-gray-500">Add test comments under the submitter or accused person. Empty fields will not be saved.</p>
+              <div className="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
                 {loadingDopeTests && <p className="rounded-lg bg-blue-50 px-3 py-4 text-center text-sm text-blue-700">Loading test names…</p>}
                 {!loadingDopeTests && dopeTestDefinitions.length === 0 && (
                   <p className="rounded-lg bg-amber-50 px-3 py-4 text-sm text-amber-800">No active test names are configured. Ask Super Admin to add one in General Settings.</p>
                 )}
-                {!loadingDopeTests && dopeTestDefinitions.map((test, index) => (
-                  <label key={test.id} className="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[minmax(130px,0.8fr)_minmax(0,1.7fr)] sm:items-center">
-                    <span className="text-sm font-semibold text-[#0b2652]">{test.name}</span>
-                    <input
-                      autoFocus={index === 0}
-                      maxLength={4000}
-                      value={dopeTestComments[test.id] || ''}
-                      onChange={event => setDopeTestComments(value => ({ ...value, [test.id]: event.target.value }))}
-                      placeholder={`Comment for ${test.name}`}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                  </label>
+                {!loadingDopeTests && dopeTestDefinitions.length > 0 && dopeTestPeople.length === 0 && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-4 text-sm text-amber-800">No submitter or accused person is recorded for this case.</p>
+                )}
+                {!loadingDopeTests && dopeTestPeople.map((person, personIndex) => (
+                  <section key={person.key} className="overflow-hidden rounded-xl border border-blue-200 bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50 px-4 py-3">
+                      <div>
+                        <p className="font-semibold text-[#0b2652]">{person.name}</p>
+                        {person.studentId && <p className="text-xs text-gray-500">{person.studentId}</p>}
+                      </div>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-sm">
+                        {person.participantType === 'submitter' ? 'Submitter' : 'Accused'}
+                      </span>
+                    </div>
+                    <div className="space-y-2 p-3">
+                      {dopeTestDefinitions.map((test, testIndex) => {
+                        const commentKey = `${person.key}:${test.id}`;
+                        return (
+                          <label key={test.id} className="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[minmax(130px,0.8fr)_minmax(0,1.7fr)] sm:items-center">
+                            <span className="text-sm font-semibold text-[#0b2652]">{test.name}</span>
+                            <input
+                              autoFocus={personIndex === 0 && testIndex === 0}
+                              maxLength={4000}
+                              value={dopeTestComments[commentKey] || ''}
+                              onChange={event => setDopeTestComments(value => ({ ...value, [commentKey]: event.target.value }))}
+                              placeholder={`Comment for ${test.name}`}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
                 ))}
               </div>
               <div className="mt-5 flex justify-end gap-2">

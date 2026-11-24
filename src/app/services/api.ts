@@ -127,7 +127,7 @@ export const casesApi = {
   addNote: (caseId: string, data: any) => api.post(`/cases/${caseId}/notes`, data),
   addAccusedPerson: (caseId: string, data: { name: string; accusedStudentId?: string; department?: string; contact?: string; guardianContact?: string; cgpa?: number }) =>
     api.post(`/cases/${caseId}/accused-persons`, data),
-  addDopeTestReport: (caseId: string, data: { dopeTestDefinitionId: string; comment: string }) =>
+  addDopeTestReport: (caseId: string, data: { dopeTestDefinitionId: string; participantType: 'submitter' | 'accused'; caseAccusedId?: string; comment: string }) =>
     api.post(`/cases/${caseId}/dope-test-reports`, data),
   addInternalHearingPerson: (caseId: string, userId: string) => api.post(`/cases/${caseId}/hearing-persons/internal`, { userId }),
   addExternalHearingPerson: (caseId: string, data: { emails: string[]; name?: string; subject?: string; message: string }) =>

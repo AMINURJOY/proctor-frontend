@@ -124,6 +124,10 @@ export interface CaseAccused {
 export interface CaseDopeTestReport {
   id: string;
   dopeTestDefinitionId?: string;
+  caseAccusedId?: string;
+  participantType: 'submitter' | 'accused' | 'unspecified';
+  personName: string;
+  studentId?: string;
   testName: string;
   comment: string;
   createdByName?: string;
